@@ -10,7 +10,7 @@ import { getTask, updateTask, type Brand, type Task } from "../brand";
 import { agentForTask, type AgentId } from "../agents";
 import { entitlements } from "../entitlements";
 import { loadLayers, type Layers } from "../agent-instructions";
-import { agentSpendFor } from "../credits";
+import { agentSpendFor, personOf, type SpendPerson } from "../credits";
 import { getGov } from "../governance";
 import { IMAGE_TYPES, VIDEO_TYPES } from "../tasks";
 import {
@@ -40,10 +40,11 @@ const ofKind = (v: unknown, kind: MediaKind): v is MediaModelId => isMediaModelI
  * monthly cap for that agent in this brand scope, and what it spent this month as the session read it (a pre-check; the
  * ledger decides under its lock). Read here, so the image and video routes and the chat tool cannot disagree.
  */
-async function spendFor(u: User, t: Task): Promise<{ agent: AgentId; cap?: number; spent: number }> {
+async function spendFor(u: User, t: Task): Promise<{ agent: AgentId; cap?: number; spent: number; person?: SpendPerson }> {
   const agent = agentForTask(t.type).id;
   const gov = await getGov(sc(u));
-  return { agent, cap: gov.agentCaps[agent], spent: agentSpendFor(u, sc(u))[agent] ?? 0 };
+  const person = personOf(u);
+  return { agent, cap: gov.agentCaps[agent], spent: agentSpendFor(u, sc(u))[agent] ?? 0, ...(person ? { person } : {}) };
 }
 
 /**

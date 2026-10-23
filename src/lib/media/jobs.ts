@@ -169,7 +169,7 @@ export async function startMedia(input: StartInput, deps: MediaDeps): Promise<St
     // out) charged nothing.
     let paid: AgentCharge;
     try {
-      paid = await charge(email, m.credits, { scope, agent: input.agent, cap: input.cap });
+      paid = await charge(email, m.credits, { scope, agent: input.agent, cap: input.cap, ...(input.person ? { person: input.person } : {}) });
     } catch (e) {
       log.error("media charge failed", { error: codeOf(e) });
       return { ok: false, status: 429, error: "busy", retryAfter: BUSY_RETRY_S };
@@ -191,7 +191,7 @@ export async function startMedia(input: StartInput, deps: MediaDeps): Promise<St
       ...(trialVideo ? { trialVideo: true } : {}),
       // What a refund needs to lower the agent's counter this charge raised, in the month it was raised, and to put the
       // credits back in the top-up packs they came from (`from`, src/lib/topups.ts).
-      spend: { scope: paid.scope, agent: paid.agent, month: paid.month, ...(paid.from ? { from: paid.from } : {}) },
+      spend: { scope: paid.scope, agent: paid.agent, month: paid.month, ...(paid.from ? { from: paid.from } : {}), ...(paid.person ? { person: paid.person } : {}) },
     };
     const kind = m.kind, prior: { last?: MediaLast } = {};
     // All three settle before anything is decided, so a cleanup never races a task write still in flight.

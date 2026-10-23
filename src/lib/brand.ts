@@ -110,6 +110,17 @@ export type Task = {
   /** When the owner approved or rejected (for time-to-decision). */
   decidedAt?: string;
   /**
+   * Who approved it (rule 3761, expand): the person id of the approver and when. Set by PATCH /api/tasks/{id} when the
+   * item ends approved by a person's decision, cleared whenever it leaves "approved". With the account's approval policy
+   * on (`User.approvalRequired`) nothing publishes unless this names a person still allowed to approve (publish-once.ts).
+   * Older code ignores it.
+   */
+  approvedBy?: { pid: string; at: string };
+  /** Who should decide it (rule 3764, expand): an approver of the brand, picked when an agent's draft arrives. Older code ignores it. */
+  assignee?: { pid: string; at: string };
+  /** Comments on the draft (rule 3758, expand): any role, the draft itself unchanged. Newest last, at most 50. */
+  comments?: { pid: string; name: string; text: string; at: string }[];
+  /**
    * Set aside under "Not now" (rule 2340): still `pending`, out of the badge, the pending chip, the nudges and Reem's
    * walk until someone brings it back. `by: "auto"` when the daily job moved it after `NOT_NOW_DAYS` untouched
    * (src/lib/not-now.ts). Rule 679 expand: new and optional; older code ignores it and shows the item as pending.
@@ -297,9 +308,12 @@ export async function saveTask(email: string, t: Task, isNew = false) {
   const month = monthOf(t.createdAt);
   // Every creation path passes here, so every new ad or social item gets its code in one place.
   if (isNew && !t.adCode && hasAdCode(t.type)) t.adCode = newAdCode();
+  const s = scopeParam(email);
+  // A fresh draft gets an approver of its brand, in turn (rule 3764). Imported here, not at the top: assign.ts reads the
+  // roster and the bell, which import this file.
+  if (isNew && t.status === "pending" && !t.assignee) await (await import("./assign")).autoAssign(s, t);
   // Every path that changes a task goes through here, and each write below is idempotent, so the pending set and the
   // light index cannot drift the way a +1/-1 counter would. One round of parallel commands instead of a chain.
-  const s = scopeParam(email);
   await Promise.all([
     db.set(wsKey.task(s, t.id), t),
     isNew ? db.lpush(wsKey.tasks(s), t.id) : null,

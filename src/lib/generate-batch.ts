@@ -16,7 +16,7 @@
  */
 import { randomBytes } from "crypto";
 import { trialOver, type User } from "./auth";
-import { charge, chargeOnce, refund, refundOnce, refundOncePart, renewIfDue, renewalDue, type SpendRef } from "./credits";
+import { charge, chargeOnce, personOf, refund, refundOnce, refundOncePart, renewIfDue, renewalDue, type SpendRef } from "./credits";
 import { fairUseGate } from "./fair-use";
 import { agentForTask, type AgentId } from "./agents";
 import { briefOf, dropTasks, getBrand, listPreferencesFor, saveTask, type Brand, type Task, type TaskParent } from "./brand";
@@ -376,7 +376,7 @@ async function runBatch(user: User, scope: string, opts: BatchOpts, late: Promis
   // plan met last month's balance, answered no_credits and marked the week done. `renewIfDue` is the cron's own
   // function, idempotent and under the ledger's lock; the copy in hand only decides whether to take that lock.
   if (renewalDue(user)) await renewIfDue(acct(user));
-  const meta = { scope, agent, cap: gov.agentCaps[agent] };
+  const meta = { scope, agent, cap: gov.agentCaps[agent], person: personOf(user) };
   const paid = opts.once ? await chargeOnce(acct(user), cost, meta, opts.once) : await charge(acct(user), cost, meta);
   // Nothing was charged; the row says what the batch would have cost and, at a cap, what the agent spent of it.
   const refused = async (kind: "cap_reached" | "no_credits", outcome?: string): Promise<Activity> => ({ at: new Date().toISOString(), kind, agent, by: await who(), via: opts.via, type, credits: cost, ...(outcome ? { outcome } : {}) });

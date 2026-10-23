@@ -150,8 +150,8 @@ describe("feed token (rules 530-533)", () => {
     expect(await resolveFeed(orphan)).toEqual({ hash: hashFeedToken(orphan), rec: expect.objectContaining({ login }) });
   });
 
-  it("rule 533: feed.manage is member-level and blocked while a founder impersonates", async () => {
-    expect(MIN_ROLE["feed.manage"]).toBe("member");
+  it("rule 533: feed.manage is open to every role (Viewer up, rule 3752) and blocked while a founder impersonates", async () => {
+    expect(MIN_ROLE["feed.manage"]).toBe("viewer");
     const owner = await newUser("feedown");
     const admin = await newMember(owner, "admin");
     const member = await newMember(owner, "member");

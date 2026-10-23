@@ -10,6 +10,7 @@ import { revokeFeed, type LinkOwner } from "./feed-token";
 import { claimLogin, getAccount, getLogin, normalizeEmail, releaseLogin, seatLimit, strongPassword, validEmail, type Actor, type User } from "./auth";
 import { acct, LoginIndex, OPAQUE_IDS } from "./account-id";
 import { can } from "./roles";
+import { personSpendFor } from "./credits";
 import { teamApprovals } from "./approver-stats";
 import { accountKey, globalKey, personKey, storedAccountId, storedPersonId, type AccountId, type PersonId } from "./keys";
 import { parseStored, type MembershipValue } from "./stored";
@@ -48,7 +49,8 @@ import { addressBlocked } from "./email-hold";
  * No lock is reentrant: a function called under a held lock says so (`teamLocked`, `locked`).
  */
 
-export type TeamRole = "admin" | "member";
+/** The roles a membership can hold (rule 3750): "member" is the Editor (its stored name until the contract release). */
+export type TeamRole = "admin" | "member" | "viewer";
 export type Member = {
   /**
    * The member's person id (multi-org forced change 2): its address when the record was first written, frozen from then
@@ -76,7 +78,20 @@ export type Member = {
  * One member of an account as the roster shows it (`listMembers`): the membership (`getMembership`: role, date, inviter,
  * pause) and the person (`getPerson`: address, name, language). Never a password hash.
  */
-export type MemberView = { pid: PersonId; email: string; name: string; lang: "ar" | "en"; role: TeamRole; acceptedAt: string; invitedBy: string; disabled?: "seats" };
+export type MemberView = {
+  pid: PersonId;
+  email: string;
+  name: string;
+  lang: "ar" | "en";
+  role: TeamRole;
+  acceptedAt: string;
+  invitedBy: string;
+  disabled?: "seats";
+  /** Rules 3756, 3760, 3770: the brand scope (absent = every brand), the approve toggle and the monthly credit cap. */
+  brands?: string[];
+  approves?: true;
+  creditCap?: number;
+};
 export type Invite = {
   email: string;
   role: TeamRole;
@@ -92,6 +107,10 @@ export type Invite = {
   createdAt: string;
   expiresAt: string;
   lang: "ar" | "en";
+  /** Rule 3756 (expand): the brands the membership will be scoped to; absent = every brand. A build before M3 ignores it. */
+  brands?: string[];
+  /** Rule 3760 (expand): the membership will approve. A build before M3 ignores it. */
+  approves?: true;
 };
 /** A pending invite with its id (the SHA-256 of the token, which is what DELETE /api/team/invite takes). */
 export type PendingInvite = Invite & { id: string };
@@ -101,7 +120,7 @@ export type PendingInvite = Invite & { id: string };
  * address is the owner or a member of THIS account (nothing outside the inviter's own team is revealed), and an invite
  * for an address that already signs in is accepted by signing in, never with a new password.
  */
-export type TeamError = "invalid_email" | "invalid_role" | "forbidden" | "unavailable" | "not_found" | "invalid" | "weak_password" | "invalid_name" | "already_member" | "signin_required";
+export type TeamError = "invalid_email" | "invalid_role" | "forbidden" | "unavailable" | "not_found" | "invalid" | "weak_password" | "invalid_name" | "already_member" | "signin_required" | "seats_full";
 export type SeatsError = { ok: false; error: "seats"; used: number; limit: number };
 export type TeamFail = { ok: false; error: TeamError } | SeatsError;
 
@@ -123,9 +142,35 @@ const aidFrom = (owner: string): AccountId => storedAccountId(owner);
  * A person id read back from a record this app wrote: a roster entry, a legacy member record's `memberPid`, an invite's
  * `invitedByPid` or `invitedBy` (in R1 a legacy person's id is its address), a session's actor.
  */
-const pidFrom = (s: string): PersonId => storedPersonId(s);
+export const pidFrom = (s: string): PersonId => storedPersonId(s);
 
-export const isTeamRole = (v: unknown): v is TeamRole => v === "admin" || v === "member";
+export const isTeamRole = (v: unknown): v is TeamRole => v === "admin" || v === "member" || v === "viewer";
+/**
+ * A role named in a request (rule 3751): "editor" is the product's name for the stored "member", accepted as an alias so
+ * the API speaks the new names before the contract release. Anything else that is not a team role is null.
+ */
+export const teamRoleFrom = (v: unknown): TeamRole | null => (v === "editor" ? "member" : isTeamRole(v) ? v : null);
+
+/** Viewers that take no seat, per workspace (rule 3753): the fourth viewer takes a paid seat like an editor. */
+export const FREE_VIEWERS = 3;
+type Seated = { role?: unknown; disabled?: unknown };
+/**
+ * THE seat count (rules 2118, 3753): the owner, every membership not paused and every unexpired invite, except that the
+ * first `FREE_VIEWERS` viewers (members and viewer invites together) take no seat. Every seat check, the Members page,
+ * billing and the console count through this one pure function, over what the caller read under its lock. When the paid
+ * seats work (rules 3360-3379) lands, its `settleExtraSeats` bills this count, so free viewers are never billed.
+ */
+export function seatCount(members: readonly Seated[], invites: readonly Seated[]): number {
+  const active = members.filter((m) => !m.disabled);
+  const viewers = active.filter((m) => m.role === "viewer").length + invites.filter((i) => i.role === "viewer").length;
+  const paid = active.filter((m) => m.role !== "viewer").length + invites.filter((i) => i.role !== "viewer").length;
+  return 1 + paid + Math.max(0, viewers - FREE_VIEWERS);
+}
+/** Free viewer places left (rule 3753), for the Members page. */
+export function freeViewersLeft(members: readonly Seated[], invites: readonly Seated[]): number {
+  const viewers = members.filter((m) => !m.disabled && m.role === "viewer").length + invites.filter((i) => i.role === "viewer").length;
+  return Math.max(0, FREE_VIEWERS - viewers);
+}
 /** The invite id: SHA-256 of the token. The token travels only in the link's fragment and is never stored. */
 export const inviteId = (token: string) => createHash("sha256").update(token).digest("hex");
 const expired = (inv: Pick<Invite, "expiresAt">, now = Date.now()) => !(new Date(inv.expiresAt).getTime() > now);
@@ -207,7 +252,18 @@ async function readMembership(aid: AccountId, pid: PersonId): Promise<{ ms: Memb
 }
 
 /** The row a membership is written as: exactly the `MembershipRow` fields, `disabled` only when set. */
-const rowOf = (m: MembershipValue): MembershipValue => ({ aid: m.aid, pid: m.pid, role: m.role, acceptedAt: m.acceptedAt, invitedBy: m.invitedBy, ...(m.disabled ? { disabled: m.disabled } : {}) });
+const rowOf = (m: MembershipValue): MembershipValue => ({
+  aid: m.aid,
+  pid: m.pid,
+  role: m.role,
+  acceptedAt: m.acceptedAt,
+  invitedBy: m.invitedBy,
+  ...(m.disabled ? { disabled: m.disabled } : {}),
+  // Customer roles M3 (expand): scope, approve toggle and cap, only when set. A build before M3 drops them on its next write.
+  ...(Array.isArray(m.brands) ? { brands: m.brands } : {}),
+  ...(m.approves === true ? { approves: true as const } : {}),
+  ...(typeof m.creditCap === "number" ? { creditCap: m.creditCap } : {}),
+});
 
 /** The new shape of a membership, in one round: the row, the roster entry and the person's `orgs:` entry. */
 async function putRow(aid: AccountId, pid: PersonId, row: MembershipValue): Promise<void> {
@@ -391,7 +447,7 @@ export async function createMember(
 
 async function insertMember(
   aid: AccountId,
-  input: { email: string; name: string; passHash: string; lang: "ar" | "en"; role: TeamRole; invitedBy: string; invitedByPid?: string },
+  input: { email: string; name: string; passHash: string; lang: "ar" | "en"; role: TeamRole; invitedBy: string; invitedByPid?: string; brands?: string[]; approves?: true },
   opts: { pid?: PersonId },
 ): Promise<Member> {
   const now = new Date().toISOString();
@@ -422,7 +478,8 @@ async function insertMember(
   const write = async () => {
     await createPersonRecord({ pid, email, name: member.name, lang: member.lang, passHash: member.passHash, createdAt: now, sessionsAfter: now }, { loginLocked: true, personLocked: true });
     if (home) await saveMember(member);
-    await Promise.all([putRow(aid, pid, { aid, pid, role: input.role, acceptedAt: now, invitedBy: input.invitedByPid ?? input.invitedBy }), claimLogin(email, pid)]);
+    const extras = { ...(input.brands ? { brands: input.brands } : {}), ...(input.approves ? { approves: true as const } : {}) };
+    await Promise.all([putRow(aid, pid, { aid, pid, role: input.role, acceptedAt: now, invitedBy: input.invitedByPid ?? input.invitedBy, ...extras }), claimLogin(email, pid)]);
   };
   await withPersonLock(pid, () => (home ? withLock(accountKey.memberLock(email), write) : write()));
   return member;
@@ -455,9 +512,19 @@ export async function listMembers(owner: string): Promise<MemberView[]> {
       acceptedAt: ms.acceptedAt,
       invitedBy: ms.invitedBy,
       ...(ms.disabled ? { disabled: ms.disabled } : {}),
+      ...(Array.isArray(ms.brands) ? { brands: [...ms.brands] } : {}),
+      ...(ms.approves === true ? { approves: true as const } : {}),
+      ...(typeof ms.creditCap === "number" ? { creditCap: ms.creditCap } : {}),
     };
   });
   return rows.filter((m): m is MemberView => !!m).sort(byAge((m) => m.acceptedAt, (m) => m.email));
+}
+
+/** Every membership row on the account's roster (auto-assign, rule 3764): one `pmap` round; an entry with no row is skipped. */
+export async function rosterMemberships(aid: AccountId): Promise<Membership[]> {
+  const pids = await db.smembers(membersKey(aid));
+  const rows = await pmap(pids, (p) => getMembership(aid, pidFrom(p)));
+  return rows.filter((m): m is Membership => !!m);
 }
 
 /**
@@ -497,7 +564,7 @@ export async function peekInvites(owner: string): Promise<PendingInvite[]> {
 /** Seats in use (rule 2118, per account): the owner, every membership not paused, and every unexpired invite. */
 export async function seatsUsed(owner: string): Promise<number> {
   const [members, invites] = await Promise.all([listMembers(owner), listInvites(owner)]);
-  return 1 + members.filter((m) => !m.disabled).length + invites.length;
+  return seatCount(members, invites);
 }
 
 /** The actor is still what the session said: for a member, still holding a membership of this account, enabled, with that role. */
@@ -519,7 +586,8 @@ const inviterPid = (inv: Invite): PersonId => pidFrom(inv.invitedByPid ?? normal
 function inviteHolds(inv: Invite, owner: User, inviter: Membership | null): boolean {
   if (!(new Date(inv.createdAt).getTime() >= new Date(owner.createdAt).getTime())) return false;
   if (inv.invitedByPid !== undefined ? inv.invitedByPid === ownerOf(owner) : inv.invitedBy === owner.email || inv.invitedBy === acct(owner)) return true;
-  return !!inviter && inviter.aid === aidOf(owner) && !inviter.disabled && inviter.role === "admin" && inv.role === "member";
+  // An admin invites editors and viewers (rule 3754), never another admin.
+  return !!inviter && inviter.aid === aidOf(owner) && !inviter.disabled && inviter.role === "admin" && (inv.role === "member" || inv.role === "viewer");
 }
 /**
  * Delete these invites of `owner` (record and index entry). Callers hold `lock:team:{owner}`. An invite passed with its
@@ -550,11 +618,23 @@ const who = (a: Pick<Actor, "pid" | "email">) => ({ pid: a.pid as string, email:
  * account (`aid`, beside `owner`) and the inviter's person id (`invitedByPid`, beside their address); the team log gets
  * an "invited" row.
  */
-export async function createInvite(owner: User, actor: Actor, email: string, role: string, lang: string): Promise<{ ok: true; token: string; id: string; invite: Invite } | TeamFail> {
-  if (!isTeamRole(role)) return fail("invalid_role");
+export async function createInvite(
+  owner: User,
+  actor: Actor,
+  email: string,
+  rawRole: string,
+  lang: string,
+  access: { brands?: unknown; approves?: unknown } = {},
+): Promise<{ ok: true; token: string; id: string; invite: Invite } | TeamFail> {
+  const role = teamRoleFrom(rawRole);
+  if (!role) return fail("invalid_role");
+  // Rules 3756, 3760: the brand scope and the approve toggle travel with the invite, checked like a later change.
+  const extras = await accessFrom(owner, access);
+  if (!extras) return fail("invalid");
   const e = normalizeEmail(typeof email === "string" ? email : "");
   if (!validEmail(e)) return fail("invalid_email");
   if (!can({ ...owner, actor }, role === "admin" ? "team.invite.admin" : "team.invite.member")) return fail("forbidden");
+  if ((extras.brands || extras.approves) && !can({ ...owner, actor }, "team.access")) return fail("forbidden");
   if (!(await actorStillHolds(owner, actor))) return fail("forbidden");
   if (e === owner.email || e === normalizeEmail(actor.email)) return fail(MULTI_ORG ? "already_member" : "unavailable");
   const token = randomBytes(32).toString("hex");
@@ -573,8 +653,9 @@ export async function createInvite(owner: User, actor: Actor, email: string, rol
       if (invites.some((i) => i.email === e)) return fail("unavailable");
     } else if (taken || m || invites.some((i) => i.email === e)) return fail("unavailable");
     const limit = seatLimit(fresh);
-    const used = 1 + members.filter((x) => !x.disabled).length + invites.length;
-    if (used + 1 > limit) return { ok: false, error: "seats", used, limit } as SeatsError;
+    const used = seatCount(members, invites);
+    // The new invite counted with the rest: a viewer invite within the free viewers takes no seat (rule 3753).
+    if (seatCount(members, [...invites, { role }]) > limit) return { ok: false, error: "seats", used, limit } as SeatsError;
     const now = new Date();
     const invite: Invite = {
       email: e,
@@ -586,6 +667,8 @@ export async function createInvite(owner: User, actor: Actor, email: string, rol
       createdAt: now.toISOString(),
       expiresAt: new Date(now.getTime() + INVITE_TTL_SECONDS * 1000).toISOString(),
       lang: lang === "en" ? "en" : "ar",
+      ...(extras.brands ? { brands: extras.brands } : {}),
+      ...(extras.approves ? { approves: true as const } : {}),
     };
     await Promise.all([
       db.set(inviteKey(id), invite, INVITE_TTL_SECONDS),
@@ -655,7 +738,7 @@ export async function acceptInvite(token: string, input: { name: unknown; passwo
       if (!owner || isSuspended(owner) || !inviteHolds(inv, owner, inviter)) return fail("invalid");
       const limit = seatLimit(owner);
       // This invite already holds a seat (it is in the index); accepting turns it into a member, same count.
-      const used = 1 + members.filter((m) => !m.disabled).length + invites.length;
+      const used = seatCount(members, invites);
       if (used > limit) return { ok: false, error: "seats", used, limit } as SeatsError;
       return withLoginLock(inv.email, async () => {
         const [taken, m, blocked] = await Promise.all([getLogin(inv.email), getMember(inv.email), addressBlocked(inv.email)]);
@@ -665,7 +748,7 @@ export async function acceptInvite(token: string, input: { name: unknown; passwo
         // place still holds as its key (L3).
         if (blocked === "held" || (blocked === "moved" && !MULTI_ORG)) return fail("unavailable");
         const lang = input.lang === "en" || input.lang === "ar" ? input.lang : inv.lang;
-        const member = await insertMember(aid, { email: inv.email, name, passHash, lang, role: inv.role, invitedBy: inv.invitedBy, invitedByPid: inv.invitedByPid }, MULTI_ORG ? { pid: pidFrom(newPersonId()) } : {});
+        const member = await insertMember(aid, { email: inv.email, name, passHash, lang, role: inv.role, invitedBy: inv.invitedBy, invitedByPid: inv.invitedByPid, ...inviteExtras(inv) }, MULTI_ORG ? { pid: pidFrom(newPersonId()) } : {});
         const pid = pidFrom(memberPid(member));
         await Promise.all([
           dropInvites(aid, [{ id, email: inv.email }]),
@@ -711,7 +794,7 @@ export async function joinInviteAsPerson(token: string, person: Person): Promise
       if (!live || expired(live) || !invites.some((i) => i.id === id)) return fail("invalid");
       if (!owner || isSuspended(owner) || !inviteHolds(inv, owner, inviter)) return fail("invalid");
       const limit = seatLimit(owner);
-      const used = 1 + members.filter((m) => !m.disabled).length + invites.length;
+      const used = seatCount(members, invites);
       if (used > limit) return { ok: false, error: "seats", used, limit } as SeatsError;
       return withPersonLock(pid, async () => {
         // The person as it is now: the same address, still verified, not suspended (a change since the request began).
@@ -719,7 +802,7 @@ export async function joinInviteAsPerson(token: string, person: Person): Promise
         if (!fresh || !fresh.emailVerifiedAt || isPersonSuspended(fresh) || normalizeEmail(fresh.email) !== normalizeEmail(inv.email)) return fail("invalid");
         if (held || ownerOf(owner) === pid) return fail("already_member");
         const now = new Date().toISOString();
-        await writeMembership(aid, pid, { aid, pid, role: inv.role, acceptedAt: now, invitedBy: inv.invitedByPid ?? inv.invitedBy }, { home: false, teamLocked: true });
+        await writeMembership(aid, pid, { aid, pid, role: inv.role, acceptedAt: now, invitedBy: inv.invitedByPid ?? inv.invitedBy, ...inviteExtras(inv) }, { home: false, teamLocked: true });
         await Promise.all([
           dropInvites(aid, [{ id, email: inv.email }]),
           logTeam(aid, { kind: "joined", actor: { pid, email: fresh.email }, target: { pid, email: fresh.email }, role: inv.role, via: "web" }, { teamLocked: true }),
@@ -784,7 +867,7 @@ export async function discardInvite(owner: string, id: string) {
   });
 }
 
-/** Cancel a pending invite of this account. An admin may cancel only invites for role "member". One "invite_cancelled" row. */
+/** Cancel a pending invite of this account. An admin may cancel only editor and viewer invites. One "invite_cancelled" row. */
 export async function cancelInvite(owner: User, actor: Actor, id: string): Promise<{ ok: true } | TeamFail> {
   const acting = { ...owner, actor };
   if (!can(acting, "team.invite.cancel")) return fail("forbidden");
@@ -946,15 +1029,19 @@ export async function forceRemoveMember(email: string): Promise<boolean> {
  * Change a member's role (owner only, rule 2125). The owner role is never assignable, removable or transferable in v1.
  * A demoted admin's pending invites go (they could never be accepted). One "role_changed" row when the role changes.
  */
-export async function setRole(owner: User, actor: Actor, email: string, role: string): Promise<{ ok: true } | TeamFail> {
-  if (!isTeamRole(role)) return fail("invalid_role");
+export async function setRole(owner: User, actor: Actor, email: string, rawRole: string): Promise<{ ok: true } | TeamFail> {
+  const role = teamRoleFrom(rawRole);
+  if (!role) return fail("invalid_role");
   if (!can({ ...owner, actor }, "team.role")) return fail("forbidden");
   const aid = aidOf(owner);
   const m = await memberByEmail(aid, email);
   if (!m) return fail("not_found");
   const done = await withTeamLock(aid, async () => {
-    const cur = await readMembership(aid, m.pid);
+    const [cur, o, members, invites] = await Promise.all([readMembership(aid, m.pid), getAccount(aid), listMembers(aid), listInvites(aid)]);
     if (!cur.ms) return false;
+    // A viewer made editor or admin may need a seat the free viewers did not (rule 3753): refused when none is left.
+    const after = members.map((x) => (x.pid === m.pid ? { ...x, role } : x));
+    if (o && !cur.ms.disabled && seatCount(after, invites) > seatLimit(o) && seatCount(after, invites) > seatCount(members, invites)) return "seats" as const;
     const demoted = cur.ms.role === "admin" && role !== "admin";
     const changed = cur.ms.role !== role;
     await writeMembership(aid, m.pid, { ...cur.ms, role }, { home: cur.home, teamLocked: true });
@@ -967,8 +1054,91 @@ export async function setRole(owner: User, actor: Actor, email: string, role: st
     ]);
     return true;
   });
+  if (done === "seats") return fail("seats_full");
   return done ? { ok: true } : fail("not_found");
 }
+
+/**
+ * Change a member's brand scope, approve toggle or monthly credit cap (rules 3756, 3760, 3770; PATCH /api/team/member).
+ * Scope and approving need `team.access` (owner and admin, never a scoped admin), and an admin never changes another
+ * admin's; the cap needs `team.cap` (the owner). `brands` null means every brand. One "access_changed" team log row.
+ */
+export async function setAccess(
+  owner: User,
+  actor: Actor,
+  email: string,
+  change: { brands?: unknown; approves?: unknown; creditCap?: unknown },
+): Promise<{ ok: true } | TeamFail> {
+  const acting = { ...owner, actor };
+  const wantsAccess = change.brands !== undefined || change.approves !== undefined;
+  const wantsCap = change.creditCap !== undefined;
+  if (!wantsAccess && !wantsCap) return fail("invalid");
+  if (wantsAccess && !can(acting, "team.access")) return fail("forbidden");
+  if (wantsCap && !can(acting, "team.cap")) return fail("forbidden");
+  const extras = await accessFrom(owner, { brands: change.brands, approves: change.approves });
+  if (!extras) return fail("invalid");
+  let cap: number | null | undefined;
+  if (wantsCap) {
+    if (change.creditCap === null) cap = null;
+    else if (typeof change.creditCap === "number" && Number.isInteger(change.creditCap) && change.creditCap >= 0 && change.creditCap <= 10_000_000) cap = change.creditCap;
+    else return fail("invalid");
+  }
+  const aid = aidOf(owner);
+  const m = await memberByEmail(aid, email);
+  if (!m) return fail("not_found");
+  if (!(await actorStillHolds(owner, actor))) return fail("forbidden");
+  const done = await withTeamLock(aid, async () => {
+    const cur = await readMembership(aid, m.pid);
+    if (!cur.ms) return "not_found" as const;
+    if (wantsAccess && cur.ms.role === "admin" && !can(acting, "team.role")) return "forbidden" as const;
+    const next: MembershipValue = { ...cur.ms };
+    if (change.brands !== undefined) {
+      if (extras.brands) next.brands = extras.brands;
+      else delete next.brands;
+    }
+    if (change.approves !== undefined) {
+      if (extras.approves) next.approves = true;
+      else delete next.approves;
+    }
+    if (wantsCap) {
+      if (cap === null) delete next.creditCap;
+      else next.creditCap = cap;
+    }
+    await Promise.all([
+      writeMembership(aid, m.pid, next, { home: cur.home, teamLocked: true }),
+      logTeam(aid, { kind: "access_changed", actor: who(actor), target: { pid: m.pid, email: m.email }, role: cur.ms.role, via: "web" }, { teamLocked: true }),
+    ]);
+    return "ok" as const;
+  });
+  return done === "ok" ? { ok: true } : fail(done);
+}
+
+/**
+ * The brand scope and approve toggle a request asks for (rules 3756, 3760), checked: `brands` is null/absent (every
+ * brand) or a list of this account's own ACTIVE brand ids, read from the account's stored list (an id the account does
+ * not have refuses the whole change); `approves` a boolean. Null when malformed.
+ */
+async function accessFrom(owner: User, input: { brands?: unknown; approves?: unknown }): Promise<{ brands?: string[]; approves?: true } | null> {
+  const out: { brands?: string[]; approves?: true } = {};
+  if (input.approves !== undefined && typeof input.approves !== "boolean") return null;
+  if (input.approves === true) out.approves = true;
+  if (input.brands === undefined || input.brands === null) return out;
+  if (!Array.isArray(input.brands) || input.brands.length > 200 || !input.brands.every((b) => typeof b === "string")) return null;
+  const { listBrands } = await import("./brands");
+  const own = new Set((await listBrands(acct(owner))).filter((b) => b.status === "active").map((b) => b.id));
+  const want = [...new Set(input.brands as string[])];
+  if (!want.length || !want.every((b) => own.has(b))) return null;
+  // The stored ids are the account's own, in its list's order: nothing from the request is kept as given.
+  out.brands = [...own].filter((b) => want.includes(b));
+  return out;
+}
+
+/** What an accepted invite gives its membership row (rules 3756, 3760): the scope and toggle, only when well formed. */
+const inviteExtras = (inv: Invite): { brands?: string[]; approves?: true } => ({
+  // A malformed scope is no brand at all, never every brand.
+  ...(inv.brands !== undefined ? { brands: Array.isArray(inv.brands) && inv.brands.every((b) => typeof b === "string") ? [...inv.brands] : [] } : {}),
+  ...(inv.approves === true ? { approves: true as const } : {}),
+});
 
 /** A member leaves the account. The caller clears the session cookie. The owner cannot leave. One "left" row. */
 export async function leaveTeam(u: User): Promise<{ ok: true } | TeamFail> {
@@ -1007,13 +1177,18 @@ export async function enforceSeats(owner: User | string, opts: { teamLocked?: bo
   return locked(async () => {
     const [o, members, invites] = await Promise.all([getAccount(aid), listMembers(aid), listInvites(aid)]);
     const limit = o ? seatLimit(o) : 1;
-    const slots = Math.max(0, limit - 1);
-    const active = members.filter((m) => !m.disabled);
-    const pause = active.slice(slots);
-    const kept = active.length - pause.length;
-    const cancel = invites.slice(Math.max(0, slots - kept));
-    const free = Math.max(0, slots - kept - (invites.length - cancel.length));
-    const resume = members.filter((m) => m.disabled).slice(0, free);
+    // Rule 3753: the oldest `FREE_VIEWERS` viewers (members first, then viewer invites) take no seat; everyone else fills
+    // the `limit - 1` paid places oldest first. Without viewers this is the count of rule 2118, unchanged.
+    let paidLeft = Math.max(0, limit - 1);
+    let freeLeft = FREE_VIEWERS;
+    const place = (role: unknown): boolean => {
+      if (role === "viewer" && freeLeft > 0) { freeLeft--; return true; }
+      if (paidLeft > 0) { paidLeft--; return true; }
+      return false;
+    };
+    const pause = members.filter((m) => !m.disabled).filter((m) => !place(m.role));
+    const cancel = invites.filter((i) => !place(i.role));
+    const resume = members.filter((m) => m.disabled).filter((m) => place(m.role));
     const change = [...pause.map((m) => ({ m, off: true })), ...resume.map((m) => ({ m, off: false }))];
     const system = o ? { pid: ownerOf(o) as string, email: normalizeEmail(o.email) } : { pid: aid as string, email: "" };
     const applied = await Promise.all([
@@ -1097,15 +1272,30 @@ export async function wipeMemberships(aid: AccountId, opts: { teamLocked?: boole
 export async function teamView(u: User) {
   const a = u.actor;
   if (!a) return null;
-  const [members, invites, approvals] = await Promise.all([listMembers(acct(u)), listInvites(acct(u)), can(u, "team.approvals.view") ? teamApprovals(u) : null]);
+  const manage = can(u, "team.access") || can(u, "team.cap");
+  const { listBrands } = await import("./brands");
+  const [members, invites, approvals, brands] = await Promise.all([
+    listMembers(acct(u)),
+    listInvites(acct(u)),
+    can(u, "team.approvals.view") ? teamApprovals(u) : null,
+    manage ? listBrands(acct(u)) : null,
+  ]);
+  // This month's credits per member (rule 3771), read from the account record: for the owner, who sets the caps.
+  const seesSpend = can(u, "team.cap");
+  // Scope, approve toggle and cap (rules 3756-3770) are shown to those who may change them; to the rest only roles.
+  const access = (m: MemberView) => (manage ? { ...(m.brands ? { brands: m.brands } : {}), ...(m.approves ? { approves: true as const } : {}), ...(typeof m.creditCap === "number" ? { creditCap: m.creditCap } : {}), ...(seesSpend ? { spent: personSpendFor(u, m.pid) } : {}) } : {});
   return {
     you: { email: a.email, name: a.name, role: a.role },
-    seats: { used: 1 + members.filter((m) => !m.disabled).length + invites.length, limit: seatLimit(u) },
+    seats: { used: seatCount(members, invites), limit: seatLimit(u), freeViewers: FREE_VIEWERS, freeViewersLeft: freeViewersLeft(members, invites) },
     members: [
       { email: u.email, name: u.name, role: "owner" as const },
-      ...members.map((m) => ({ email: m.email, name: m.name, role: m.role, acceptedAt: m.acceptedAt, ...(m.disabled ? { disabled: m.disabled } : {}) })),
+      ...members.map((m) => ({ email: m.email, name: m.name, role: m.role, acceptedAt: m.acceptedAt, ...(m.disabled ? { disabled: m.disabled } : {}), ...access(m) })),
     ],
-    invites: can(u, "team.invites.view") ? invites.map((i) => ({ id: i.id, email: i.email, role: i.role, expiresAt: i.expiresAt, invitedBy: i.invitedBy })) : [],
+    invites: can(u, "team.invites.view")
+      ? invites.map((i) => ({ id: i.id, email: i.email, role: i.role, expiresAt: i.expiresAt, invitedBy: i.invitedBy, ...(manage && i.brands ? { brands: i.brands } : {}), ...(manage && i.approves ? { approves: true as const } : {}) }))
+      : [],
     ...(approvals ? { approvals } : {}),
+    // The account's own active brands, for the scope picker, and the approval policy (rule 3762): managers only.
+    ...(brands ? { brands: brands.filter((b) => b.status === "active").map((b) => ({ id: b.id, name: b.name })), approvalRequired: u.approvalRequired === true } : {}),
   };
 }

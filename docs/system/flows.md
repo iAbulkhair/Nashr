@@ -1787,3 +1787,24 @@ Rule file `docs/system/tests/2900-ai-usage-tracking.md`. Files: `src/lib/usage.t
 5. The owner (rule 2907). Settings → AI usage (`/{lang}/app/settings/usage`, owner and admins, `usage.view`) and `GET /api/usage?month=`: requests and share per person, brand, agent, model and day. No dollar figure: what a call costs Thakeen stays in the console; credits stay on the billing page.
 6. Release step: expand only. New hashes and one new sorted set, written alongside the old counters; old code never reads them, and nothing old changes shape. Rollback leaves them in place, to be removed with the account.
 
+## 120. Customer roles: Viewer, Editor, brand scope, approval and per-member cap (2026-10-23, branch `claude/m3-customer-roles-b97625`, rules 3750-3789)
+
+Phase م3 of the customer team. Permissions in `permissions.md` 0.1a and rows 7e and 7r; tests in `docs/system/tests/3750-customer-roles.md`. Rules 3765-3769 and 3772-3789 are reserved and unused.
+
+1. Roles. Owner, admin, Editor and Viewer. The Editor keeps its stored name `"member"` in this release; requests may say `"editor"`. A Viewer reads reports, the calendar and drafts, comments, and approves only with the approve toggle; every write, agent run and credit spend is refused in code (routes, chat tools, MCP).
+2. Seats. `seatCount`: owner + admins + Editors not paused + unexpired invites, with the first 3 Viewers free (the 4th takes a paid seat). The Members page shows seats used and free Viewers left.
+3. Brand scope. A membership may hold a list of the account's own brand ids. The resolvers keep a scoped person inside it (a link outside is a 404; a stale active brand falls back to an allowed one), and `/api/brands` lists and switches to allowed brands only.
+4. Approval. Owners and admins approve; an Editor or Viewer approves only with the toggle on. With the owner's policy on (PATCH /api/team), `publishOnce` refuses (409 `approval_required`) unless the copy being sent was approved by someone who may still approve that brand. Tasks record `approvedBy` and, for a fresh agent draft, `assignee` (one approver of the brand in turn, with a bell entry).
+5. Per-member monthly credit cap. Optional, set by the owner, checked in `debit` under the account lock before the spend, counted per person in `User.personSpend` and lowered by refunds. Chat messages use the chat allowance and are not capped.
+6. Members page (`/{lang}/app/settings/members`, Arabic and English, RTL): invite with role, brand scope and the toggle; change them later; the owner sets caps and the policy. It works with `MULTI_ORG` off and on (the membership row is read in both resolvers).
+
+### 120.1 Release steps (rule 679)
+
+- **This release: expand.** New code reads `"member"`, `"editor"` and `"viewer"` and writes `"member"` for an Editor. New optional fields (`brands`, `approves`, `creditCap` on a membership, `brands` and `approves` on an invite; `approvedBy`, `assignee`, `comments` on a task; `approvalRequired`, `personSpend` on the account; team log kind `access_changed`) are ignored by older code. A rollback to a build before this one signs out Viewers (their role does not parse there) and drops the new fields' effect, never widening anyone.
+- **Contract, step 1 (a later release).** Write `"editor"` for an Editor (`setRole`, invites, `insertMember`, the team log). Once it is live and the rollback window has passed, run `scripts/editor-role.ts` by hand on the founder's yes: a dry run first (`npx --no-install jiti scripts/editor-role.ts`, counts only), then `--apply`. It rewrites `"member"` to `"editor"` in every `mbr:{aid}:{pid}` row and in every legacy `member:{pid}` record of the same account, under `lock:team` → `lock:member`, re-reading each value under the locks, every other field kept; idempotent (a second run rewrites nothing); exit 1 means a lock was busy (run again). Invites (7 days) and team log rows (history) are not rewritten.
+- **Contract, step 2 (the release after).** Drop the `"member"` reading and the alias.
+
+### 120.2 Merge order with paid seats
+
+`refs/heads/claude/sup-paid-seats` (rules 3360-3379) bills extra seats. It must bill `seatCount` from `src/lib/team.ts` (this branch), never its own count of memberships: merge this branch first, then rebase paid seats on it so `settleExtraSeats` counts Viewers through `seatCount` and the first three are never billed. If paid seats lands first, the merge of this branch must switch its count to `seatCount` in the same pull request.
+

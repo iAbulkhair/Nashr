@@ -41,6 +41,9 @@ const time = (v: string) => Date.parse(v);
 /** The later of two dates; a malformed one wins, so `membershipHolds` refuses it (fails closed). */
 const laterDate = (a: string, b: string): string => (!Number.isFinite(time(a)) ? a : !Number.isFinite(time(b)) ? b : time(b) > time(a) ? b : a);
 
+/** The order of the membership roles (rule 3752): Viewer, then Editor (stored "member"), then Admin. */
+const MEMBER_RANK: Record<MembershipValue["role"], number> = { viewer: 0, member: 1, admin: 2 };
+
 /** Step 1: the `mbr:{aid}:{pid}` row, when it parses and names the account and person it is stored under. */
 function fromRow(aid: AccountId, pid: PersonId, raw: unknown): MembershipValue | null {
   const row = parseStored("membership", MembershipRow, raw, null);
@@ -70,7 +73,8 @@ export function membershipFromRaw(aid: AccountId, pid: PersonId, rawRow: unknown
   const row = fromRow(aid, pid, rawRow);
   const legacy = fromLegacy(aid, pid, rawMember);
   if (row && legacy) {
-    const role = row.role === "admin" && legacy.role === "admin" ? "admin" : "member";
+    // The stricter of the two (viewer < member < admin, rule 3752): a stale copy never widens what the person may do.
+    const role = MEMBER_RANK[row.role] <= MEMBER_RANK[legacy.role] ? row.role : legacy.role;
     const disabled = row.disabled ?? legacy.disabled;
     const acceptedAt = laterDate(row.acceptedAt, legacy.acceptedAt);
     if (role !== row.role || disabled !== row.disabled || acceptedAt !== row.acceptedAt) log.warn("membership stale", { shape: "membership" });
@@ -97,16 +101,16 @@ export async function getMembership(aid: AccountId, pid: PersonId): Promise<Memb
 export function roleIn(u: User, pid: PersonId, m: Membership | null): Role | null {
   if (ownerOf(u) === pid) return "owner";
   if (!m || m.pid !== pid || m.aid !== acct(u) || m.disabled) return null;
-  return m.role === "admin" || m.role === "member" ? m.role : null;
+  return m.role === "admin" || m.role === "member" || m.role === "viewer" ? m.role : null;
 }
 
 /**
- * Today's member guards (src/lib/auth.ts `resolveSession`), moved here unchanged: the role is admin or member, the
+ * Today's member guards (src/lib/auth.ts `resolveSession`), moved here unchanged: the role is admin, member or viewer, the
  * membership is this account's, it is not paused for seats, and it was accepted no earlier than the account was created
  * (a re-registered owner address never inherits an old team; NaN on either side refuses).
  */
 export function membershipHolds(u: User, m: Membership): boolean {
-  if (m.role !== "admin" && m.role !== "member") return false;
+  if (m.role !== "admin" && m.role !== "member" && m.role !== "viewer") return false;
   if (m.disabled || m.aid !== acct(u)) return false;
   return new Date(m.acceptedAt).getTime() >= new Date(u.createdAt).getTime();
 }
@@ -232,4 +236,29 @@ export async function pickAccount(p: Person, opts: { prefer?: AccountId } = {}):
   if (chosen) return chosen;
   if (legacy) return home;
   return held.sort(byPick)[0]?.aid ?? home;
+}
+
+/**
+ * What a membership adds to its member actor (customer roles M3, rules 3756, 3760, 3770): the brand scope, the approve
+ * toggle and the monthly credit cap, read from the `mbr:` row only (the legacy record carries none of them). Absent
+ * fields stay absent: every brand, no approving, no cap of their own.
+ */
+export function memberExtras(m: Pick<Membership, "brands" | "approves" | "creditCap"> | null): { brands?: readonly string[]; approves?: true; creditCap?: number } {
+  if (!m) return {};
+  return {
+    ...(Array.isArray(m.brands) ? { brands: [...m.brands] } : {}),
+    ...(m.approves === true ? { approves: true as const } : {}),
+    ...(typeof m.creditCap === "number" ? { creditCap: m.creditCap } : {}),
+  };
+}
+
+/**
+ * The brand a scoped person acts in (rule 3757): `bid` when the scope allows it; otherwise, when the brand came from the
+ * stored choice (not the link), the first brand of `active` (the account's active ids, "default" first) the scope allows;
+ * null when there is none or when a link named a brand outside the scope. No scope: `bid` unchanged.
+ */
+export function scopedBrand(brands: readonly string[] | undefined, bid: string, active: readonly string[], fromLink: boolean): string | null {
+  if (brands === undefined || brands.includes(bid)) return bid;
+  if (fromLink) return null;
+  return active.find((id) => brands.includes(id)) ?? null;
 }

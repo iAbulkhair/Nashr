@@ -218,8 +218,8 @@ describe("rule 1936: turning it off needs the password and a code; new recovery 
 });
 
 describe("rule 1937: a founder impersonating can neither see a way to nor change two-step sign-in", () => {
-  it("mfa.manage is member level and impersonation-blocked; the route refuses an impersonation", async () => {
-    expect(MIN_ROLE["mfa.manage"]).toBe("member");
+  it("mfa.manage is open to every role (Viewer up, rule 3752) and impersonation-blocked; the route refuses an impersonation", async () => {
+    expect(MIN_ROLE["mfa.manage"]).toBe("viewer");
     expect(IMPERSONATION_BLOCKED.has("mfa.manage")).toBe(true);
     vi.stubEnv("ADMIN_EMAILS", "founder-mfa@test.example");
     const u = await newUser("mfa");

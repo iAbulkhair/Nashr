@@ -45,6 +45,13 @@ export const MIN_ROLE = {
    * owner's own session only: never an impersonation, never an AI client's token (see `can`).
    */
   "team.transfer": "owner",
+  /**
+   * The account's approval policy (rule 3762, PATCH /api/team): when on, nothing publishes without an approval from a
+   * person still allowed to approve. The owner's own decision, like governance.
+   */
+  "team.policy": "owner",
+  /** A person's monthly credit cap (rule 3770, PATCH /api/team/member `creditCap`): money, the owner only. */
+  "team.cap": "owner",
 
   // ── Admin and owner ──
   /** Brand file writes: PUT /api/brand, profile brand fields, chat `update_brand`. */
@@ -59,8 +66,15 @@ export const MIN_ROLE = {
   connectors: "admin",
   /** Schedule and routines (PUT /api/schedule). */
   "schedule.write": "admin",
-  /** Approve and publish: publish route, task approve, chat `publish_item`. */
+  /** Publish: publish route, chat `publish_item`. */
   publish: "admin",
+  /**
+   * Approve (or reject as an approver) a draft: PATCH /api/tasks/{id} ending approved (rule 3760). The owner and admins
+   * always; an editor or viewer only while the owner or an admin turned their approve toggle on (`actor.approves`, see `can`).
+   */
+  approve: "admin",
+  /** Brand scope and the approve toggle of a member (rules 3756, 3760, PATCH /api/team/member): what inviting needs. */
+  "team.access": "admin",
   /**
    * Agent instructions of the brand workspace (agent skills portal, spec 10): save the draft, activate, discard, restore,
    * apply or dismiss a proposal. They steer every agent's prompt and outlive the session, like `brand.write`. Reading is open to members.
@@ -102,7 +116,7 @@ export const MIN_ROLE = {
    */
   "todo.close": "admin",
 
-  // ── Every member ──
+  // ── Editor (stored "member") and up ──
   chat: "member",
   generate: "member",
   images: "member",
@@ -110,54 +124,61 @@ export const MIN_ROLE = {
   drafts: "member",
   conversations: "member",
   feedback: "member",
-  notifications: "member",
+  notifications: "viewer",
   tools: "member",
-  support: "member",
+  support: "viewer",
   "integrations.request": "member",
   /**
    * The workspace's media library (rules 1781-1785): import a file from a connected cloud drive, upload an image from the
    * device, delete a library file. Like generating an image, any member may.
    */
   "library.write": "member",
+  /** Write or delete a workspace file that is not a core memory file (PUT and DELETE /api/files): an Editor's, never a Viewer's (rule 3752). */
+  "files.write": "member",
   /** Save one of the workspace's own images or clips to its connected cloud drive (rule 1782). Refused while impersonating. */
   "library.export": "member",
   /** Reem's list: add, update, snooze, reschedule, note, record a follow-up (POST /api/secretary, PATCH, the tools). */
   "todo.write": "member",
   /** One's own private calendar feed link (src/lib/feed-token.ts): create, renew, revoke, status. Refused while impersonating. */
-  "feed.manage": "member",
+  "feed.manage": "viewer",
   /** One's own booking links (src/lib/booking-token.ts, Reem B2a): create, renew, revoke, status. Refused while impersonating. */
   "booking.manage": "member",
   /** Switch the active brand (per login). */
-  "brands.switch": "member",
+  "brands.switch": "viewer",
   /** Read anything in the workspace. */
-  read: "member",
+  read: "viewer",
   /** See the roster and seats. */
-  "team.view": "member",
+  "team.view": "viewer",
   /** Leave the team: members only, never the owner (see `can`). */
-  "team.leave": "member",
+  "team.leave": "viewer",
   /** Change one's OWN password (the member record for members, the owner record for the owner). */
-  "password.change": "member",
+  "password.change": "viewer",
   /**
    * Sign one's OWN other browser sessions out (POST /api/account/sessions, rule 1150): the member record's stamp for a
    * member, the account's for the owner. Refused while impersonating: it would end the customer's own sessions.
    */
-  "sessions.revoke": "member",
+  "sessions.revoke": "viewer",
   /**
    * Turn one's OWN two-step sign-in on or off and renew its recovery codes (POST /api/account/2fa, rules 1930-1937).
    * Refused while impersonating: a founder must never enrol an authenticator on a customer's login.
    */
-  "mfa.manage": "member",
+  "mfa.manage": "viewer",
   /** Change one's OWN sign-in address (POST /api/account/email, rules 1942-1947). Refused while impersonating. */
-  "email.change": "member",
+  "email.change": "viewer",
   /** Unlink one's OWN Google sign-in (POST /api/account/google, rules 1948-1955). Refused while impersonating. */
-  "google.manage": "member",
+  "google.manage": "viewer",
   /**
    * List, add, rename and remove one's OWN passkeys (GET/POST /api/account/passkeys, customer passkeys, rule 2412).
    * Refused while impersonating: a founder must never register an authenticator on a customer's login.
    */
-  "passkeys.manage": "member",
+  "passkeys.manage": "viewer",
   /** One's own display name and interface language. */
-  "profile.self": "member",
+  "profile.self": "viewer",
+  /**
+   * Leave a comment on a draft (rule 3758, PATCH /api/tasks/{id} `comment`): it changes nothing in the draft, runs no
+   * agent and spends nothing. Every role, Viewer included.
+   */
+  comment: "viewer",
 } as const satisfies Record<string, Role>;
 
 export type Action = keyof typeof MIN_ROLE;
@@ -183,6 +204,10 @@ export const IMPERSONATION_BLOCKED: ReadonlySet<Action> = new Set<Action>([
   "team.remove.member",
   "team.remove.admin",
   "team.transfer",
+  // Customer roles (rules 3756, 3760, 3762, 3770): brand scope, the approve toggle, the credit cap and the approval policy.
+  "team.access",
+  "team.cap",
+  "team.policy",
   "mcp.token",
   "oauth.approve",
   "partner.bank",
@@ -193,7 +218,13 @@ export const IMPERSONATION_BLOCKED: ReadonlySet<Action> = new Set<Action>([
   "calendar.link",
 ]);
 
-const RANK: Record<Role, number> = { member: 1, admin: 2, owner: 3 };
+const RANK: Record<Role, number> = { viewer: 0, member: 1, admin: 2, owner: 3 };
+
+/**
+ * Refused to a member scoped to some brands (rule 3759), whatever the role: adding, renaming or archiving brands reaches
+ * the account's whole brand list, and inviting could hand out brands the inviter does not hold.
+ */
+export const SCOPED_BLOCKED: ReadonlySet<Action> = new Set<Action>(["brands.manage", "onboard", "team.invite.member", "team.invite.admin", "team.access"]);
 const isAction = (a: unknown): a is Action => typeof a === "string" && Object.prototype.hasOwnProperty.call(MIN_ROLE, a);
 
 /** The acting person's role, or null when the request carries no actor. */
@@ -212,6 +243,9 @@ export function can(u: User | null | undefined, action: Action): boolean {
   if (a.kind === "founder" && IMPERSONATION_BLOCKED.has(action)) return false;
   if (action === "team.leave") return a.kind === "member";
   if (action === "team.transfer") return a.kind === "owner";
+  if (a.kind === "member" && Array.isArray(a.brands) && SCOPED_BLOCKED.has(action)) return false;
+  // Rule 3760: approving is the owner's and admins'; an editor or viewer only with the approve toggle on.
+  if (action === "approve" && a.kind === "member" && a.approves === true) return true;
   return RANK[a.role] >= RANK[MIN_ROLE[action]];
 }
 

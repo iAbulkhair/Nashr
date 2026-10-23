@@ -87,6 +87,10 @@ async function fullAccount(): Promise<Required<Omit<User, "scope" | "brandId" | 
     priceLock: { plan: "business", baseHalalas: 99900, from: iso(-20).slice(0, 10), until: iso(340).slice(0, 10), months: 12, founding: true, at: iso(-20), by: "founder-lock@test.example", paidHalalas: 114885, paymentId: "pay_7870000000000001" },
     // The founder's fair-use lift (rule 1731): a founder field, never sent to the customer.
     fairUseLift: { month, at: iso(-1), by: "founder-fairuse@test.example" },
+    // Customer roles (rules 3762, 3771): the approval policy is shown on the team page, never in the profile; the
+    // per-person spend names person ids.
+    approvalRequired: true,
+    personSpend: { month, by: { p_spendaaaaaaaaaaaaaaaaaaa: 7 } },
   };
   await saveUser(full);
   return full;

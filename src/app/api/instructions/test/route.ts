@@ -6,7 +6,7 @@ import { loadLayers } from "@/lib/agent-instructions";
 import { getBrand, listPreferencesFor } from "@/lib/brand";
 import { byOf } from "@/lib/actor";
 import { recordActivity, type Activity } from "@/lib/activity";
-import { charge, refund, renewIfDue, renewalDue } from "@/lib/credits";
+import { charge, personOf, refund, renewIfDue, renewalDue } from "@/lib/credits";
 import { fairUseGate } from "@/lib/fair-use";
 import { db } from "@/lib/db";
 import { entitlements } from "@/lib/entitlements";
@@ -122,7 +122,7 @@ export async function POST(req: Request) {
   if (!(await db.setNx(claim, "1", CLAIM_SECONDS))) return bad("duplicate", 409);
 
   if (renewalDue(u)) await renewIfDue(acct(u));
-  const paid = await charge(acct(u), cost, { scope, agent, cap: gov.agentCaps[agent] });
+  const paid = await charge(acct(u), cost, { scope, agent, cap: gov.agentCaps[agent], person: personOf(u) });
   if (!paid.ok) {
     // Nothing was taken and no model was called: the same click may be sent again. Deleting the claim is safe only while
     // CLAIM_SECONDS (600) exceeds the route's maxDuration (300): no other request of this click can still be running.
