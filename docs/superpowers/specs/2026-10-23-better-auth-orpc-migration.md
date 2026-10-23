@@ -119,10 +119,12 @@ Rate limits are Thakeen's (`allow` in `src/lib/rate.ts`), applied in the wrapper
 
 ## 7. React client and hooks (rules 3418-3420)
 
-- `src/lib/better-auth/client.ts`: `createAuthClient({ basePath: "/api/better-auth", plugins: [magicLinkClient()] })` from `better-auth/react`.
-- `src/lib/better-auth/hooks.ts`: `useSessionQuery` (`authClient.getSession`), `useUserAccountsQuery` (`authClient.listAccounts`), `useUserPasskeysQuery` (oRPC `account.passkeys.list`), query keys exported for invalidation, as Supastarter's `modules/saas/auth/lib/api.ts`.
-- `src/lib/rpc/query-client.ts`: `createQueryClient` (staleTime 60 s, retry off) and a `QueryProvider` client component, mounted only on screens that use it while the switch is on.
-- Log-in form: with the switch on, a Password / Magic link tab switch (`role="tablist"`, arrow keys, logical CSS so RTL mirrors); the password tab posts to `/api/better-auth/sign-in/email` and maps the error codes to the existing messages; the magic tab posts to `/sign-in/magic-link` and shows "check your inbox". With it off, the form of main.
+As built in step (d):
+
+- `src/lib/better-auth/client.ts` (rule 3418): `makeAuthClient({baseURL, fetchImpl?})` = `createAuthClient` from `better-auth/react` with `basePath: "/api/better-auth"` (written out, checked equal to the server's `BA_BASE_PATH`, so the browser bundle never imports the server config), `plugins: [magicLinkClient()]`, `credentials: "same-origin"` (better-auth's default is `include`) and the default fetch plugins off (the only one follows `{redirect: true, url}`, which the wrapper never sends). `authClient()` builds the one browser client on first use from `window.location.origin`; it throws on the server, and the base is never read from an environment variable (better-auth's client would otherwise look at `BETTER_AUTH_URL`, `NEXTAUTH_URL`, `VERCEL_URL`). Every method reaches only the wrapper, so with the switch off each answers the wrapper's 404, and a method for a path off the allow-list gets 404 with it on.
+- `src/lib/better-auth/hooks.ts` (rule 3419): as Supastarter's `modules/auth/lib/api.ts`: `sessionQueryKey` `["user","session"]`, `userAccountsQueryKey` `["user","accounts"]`, `userPasskeysQueryKey` `["user","passkeys"]`, an options builder per hook (`sessionQueryOptions`: stale never, no refetch on focus, no retry) and `useSessionQuery`, `useUserAccountsQuery`, `useUserPasskeysQuery`. Each queryFn resolves the client when it runs, so a server render builds nothing. Errors are the wrapper's legacy codes as `AuthQueryError {code, status}`. The passkeys query reads `GET /api/account/passkeys` in this step and moves to oRPC `account.passkeys.list` in step (e).
+- `src/lib/rpc/query-client.ts` + `src/components/app/QueryProvider.tsx` (rule 3420): `createQueryClient` (fresh for 60 s, no retries for queries or mutations, no refetch on focus), one cache per mount through `useState(createQueryClient)`, never a module-level one (a server render must not share a cache between requests). No page mounts it in this step; the security screen does in step (e), only while the switch is on.
+- Log-in form: see section 6 (rule 3417).
 
 ## 8. oRPC (rules 3421-3424)
 
