@@ -31,6 +31,7 @@ import { getSchedule } from "./schedule";
 import { notifyItem } from "./notifications";
 import { emailAllowed, readPrefs } from "./notify-prefs";
 import { sendEmail } from "./notify";
+import { mailConfigured } from "./mail-provider";
 import { activeSeasons } from "./seasons";
 import { SEC_KEYS, agendaFor, listDone, listOpenItems } from "./secretary";
 import { AUTO_CLOSE_RESULT, addDays, computeAgenda, daysBetween, endOfZoneDay, firstWorkingMoment, formatWhen, resultText, zoneDay, zoneLocalInput, zoneTime } from "./secretary-agenda";
@@ -212,7 +213,7 @@ export async function eveningWrap(user: User, now = Date.now()): Promise<"sent" 
     await db.del(marker).catch(() => {});
     throw e;
   }
-  if (process.env.RESEND_API_KEY) {
+  if (mailConfigured()) {
     const subject = user.lang === "ar" ? `ملخص المساء — ${w.day}${brand ? ` — «${brand}»` : ""}` : `Evening wrap — ${w.day}${brand ? ` — “${brand}”` : ""}`;
     // The evening wrap's own switch (rule 1147); the old levels read as before: only "all" sent it. The fallback record
     // is the ACCOUNT's (`profile:{acct}`, rule 3032), the one the prefs route writes; the email still goes to the address.

@@ -1787,3 +1787,24 @@ Rule file `docs/system/tests/2900-ai-usage-tracking.md`. Files: `src/lib/usage.t
 5. The owner (rule 2907). Settings → AI usage (`/{lang}/app/settings/usage`, owner and admins, `usage.view`) and `GET /api/usage?month=`: requests and share per person, brand, agent, model and day. No dollar figure: what a call costs Thakeen stays in the console; credits stay on the billing page.
 6. Release step: expand only. New hashes and one new sorted set, written alongside the old counters; old code never reads them, and nothing old changes shape. Rollback leaves them in place, to be removed with the account.
 
+
+## Mail providers: Resend first, SMTP as fallback or alone (2026-10-23, branch `claude/sup-mail-smtp`, rules 3570-3579)
+
+`sendEmail` (src/lib/notify.ts) hands every message to one provider from `mailProvider()` (src/lib/mail-provider.ts). Reference for the adapter: supastarter's `packages/mail/provider/nodemailer.ts`, read only.
+
+1. SMTP exists for the app only when `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD` and `SMTP_FROM` are all set and valid (`smtpSettings`; `SMTP_SECURE` is optional). A partial set is the same as none. Names and meaning: variables.md section 3.
+2. Selection, read at call time:
+   - Resend is usable when `RESEND_API_KEY` is set and either `MAIL_FROM` is set or SMTP is not configured (a key alone would send from Resend's shared sender, which refuses every customer; with SMTP configured, SMTP takes over instead).
+   - Resend usable and SMTP configured: Resend is the primary and SMTP the fallback (`withFallback`).
+   - Resend usable and SMTP not configured: Resend alone, as before.
+   - Resend not usable and SMTP configured: SMTP alone, the primary.
+   - Neither: the console provider off production, no provider on production (`sendEmail` answers false), as before.
+3. The fallback runs only after the primary FAILED with a retryable error: a 5xx answer from Resend, a failure before any answer (the SDK's `application_error` with no status, or a throw), or no answer within `PRIMARY_BUDGET_MS` (3.5 s). Never after a success, so a message is not sent twice on success. Never after a 4xx (a validation error, an invalid key, a rate limit, a refused sender): those are the message's or the account's fault and another route would only hide it. The fallback's own answer is final: nothing is tried after SMTP. Accepted risk: a Resend call that answers after the budget may already have taken the message, so the reader can get two copies; that is the lesser failure against none.
+4. The whole send stays inside `EMAIL_TIMEOUT_MS` (10 s): 3.5 s for the primary, 6 s for SMTP.
+5. SMTP always uses TLS: `SMTP_SECURE=true` is implicit TLS, `false` is STARTTLS and required (`requireTLS`: the connection is dropped when the server does not offer it, so the login is never sent in the clear); unset chooses by port (465 implicit, any other STARTTLS). The certificate is verified, TLS 1.2 or later. Connect, greeting, socket and DNS each have a timeout, the send has a deadline, local files and URLs cannot be pulled into a message, Nodemailer logging is off.
+6. SMTP sends from `SMTP_FROM`, not `MAIL_FROM`.
+7. Checks before SMTP opens a connection (`mailProblem`): the recipient is one plain address (no display name, no list), `replyTo` when given is one plain address (Resend's adapter checks `replyTo` too), no header value carries a line break. A failure names the field, never the value.
+8. No secret in a log or an error: a failed SMTP send is reported as a fixed category (`smtp EAUTH 535`, `smtp ETIMEDOUT`), never Nodemailer's message, which can quote the server's reply, and never the host, user or password. A message delivered by the fallback writes one log line naming the two providers only.
+9. `mailReady()` is true with a working Resend (key and `MAIL_FROM`) or with complete SMTP settings; Reem's reminder and evening-wrap emails ask `mailConfigured()` (a key or complete SMTP settings).
+10. Runtime: Nodemailer needs Node. It is imported inside `smtpProvider.send` and no route runs on the edge, so nothing edge-bound imports it (pinned by a test).
+11. Release step: expand only. No stored shape changes and nothing is read differently while the `SMTP_*` names are unset.

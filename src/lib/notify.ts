@@ -4,15 +4,16 @@ import { renderEmail, type EmailContext, type EmailTemplateId } from "../emails"
 import type { Lang } from "./i18n";
 import { log } from "./log";
 import { wsKey } from "./keys";
-import { mailProvider } from "./mail-provider";
+import { mailProvider, smtpSettings } from "./mail-provider";
 
 /**
  * Whether email can actually reach a customer. It needs the API key AND a real sender. Without MAIL_FROM the sender is
  * Resend's shared `onboarding@resend.dev`, which may deliver only to the Resend account owner's own address — so for
  * every customer, email is effectively off. Screens that promise "a link is on its way" must ask this, not whether a
- * key happens to be set.
+ * key happens to be set. Complete SMTP settings (SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD, SMTP_FROM; rule 3570)
+ * also make mail ready: SMTP_FROM is its own sender.
  */
-export const mailReady = () => !!process.env.RESEND_API_KEY && !!process.env.MAIL_FROM;
+export const mailReady = () => (!!process.env.RESEND_API_KEY && !!process.env.MAIL_FROM) || !!smtpSettings();
 
 /**
  * How long one send may take. The Resend client takes no abort signal, so the call is raced against this: a hung call
@@ -36,8 +37,9 @@ export type TemplateMail<T extends EmailTemplateId = EmailTemplateId> = { to: st
  *   routes that still build their HTML themselves. Expand step: the typed form is new, the plain one stays.
  *
  * The message goes to the provider for this process (src/lib/mail-provider.ts, rule 1963): Resend when RESEND_API_KEY is
- * set, the console provider on a non-production deploy without one, none on production without one. The answer is true
- * only when Resend accepted the message; a refusal, a timeout, a transport error, the console provider and no provider at
+ * set (SMTP behind it as the fallback, or alone when Resend is not usable; rule 3570), the console provider on a
+ * non-production deploy without either, none on production without either. The answer is true only when Resend or SMTP
+ * accepted the message; a refusal, a timeout, a transport error, the console provider and no provider at
  * all answer false. `html`, when given, is sent with the plain-text part, so a templated message is multipart (rule 689);
  * without it Resend receives no `html` key. Click tracking must stay off for the sending domain in Resend: it rewrites
  * the HTML part's links through Resend's redirect, and the reset and join links carry their token in the fragment (rule

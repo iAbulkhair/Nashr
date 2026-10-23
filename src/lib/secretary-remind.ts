@@ -34,6 +34,7 @@ import { aboutKey, pushNotifs, type Push } from "./notifications";
 import { emailAllowed, readPrefsMany, type NotifyPrefs } from "./notify-prefs";
 import { log } from "./log";
 import { sendEmail } from "./notify";
+import { mailConfigured } from "./mail-provider";
 import { DEFAULT_ZONE, type Zone } from "./zones";
 import { appOrigin } from "./origin";
 import { COPY, paragraphs } from "../emails";
@@ -116,7 +117,7 @@ async function deliver(ctx: AccountCtx, scope: string, zone: Zone, cur: SecItem)
   ctx.tally.notified++;
   // The reminder email follows its own switch (Settings, Notifications; the old "none" level reads as off, rule 1147).
   const prefs = (await ctx.prefs()).get(scope);
-  if (!process.env.RESEND_API_KEY || (prefs && !emailAllowed(prefs, "reminders"))) return;
+  if (!mailConfigured() || (prefs && !emailAllowed(prefs, "reminders"))) return;
   const ar = ctx.user.lang === "ar";
   // The HTML part says what the bell says, with a button to the list. The title holds the task's title, which the
   // owner or an agent wrote: `notice` escapes it as text (rule 686).
