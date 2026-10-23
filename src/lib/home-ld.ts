@@ -1,4 +1,5 @@
 import type { HelpTopic } from "./help";
+import type { PostAuthor } from "./authors";
 import { HOME_FAQ } from "./home";
 import { dict, type Lang } from "./i18n";
 import { PLAN_PRICE_SAR, PRICES_INCLUDE_VAT, SELF_SERVE_PLANS } from "./pricing";
@@ -55,7 +56,7 @@ export function homeJsonLd(lang: Lang, origin: string): Record<string, unknown>[
  * organisation as author and publisher, the same `@id` the homepage declares. No author person, rating or image is made
  * up: the posts are the company's, signed by nobody.
  */
-export function articleJsonLd(lang: Lang, origin: string, p: { slug: string; title: string; desc: string; date: string; cover?: { src: string } | null }): Record<string, unknown> {
+export function articleJsonLd(lang: Lang, origin: string, p: { slug: string; title: string; desc: string; date: string; cover?: { src: string } | null; author?: PostAuthor | null }): Record<string, unknown> {
   const t = dict[lang];
   const url = `${origin}/${lang}/blog/${p.slug}`;
   const org = { "@type": "Organization", "@id": `${origin}/#organization`, name: t.brand, url: origin, logo: { "@type": "ImageObject", url: `${origin}/icons/icon-512.png` } };
@@ -71,7 +72,8 @@ export function articleJsonLd(lang: Lang, origin: string, p: { slug: string; tit
     inLanguage: lang,
     url,
     mainEntityOfPage: { "@type": "WebPage", "@id": url },
-    author: org,
+    // Rule 3315: a Person only when the post names one from content/authors.json (name, role and link, nothing more); otherwise the organisation.
+    author: p.author ? { "@type": "Person", name: p.author.name, jobTitle: p.author.role, ...(p.author.link ? { url: p.author.link } : {}) } : org,
     publisher: org,
   };
 }

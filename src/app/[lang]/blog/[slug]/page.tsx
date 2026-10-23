@@ -10,6 +10,7 @@ import FinalCta from "@/components/FinalCta";
 import { PostTags } from "@/components/PostTags";
 import LangFallbackNotice from "@/components/LangFallbackNotice";
 import PostCover from "@/components/PostCover";
+import PostByline from "@/components/PostByline";
 import { postCover } from "@/lib/blog-cover";
 import { textAttrs } from "@/lib/lang-fallback";
 import { pageMeta } from "@/lib/page-meta";
@@ -50,6 +51,7 @@ export default async function Page({ params }: { params: Promise<{ lang: string;
           <LangFallbackNotice visitor={lang} served={sl} />
           <div {...text}>
             <p className="font-mono text-xs text-foreground-muted" dir="ltr">{p.date}</p>
+            {p.author && <PostByline lang={sl} author={p.author} />}
             <h1 className="mt-2 font-display text-3xl font-bold leading-tight sm:text-5xl"><span className="s-ul"><ScribbleStatic kind="underline" seed="post-h" rtl={sl === "ar"} />{p.title}</span></h1>
             <p className="mt-4 text-lg text-foreground-muted">{p.desc}</p>
             <PostTags lang={sl} tags={p.tags} label={sl === "ar" ? "وسوم المقال" : "Post tags"} />

@@ -4,12 +4,13 @@ import type { Lang } from "./i18n";
 import { splitTags, tagProblems } from "./blog-tags";
 import { serve, type Served } from "./lang-fallback";
 import { coverProblems, readCoverFile, type CoverReader } from "./blog-cover";
+import { authorIn, authorProblems, authors, type Authors, type PostAuthor } from "./authors";
 
 /**
  * `tags` is the post's tags in the page's language (rule 3140): empty when the front matter has none. `langs` is the
  * languages the post is written in (rule 3313): both, unless its front matter says `languages: ar` or `languages: en`.
  */
-export type Post = { slug: string; title: string; desc: string; date: string; body: string; tags: string[]; langs: Lang[]; cover: { src: string; alt: string } | null };
+export type Post = { slug: string; title: string; desc: string; date: string; body: string; tags: string[]; langs: Lang[]; cover: { src: string; alt: string } | null; author: PostAuthor | null };
 
 const DIR = join(process.cwd(), "content", "blog");
 
@@ -44,7 +45,7 @@ const realDate = (d: string) => /^\d{4}-\d{2}-\d{2}$/.test(d) && new Date(`${d}T
  * lowercase words and hyphens, and both an Arabic and an English body split by `---EN---`. Without the split the Arabic
  * text was served at /en as well; without a title the file name was shown as one.
  */
-export function postProblems(file: string, raw: string, readCover: CoverReader = readCoverFile): string[] {
+export function postProblems(file: string, raw: string, readCover: CoverReader = readCoverFile, known: Authors = authors()): string[] {
   const out: string[] = [];
   const slug = file.replace(/\.md$/, "");
   if (!SLUG.test(slug)) out.push(`${file}: the file name must be lowercase words joined by hyphens`);
@@ -58,6 +59,8 @@ export function postProblems(file: string, raw: string, readCover: CoverReader =
   const one = langs.length === 1 ? langs[0] : null;
   // Rule 3314: a cover is optional; when given it is a real image file in public/blog with alternative text in each language of the post.
   out.push(...coverProblems(file, meta, langs, readCover));
+  // Rule 3315: `author` is optional and names a person listed in content/authors.json; a post without it keeps the organisation byline.
+  out.push(...authorProblems(file, meta, known));
   const need = POST_FIELDS.filter((k) => !one || k === "date" || k.endsWith(`_${one}`));
   for (const k of need) if (!meta[k]) out.push(`${file}: ${k} is missing`);
   if (meta.date && !realDate(meta.date)) out.push(`${file}: date "${meta.date.slice(0, 20)}" is not a YYYY-MM-DD day`);
@@ -100,8 +103,8 @@ export function postEntry(file: string, raw: string) {
 }
 
 /** The post as `lang` shows it. Only for a language the entry exists in. */
-export function postIn(e: PostEntry, lang: Lang): Post {
-  return { slug: e.slug, title: e.meta[`title_${lang}`], desc: e.meta[`desc_${lang}`], date: e.meta.date, body: lang === "ar" ? e.ar : e.en, tags: splitTags(e.meta[`tags_${lang}`]), langs: e.langs, cover: e.meta.cover ? { src: e.meta.cover, alt: e.meta[`cover_alt_${lang}`] ?? "" } : null };
+export function postIn(e: PostEntry, lang: Lang, known: Authors = authors()): Post {
+  return { slug: e.slug, title: e.meta[`title_${lang}`], desc: e.meta[`desc_${lang}`], date: e.meta.date, body: lang === "ar" ? e.ar : e.en, tags: splitTags(e.meta[`tags_${lang}`]), langs: e.langs, cover: e.meta.cover ? { src: e.meta.cover, alt: e.meta[`cover_alt_${lang}`] ?? "" } : null, author: authorIn(known, e.meta.author, lang) };
 }
 
 /**
