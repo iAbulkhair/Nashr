@@ -4,7 +4,7 @@ import { notFound, redirect } from "next/navigation";
 import { SUPPORT_EMAIL, dict, isLang } from "@/lib/i18n";
 import { appDict } from "@/lib/app-i18n";
 import { currentUser, seatLimit } from "@/lib/auth";
-import { FIRST_MONTH_DISCOUNT_PCT, PLAN_PRICE_SAR, SELF_SERVE_PLANS, allowanceOf, firstMonthPriceSar, formatCount, type SelfServePlan } from "@/lib/pricing";
+import { FIRST_MONTH_DISCOUNT_PCT, PLAN_PRICE_SAR, SELF_SERVE_PLANS, allowanceOf, firstMonthPriceSar, formatCount, yearlyPriceSar, type SelfServePlan } from "@/lib/pricing";
 import { openLots, topupBalance, topupCredits, topupView } from "@/lib/topups";
 import { can } from "@/lib/roles";
 import { entitlementView } from "@/lib/entitlements";
@@ -136,8 +136,16 @@ export default async function Page({ params, searchParams }: { params: Promise<{
               current={u.plan === k} highlight={"highlight" in plan && !!plan.highlight}
               offerLine={offer ? <p data-offer-price className="text-sm font-semibold text-foreground">{O.card(firstMonthPriceSar(k), PLAN_PRICE_SAR[k])}</p> : undefined}>
               {!owner ? null : online ? (
-                // The same plan already active is renewed from the subscription card above, not bought again here.
-                sub?.status === "active" && sub.plan === k ? null : <PaymobPayButton lang={lang} kind="plan" plan={k} label={offer ? O.activate : t.billing.pay} />
+                <>
+                  {/* The same plan already active is renewed from the subscription card above, not bought again here. */}
+                  {sub?.status === "active" && sub.plan === k ? null : <PaymobPayButton lang={lang} kind="plan" plan={k} label={offer ? O.activate : t.billing.pay} />}
+                  {/* Rule 3536: a yearly button only for a plan the founder priced yearly (none today), and not for the yearly
+                      plan already running. On the same plan paid monthly it moves the subscription to yearly once the paid month ends. */}
+                  {yearlyPriceSar(k) !== null && !(sub?.status === "active" && sub.plan === k && sub.interval === "year") && (
+                    <PaymobPayButton lang={lang} kind="plan" plan={k} interval="year"
+                      label={ar ? `ادفع سنوياً: ${formatCount(yearlyPriceSar(k)!)} ريال / سنة` : `Pay yearly: ${formatCount(yearlyPriceSar(k)!)} SAR / year`} />
+                  )}
+                </>
               ) : href ? (
                 <a href={href} target="_blank" rel="noreferrer" className="mt-4 inline-flex min-h-[var(--hit-min)] items-center justify-center rounded-full bg-inverse px-4 py-2 text-center text-sm font-semibold text-inverse-muted">{offer ? O.activate : links[k] ? t.billing.pay : t.billing.contact}</a>
               ) : (

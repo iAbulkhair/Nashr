@@ -1,8 +1,9 @@
-import type { SelfServePlan } from "./pricing";
+import { INTERVAL_MONTHS, readInterval, type BillingInterval, type SelfServePlan } from "./pricing";
 
 /**
- * An account's online subscription (Paymob KSA, spec docs/superpowers/specs/2026-10-08-paymob-billing-design.md). Import
- * free apart from types, so `src/lib/auth.ts` can read the lock without pulling the billing code in. Written only by
+ * An account's online subscription (Paymob KSA, spec docs/superpowers/specs/2026-10-08-paymob-billing-design.md). It imports
+ * only src/lib/pricing.ts (which imports nothing), so `src/lib/auth.ts` can read the lock without pulling the billing
+ * code in. Written only by
  * src/lib/billing.ts under `withUserLock`; never taken from a request. The card token itself is never here: it lives in
  * `paymob:card:{email}`, which no page or API answer reads.
  */
@@ -11,8 +12,14 @@ export type Billing = {
   provider: "paymob";
   plan: SelfServePlan;
   status: BillingStatus;
-  /** Riyadh day (YYYY-MM-DD) the paid month runs to. The renewal is due on that day. */
+  /** Riyadh day (YYYY-MM-DD) the paid period runs to. The renewal is due on that day. */
   paidThrough: string;
+  /**
+   * How often the subscription renews (rule 3533): "year" renews twelve months at a time at the yearly price. Optional
+   * (expand, rule 679): absent reads as monthly through `billingInterval`, and only "year" is ever written, so a monthly
+   * subscription keeps exactly the shape it had before. Older builds ignore it and renew monthly.
+   */
+  interval?: BillingInterval;
   /** Day of the month of the first payment: each renewal lands on it (clamped to short months), so the date never drifts. */
   anchor: number;
   /** Charge the saved card when `paidThrough` comes. The owner turns it off (cancel) or on (resume). */
@@ -31,6 +38,11 @@ export type Billing = {
 
 /** Days of grace after a renewal that could not be charged, retried once a day, before the account is locked. */
 export const GRACE_DAYS = 7;
+
+/** The subscription's interval: "year" only when stored as "year"; absent or anything else is monthly (rule 3533). */
+export const billingInterval = (b: { interval?: unknown } | null | undefined): BillingInterval => (readInterval(b?.interval) === "year" ? "year" : "month");
+/** Calendar months one paid period of the subscription covers: 1, or 12 for a yearly one. */
+export const billingMonths = (b: { interval?: unknown } | null | undefined): number => INTERVAL_MONTHS[billingInterval(b)];
 
 /** A locked subscription spends nothing, exactly like an ended trial (`trialOver` in src/lib/auth.ts). */
 export const billingLocked = (b: Billing | null | undefined): boolean => !!b && b.provider === "paymob" && b.status === "locked";

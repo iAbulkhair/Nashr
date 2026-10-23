@@ -10,9 +10,23 @@
  * A provider answers what the processor said; billing decides what it means.
  */
 
+import type { BillingInterval } from "../pricing";
+
 /** What we ask the processor to charge. The amount comes from src/lib/pricing.ts, never from a request. */
 export type CheckoutInput = {
   amountCents: number;
+  /**
+   * The period a plan charge pays for (rules 3539-3540): "month" or "year". Absent for a top-up pack, which is not a
+   * period. Billing has already priced the amount for this period; a provider never prices it again and never turns it
+   * into a processor-side subscription: renewals stay our own saved-card charges (`savedCard`), due on our `paidThrough`.
+   * Paymob carries it in the item text only (src/lib/paymob.ts `IntentionInput`).
+   *
+   * TODO(geidea): the Geidea adapter lives only on the local branches `claude/geidea-r1` and `claude/geidea-swap-spec`,
+   * not on main. When it lands it must accept this field on `createCheckout` and `savedCard.prepare`, keep charging the
+   * one amount it is given (never a Geidea-side recurring plan or its own price), name the period in the order
+   * description, and keep every check in billing (flows.md section 108 item 7).
+   */
+  interval?: BillingInterval;
   item: { name: string; description: string };
   billing: { firstName: string; lastName: string; email: string; phone: string };
   /** Our random reference, echoed back on the transaction. */

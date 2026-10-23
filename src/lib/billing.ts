@@ -3,13 +3,13 @@ import { db } from "./db";
 import { getUser, normalizeEmail, normalizePhone, saveUser, trialOver, type User } from "./auth";
 import { monthKey, withUserLock } from "./credits";
 import { setMonthly } from "./topups";
-import { PLAN_PRICE_SAR, SELF_SERVE_PLANS, VAT_RATE, allowanceOf, firstMonthPriceSar, isTopupPack, topupPriceSar, topupsSold, type SelfServePlan } from "./pricing";
+import { INTERVAL_MONTHS, PLAN_PRICE_SAR, SELF_SERVE_PLANS, VAT_RATE, allowanceOf, firstMonthPriceSar, isTopupPack, readInterval, topupPriceSar, topupsSold, yearlyOffered, yearlyPriceSar, type BillingInterval, type SelfServePlan } from "./pricing";
 import { ksaDay } from "./partner-rules";
 import { addPaidTopup, openOffer, paymentsKey, unusedOffer, recordPayment, voidPaidTopup, voidPayment, type Payment } from "./partners";
 import { enforceSeats, isTeamLockTimeout } from "./team";
 import { appOrigin } from "./origin";
 import { invoiceForPayment } from "./invoice";
-import { GRACE_DAYS, addDays, addMonths, billingLocked, intentOutdatesOwner, paymobRenewalDue, type Billing } from "./billing-state";
+import { GRACE_DAYS, addDays, addMonths, billingInterval, billingLocked, intentOutdatesOwner, paymobRenewalDue, type Billing } from "./billing-state";
 import { PaymentError, paymentProvider, type CardTokenEvent, type PaymentProvider, type PaymentTxn } from "./payments";
 import { adminAudit } from "./admin-audit";
 import { claimOnPayment, endOnRefund, foundingOfferOpen, freePlaces, lockedBaseHalalas, type ClaimOutcome } from "./founding";
@@ -72,6 +72,11 @@ export type PayIntent = {
   billingEmail?: string;
   kind: IntentKind;
   plan?: SelfServePlan;
+  /**
+   * The period a plan or renewal charge pays for (rule 3533). Optional (expand, rule 679): absent reads as monthly
+   * (`intentInterval`) and only "year" is ever written, so a monthly intent keeps its old shape. Never on a pack.
+   */
+  interval?: BillingInterval;
   credits?: number;
   baseHalalas: number;
   vatHalalas: number;
@@ -97,6 +102,8 @@ export type SavedCard = { token: string; last4: string; brand: string; expMonth:
 type TxnRecord = { ref: string; email: string; acct?: string; kind: IntentKind; amountCents: number; paymentId: string };
 /** The account an intent pays for: its `acct`, or `email` on an intent written before R1. */
 const intentAccount = (i: Pick<PayIntent, "acct" | "email">): string => i.acct ?? i.email;
+/** The period an intent pays for: "year" only when stored as "year" (rule 3533). */
+const intentInterval = (i: Pick<PayIntent, "interval">): BillingInterval => (readInterval(i.interval) === "year" ? "year" : "month");
 /** The billing address the provider was given: `billingEmail`, or `email` on an intent written before R1. */
 const intentBillingEmail = (i: Pick<PayIntent, "billingEmail" | "email">): string => i.billingEmail ?? i.email;
 
@@ -104,20 +111,34 @@ const vatOf = (baseHalalas: number) => (PAYMOB_CHARGES_VAT ? Math.round(baseHala
 const isSelfServe = (v: unknown): v is SelfServePlan => typeof v === "string" && (SELF_SERVE_PLANS as readonly string[]).includes(v);
 
 /**
- * The price of a plan month, a renewal or a pack, from the pricing table only. Null for anything not on sale online. A
- * renewal under a price lock passes the locked ex-VAT halalas (rule 1706): the lower of it and the list price is charged.
+ * The price of a plan period, a renewal or a pack, from the pricing table only. Null for anything not on sale online. A
+ * renewal under a price lock passes the locked ex-VAT halalas of one month (rule 1706): the lower of it (times the
+ * period's months) and the list price is charged.
+ *
+ * `item.interval` (rules 3531-3532): absent or "month" is the monthly price as before; "year" is `yearlyPriceSar`, null
+ * while the founder has set no yearly price for the plan, so a yearly charge is never priced from anything else. The
+ * first-month offer is a month's discount: a yearly charge with it is null. A pack has no period: any interval but
+ * "month" is null. VAT is computed the same way for both periods (`vatOf` on the ex-VAT halalas).
  */
-export function priceFor(kind: IntentKind, item: { plan?: unknown; credits?: unknown }, offer = false, lockedBaseHalalas?: number): { baseHalalas: number; vatHalalas: number; amountCents: number } | null {
+export function priceFor(kind: IntentKind, item: { plan?: unknown; credits?: unknown; interval?: unknown }, offer = false, lockedBaseHalalas?: number): { baseHalalas: number; vatHalalas: number; amountCents: number } | null {
+  const interval = readInterval(item.interval);
+  if (interval === null) return null;
   let sar: number;
   if (kind === "topup") {
-    if (!isTopupPack(item.credits)) return null;
+    if (interval !== "month" || !isTopupPack(item.credits)) return null;
     sar = topupPriceSar(item.credits);
   } else {
     if (!isSelfServe(item.plan)) return null;
-    sar = offer && kind === "plan" ? firstMonthPriceSar(item.plan) : PLAN_PRICE_SAR[item.plan];
+    if (interval === "year") {
+      const yearly = yearlyPriceSar(item.plan);
+      if (yearly === null || offer) return null;
+      sar = yearly;
+    } else {
+      sar = offer && kind === "plan" ? firstMonthPriceSar(item.plan) : PLAN_PRICE_SAR[item.plan];
+    }
   }
   const list = Math.round(sar * 100);
-  const locked = kind === "renewal" && Number.isSafeInteger(lockedBaseHalalas) && lockedBaseHalalas! > 0 ? lockedBaseHalalas! : null;
+  const locked = kind === "renewal" && Number.isSafeInteger(lockedBaseHalalas) && lockedBaseHalalas! > 0 ? lockedBaseHalalas! * INTERVAL_MONTHS[interval] : null;
   const baseHalalas = locked === null ? list : Math.min(locked, list);
   const vatHalalas = vatOf(baseHalalas);
   return { baseHalalas, vatHalalas, amountCents: baseHalalas + vatHalalas };
@@ -135,11 +156,15 @@ function billingName(u: Pick<User, "name" | "email">): { firstName: string; last
   return { firstName: first, lastName: (parts.slice(1).join(" ") || "NA").slice(0, 50) };
 }
 
-export type CheckoutError = "not_enabled" | "bad_request" | "bad_plan" | "bad_pack" | "agency" | "topup_needs_paid_plan" | "need_phone" | "paymob_error" | "not_found";
+export type CheckoutError = "not_enabled" | "bad_request" | "bad_plan" | "bad_pack" | "bad_interval" | "yearly_not_offered" | "yearly_active" | "agency" | "topup_needs_paid_plan" | "need_phone" | "paymob_error" | "not_found";
 
 /**
- * Start a payment (spec 4.1): the owner's plan month or top-up pack. `owner` is the session's account (the caller checked
+ * Start a payment (spec 4.1): the owner's plan period or top-up pack. `owner` is the session's account (the caller checked
  * `billing.pay`). The intent is stored before Paymob is called; the answer is the unified checkout URL.
+ *
+ * Yearly billing (rules 3531-3536): the body may say `interval: "month" | "year"` for a plan (absent is "month"). The
+ * server refuses "year" for a plan with no yearly price (`yearly_not_offered`), whatever the page showed, and a plan
+ * change while a yearly period of another plan is still running (`yearly_active`: no proration, flows.md section 108).
  */
 export async function startCheckout(owner: Pick<User, "id" | "email">, body: unknown, lang: "ar" | "en"): Promise<{ ok: true; url: string; ref: string } | { ok: false; error: CheckoutError }> {
   const p = paymentProvider();
@@ -149,28 +174,37 @@ export async function startCheckout(owner: Pick<User, "id" | "email">, body: unk
   const kind = b.kind;
   if (kind === "plan" && !isSelfServe(b.plan)) return { ok: false, error: "bad_plan" };
   if (kind === "topup" && !isTopupPack(b.credits)) return { ok: false, error: "bad_pack" };
+  const interval = readInterval(b.interval);
+  if (interval === null || (kind === "topup" && interval !== "month")) return { ok: false, error: "bad_interval" };
+  // Rule 3532: checked here in code, not only by the page hiding the switch. With every yearly price null this always refuses.
+  if (kind === "plan" && interval === "year" && !yearlyOffered(b.plan)) return { ok: false, error: "yearly_not_offered" };
   const acc = await getUser(acct(owner));
   if (!acc) return { ok: false, error: "not_found" };
   // Agency is sold by contract at its own price: no online checkout.
   if (acc.plan === "agency") return { ok: false, error: "agency" };
+  // Rule 3535: another plan bought while a paid yearly period runs would drop the rest of that year (there is no
+  // proration). The owner changes plan when the year ends, or the founder changes it by hand. `applyPaid` checks it again.
+  if (kind === "plan" && yearRunning(acc.billing, b.plan, ksaDay())) return { ok: false, error: "yearly_active" };
   if (kind === "topup" && (!topupsSold(acc.plan) || billingLocked(acc.billing))) return { ok: false, error: "topup_needs_paid_plan" };
   const phone = normalizePhone(acc.phone ?? "");
   if (!/^\+\d{8,15}$/.test(phone)) return { ok: false, error: "need_phone" };
-  const offer = kind === "plan" && !!openOffer(acc);
+  // The 15% first-month offer is a month's discount: a yearly checkout never takes it, and leaves it unused.
+  const offer = kind === "plan" && interval === "month" && !!openOffer(acc);
   // The founding offer (rule 1702): the body only asks; the sale, a free seat and an account that never paid online decide.
   const founding = kind === "plan" && b.founding === true && (await foundingOfferOpen(acc));
-  const item = kind === "plan" ? { plan: b.plan } : { credits: b.credits };
+  const item = kind === "plan" ? { plan: b.plan, interval } : { credits: b.credits };
   const price = priceFor(kind, item, offer)!;
   const ref = newRef();
   const intent: PayIntent = {
-    ref, email: acct(acc), acct: acct(acc), billingEmail: acc.email, kind, ...(kind === "plan" ? { plan: b.plan as SelfServePlan } : { credits: b.credits as number }),
+    ref, email: acct(acc), acct: acct(acc), billingEmail: acc.email, kind, ...(kind === "plan" ? { plan: b.plan as SelfServePlan, ...(interval === "year" ? { interval } : {}) } : { credits: b.credits as number }),
     ...price, currency: "SAR", offer, ...(founding ? { founding: true } : {}), createdAt: new Date().toISOString(), by: acc.email, status: "open",
   };
   await Promise.all([db.set(intentKey(ref), intent, DAYS_400), db.set(lastCheckoutKey(acct(acc)), ref, LAST_TTL)]);
-  const label = kind === "plan" ? `Thakeen ${intent.plan} plan, 1 month` : `Thakeen ${intent.credits} credits top-up`;
+  const label = kind === "plan" ? `Thakeen ${intent.plan} plan, 1 ${interval}` : `Thakeen ${intent.credits} credits top-up`;
   try {
     const it = await p.createCheckout({
       amountCents: price.amountCents,
+      ...(kind === "plan" ? { interval } : {}),
       item: { name: label, description: `${label}${price.vatHalalas ? " (incl. VAT)" : ""}` },
       billing: { ...billingName(acc), email: acc.email, phone },
       reference: ref,
@@ -190,6 +224,14 @@ export async function startCheckout(owner: Pick<User, "id" | "email">, body: unk
 type Applied = { ok: true; already: boolean; payment?: Payment } | { ok: false; error: string };
 
 /**
+ * Rule 3535: a paid yearly period of another plan is still running on `b` (active or past due, not locked, paid past
+ * `today`). Buying `plan` now would start it today and drop the rest of that year, so checkout and `applyPaid` refuse.
+ */
+function yearRunning(b: Billing | undefined, plan: unknown, today: string): boolean {
+  return !!b && !billingLocked(b) && billingInterval(b) === "year" && b.paidThrough > today && b.plan !== plan;
+}
+
+/**
  * Apply a paid intent (spec 4.1, 4.2). A plan: the plan, its month's credits when it changes (or the account was locked,
  * had no online subscription yet, or held a plan set by hand: rule 2981), the subscription state, seats, then the payment
  * through `recordPayment` (offer, commission, referral). A renewal: the paid month moves one month from the previous end,
@@ -207,7 +249,7 @@ async function applyPaid(intent: PayIntent, txnId: number, paymentId: string): P
   const cardRead = await db.get<SavedCard>(cardKey(intentAccount(intent)));
   const id = String(txnId);
   let claim: ClaimOutcome | null = null;
-  const step = await withUserLock(intentAccount(intent), async (u): Promise<"already" | "changed" | "same" | "no_billing" | "plan_changed" | "offer_used"> => {
+  const step = await withUserLock(intentAccount(intent), async (u): Promise<"already" | "changed" | "same" | "no_billing" | "plan_changed" | "offer_used" | "yearly_active"> => {
     const b = u.billing;
     // Rule 2757: a plan checkout opened before the account changed owner still pays its month, but the card read for it
     // belongs to the previous owner and never turns renewals on for the new one.
@@ -218,15 +260,23 @@ async function applyPaid(intent: PayIntent, txnId: number, paymentId: string): P
     // unused AND no subscription may exist yet. `billing` is written under this same lock, so of two discounted payments
     // arriving together the second always sees the first's subscription. Paid but not applied: the founder refunds it.
     if (intent.kind === "plan" && intent.offer && (!unusedOffer(u) || b)) return "offer_used";
+    // Rule 3535: a checkout opened before a yearly payment of another plan landed (two tabs) must not drop that year.
+    // Paid but not applied, like `plan_changed`: the founder refunds it.
+    if (intent.kind === "plan" && yearRunning(b, plan, today)) return "yearly_active";
     if (intent.kind === "renewal") {
       if (!b) return "no_billing";
       // Rule 2983: a renewal pays a month of the plan it was priced for. One whose subscription has since moved to another
       // plan (a late callback for the old plan's charge after an upgrade or a downgrade) adds nothing: paid but not
       // applied, like a renewal with no subscription, and the founder refunds it.
       if (intent.plan !== b.plan) return "plan_changed";
-      const next: Billing = { ...b, status: "active", paidThrough: addMonths(b.paidThrough, 1, b.anchor), failures: 0, txns: keepTxns(b.txns, id) };
+      // Rule 3534: the period the renewal was priced for (a month, or twelve for a yearly one) moves the paid-through day.
+      const ri = intentInterval(intent);
+      const next: Billing = { ...b, status: "active", paidThrough: addMonths(b.paidThrough, INTERVAL_MONTHS[ri], b.anchor), failures: 0, txns: keepTxns(b.txns, id) };
       delete next.graceUntil;
       delete next.pending;
+      // The record says what was last paid: a yearly subscription renewed monthly (its yearly price withdrawn) is monthly now.
+      if (ri === "year") next.interval = "year";
+      else delete next.interval;
       u.billing = next;
       await saveUser(u);
       return "same";
@@ -248,11 +298,16 @@ async function applyPaid(intent: PayIntent, txnId: number, paymentId: string): P
       // The allowance renews on the subscription's own day (`billing.anchor`, below), counted from today (rule 2936).
       u.renewedOn = today;
     }
-    // The same plan paid again before its month ran out adds a month to it; anything else starts a month today.
+    // The same plan paid again before its period ran out adds the paid period (a month, or twelve) to it; anything else
+    // starts that period today (rules 3534-3536). The interval paid now governs the renewals from then on: a monthly
+    // subscription paid yearly runs its month out, then the year; no proration, nothing lost.
     const extend = !!b && !billingLocked(b) && b.plan === plan && b.paidThrough > today;
+    const interval = intentInterval(intent);
+    const months = INTERVAL_MONTHS[interval];
     u.billing = {
       provider: "paymob", plan, status: "active",
-      paidThrough: extend ? addMonths(b.paidThrough, 1, b.anchor) : addMonths(today, 1), anchor: extend ? b.anchor : Number(today.slice(8, 10)),
+      paidThrough: extend ? addMonths(b.paidThrough, months, b.anchor) : addMonths(today, months), anchor: extend ? b.anchor : Number(today.slice(8, 10)),
+      ...(interval === "year" ? { interval } : {}),
       autoRenew: !!card || (b?.autoRenew ?? false), failures: 0, txns: keepTxns(b?.txns, id),
       ...(card ? { card: { brand: card.brand, last4: card.last4 } } : b?.card ? { card: b.card } : {}),
     };
@@ -262,6 +317,7 @@ async function applyPaid(intent: PayIntent, txnId: number, paymentId: string): P
   if (step === "no_billing") return { ok: false, error: "no_billing" };
   if (step === "plan_changed") return { ok: false, error: "plan_changed" };
   if (step === "offer_used") return { ok: false, error: "offer_used" };
+  if (step === "yearly_active") return { ok: false, error: "yearly_active" };
   const c = claim as ClaimOutcome | null;
   if (c && (c.seat || c.lock)) await log(intentAccount(intent), `founding txn:${txnId}${c.seat ? ` seat:${c.seat}` : ""}${c.lock ? ` price_lock_months:${c.lock}` : ""}`);
   // Seats fit the new plan. Also on a plan transaction already applied (multi-workspace M1, 2026-10-19): a first try whose
@@ -467,16 +523,20 @@ class ChargeUnanswered extends PaymentError {
 async function chargeSavedCard(p: PaymentProvider, saved: NonNullable<PaymentProvider["savedCard"]>, u: User, b: Billing, card: SavedCard, today: string): Promise<"paid" | "pending" | "declined"> {
   // The period being paid starts at `paidThrough`: a lock that covers it prices the renewal (rule 1706).
   const locked = lockedBaseHalalas(u, b.plan, b.paidThrough);
-  const price = priceFor("renewal", { plan: b.plan }, false, locked ?? undefined)!;
+  // Rule 3534: a yearly subscription renews for a year at the yearly price. If the founder has since withdrawn that
+  // plan's yearly price, it renews monthly at the monthly price (never a price that is no longer in pricing.ts).
+  const interval: BillingInterval = billingInterval(b) === "year" && yearlyPriceSar(b.plan) !== null ? "year" : "month";
+  const price = priceFor("renewal", { plan: b.plan, interval }, false, locked ?? undefined)!;
   const ref = newRef();
-  const intent: PayIntent = { ref, email: acct(u), acct: acct(u), billingEmail: u.email, kind: "renewal", plan: b.plan, ...price, currency: "SAR", offer: false, ...(locked !== null ? { lockedBaseHalalas: locked } : {}), createdAt: new Date().toISOString(), by: "cron", status: "open" };
+  const intent: PayIntent = { ref, email: acct(u), acct: acct(u), billingEmail: u.email, kind: "renewal", plan: b.plan, ...(interval === "year" ? { interval } : {}), ...price, currency: "SAR", offer: false, ...(locked !== null ? { lockedBaseHalalas: locked } : {}), createdAt: new Date().toISOString(), by: "cron", status: "open" };
   await db.set(intentKey(ref), intent, DAYS_400);
   let paymentKey: string | null = null;
   let orderId = 0;
   try {
     const it = await saved.prepare({
       amountCents: price.amountCents,
-      item: { name: `Thakeen ${b.plan} plan, 1 month`, description: `Thakeen ${b.plan} plan renewal${price.vatHalalas ? " (incl. VAT)" : ""}` },
+      interval,
+      item: { name: `Thakeen ${b.plan} plan, 1 ${interval}`, description: `Thakeen ${b.plan} plan renewal${price.vatHalalas ? " (incl. VAT)" : ""}` },
       billing: { ...billingName(u), email: u.email, phone: normalizePhone(u.phone ?? "") || "NA" },
       reference: ref,
       notificationUrl: `${appOrigin()}/api/billing/paymob/webhook`,
@@ -594,10 +654,10 @@ export async function paymentHistory(email: string): Promise<PaymentRow[]> {
       amountSar: Number(p.amountSar) || 0, state: p.voidedAt ? "voided" as const : p.refund ? "refunded" as const : "paid" as const, refundSar: p.refund ? p.refund.sar : null,
     }));
 }
-export type BillingView = { plan: string; status: Billing["status"]; paidThrough: string; graceUntil: string | null; autoRenew: boolean; card: { brand: string; last4: string } | null };
-/** What a page may show of the subscription: never the token. */
+export type BillingView = { plan: string; status: Billing["status"]; paidThrough: string; graceUntil: string | null; autoRenew: boolean; card: { brand: string; last4: string } | null; interval?: "year" };
+/** What a page may show of the subscription: never the token. `interval` only for a yearly one (rule 3533), so a monthly view is as before. */
 export const billingView = (b: Billing | undefined): BillingView | null =>
-  b?.provider === "paymob" ? { plan: b.plan, status: b.status, paidThrough: b.paidThrough, graceUntil: b.graceUntil ?? null, autoRenew: b.autoRenew, card: b.card ?? null } : null;
+  b?.provider === "paymob" ? { plan: b.plan, status: b.status, paidThrough: b.paidThrough, graceUntil: b.graceUntil ?? null, autoRenew: b.autoRenew, card: b.card ?? null, ...(billingInterval(b) === "year" ? { interval: "year" as const } : {}) } : null;
 
 /** The owner's renewal settings (spec 4.3). `email` is the session's account. */
 export async function setRenewal(email: string, action: unknown): Promise<{ ok: true; billing: BillingView | null } | { ok: false; error: "bad_action" | "no_billing" | "no_card" }> {
