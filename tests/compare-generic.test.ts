@@ -60,6 +60,7 @@ const ALLOWED: Record<string, string[]> = {
 const PUBLIC_FILES = [
   ...walk("src/app/[lang]").filter((f) => !/\/(app|admin)\//.test(f.replace("src/app/[lang]", ""))),
   ...walk("src/app/llms.txt"),
+  ...walk("src/app/llms-full.txt"),
   ...walk("src/app/p"),
   "src/app/sitemap.ts", "src/app/robots.ts", "src/app/manifest.ts",
   ...readdirSync("src/components").filter((f) => f.endsWith(".tsx")).map((f) => join("src/components", f)),

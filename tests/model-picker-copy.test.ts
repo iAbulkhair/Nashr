@@ -136,6 +136,7 @@ const stripComments = (src: string) => src.replace(/\/\*[\s\S]*?\*\//g, (c) => c
 const PUBLIC = () => [
   ...walk("src/app/[lang]").filter((f) => !f.startsWith(join("src/app/[lang]", "app") + "/")),
   ...walk("src/app/llms.txt"),
+  ...walk("src/app/llms-full.txt"),
   ...walk("src/app/p"),
   ...readdirSync("src/components").filter((f) => f.endsWith(".tsx")).map((f) => join("src/components", f)),
   ...walk("src/components/home"),
