@@ -2,6 +2,8 @@
 title_ar: تسويق رمضان للمتاجر والمطاعم: الدليل الكامل
 title_en: Ramadan Marketing for Stores and Restaurants: The Complete Guide
 date: 2026-09-17
+tags_ar: المواسم، المتاجر، المطاعم
+tags_en: Seasons, Stores, Restaurants
 desc_ar: أوقات النشر بعد الإفطار، حملات العشر الأواخر، بوكسات الإفطار، هدايا العيد، ورسائل واتساب التي تحترم الشهر وتبيع.
 desc_en: Posting after Iftar, last-ten-nights campaigns, Iftar boxes, Eid gifts, and WhatsApp messages that respect the month and still sell.
 ---

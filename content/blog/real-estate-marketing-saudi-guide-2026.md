@@ -2,6 +2,8 @@
 title_ar: تسويق العقار والمطورين في السعودية: الدليل الكامل 2026
 title_en: Real Estate & Developer Marketing in Saudi Arabia: The Complete Guide 2026
 date: 2026-09-17
+tags_ar: القطاعات
+tags_en: Sectors
 desc_ar: تسلسل إطلاق المشروع، محتوى تقدّم البناء، الإعلان الملتزم (فال)، تأهيل المستفسرين على واتساب، وقياس تكلفة العميل المؤهل.
 desc_en: Project launch sequence, construction-progress content, compliant advertising (REGA), WhatsApp lead qualification, and cost per qualified lead.
 ---

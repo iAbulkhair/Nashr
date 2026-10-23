@@ -2,6 +2,8 @@
 title_ar: تسويق المكاتب القانونية في السعودية: الدليل الكامل 2026
 title_en: Law Firm Marketing in Saudi Arabia: The Complete Guide 2026
 date: 2026-09-17
+tags_ar: القطاعات
+tags_en: Sectors
 desc_ar: ما يسمح به الإعلان المهني، LinkedIn وX للمحامين، محتوى سؤال/جواب، وتأهيل الاستشارات على واتساب.
 desc_en: What professional advertising allows, LinkedIn and X for lawyers, Q&A content, and consultation intake on WhatsApp.
 ---

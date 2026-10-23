@@ -128,7 +128,7 @@
 
 .s-chip { min-height: 44px; padding: 8px 18px; font-size: 16px; font-weight: 600; }
 .s-chip:hover > .scribble .main { stroke-width: var(--stroke-figure); }
-.s-chip[aria-pressed="true"] > .scribble .fill { fill: var(--chip-on, var(--color-agent-noor)); }
+.s-chip:is([aria-pressed="true"], [aria-current="page"]) > .scribble .fill { fill: var(--chip-on, var(--color-agent-noor)); }
 
 /* A heading word with the underline scribble beneath it. */
 .s-ul { display: inline-block; padding-block-end: 8px; }

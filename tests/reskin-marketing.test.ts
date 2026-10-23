@@ -159,7 +159,7 @@ describe("the marketing pages are hand-drawn D (rule 518)", () => {
 
     it(`blog · ${lang}: a scribbled card per post, an underlined post title`, async () => {
       const posts = listPosts(lang);
-      const h = renderToStaticMarkup(await BlogPage({ params: Promise.resolve({ lang }) }));
+      const h = renderToStaticMarkup(await BlogPage({ params: Promise.resolve({ lang }), searchParams: Promise.resolve({}) }));
       expect(h).toMatch(TITLE_SCRIBBLE("h1"));
       expect(count(h, 'class="s-card')).toBe(posts.length);
       const post = renderToStaticMarkup(await PostPage({ params: Promise.resolve({ lang, slug: posts[0].slug }) }));

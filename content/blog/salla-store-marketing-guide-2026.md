@@ -2,6 +2,8 @@
 title_ar: تسويق متاجر سلة: الدليل الكامل 2026
 title_en: Salla Store Marketing: The Complete Guide 2026
 date: 2026-09-17
+tags_ar: المتاجر
+tags_en: Stores
 desc_ar: من الإعداد إلى الإعلانات: كيف يسوّق تاجر سلة متجره في السعودية بأقل ميزانية — القنوات، الرسائل، المواسم، والأدوات.
 desc_en: From setup to ads: how a Salla merchant markets a store in Saudi Arabia on a small budget — channels, messages, seasons, tools.
 ---

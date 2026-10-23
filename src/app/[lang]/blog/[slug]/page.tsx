@@ -6,6 +6,7 @@ import Nav from "@/components/Nav";
 import Footer from "@/components/Footer";
 import ScribbleStatic from "@/components/ScribbleStatic";
 import FinalCta from "@/components/FinalCta";
+import { PostTags } from "@/components/PostTags";
 import { pageMeta } from "@/lib/page-meta";
 import { articleJsonLd, ldJson } from "@/lib/home-ld";
 import { appOrigin } from "@/lib/origin";
@@ -36,6 +37,7 @@ export default async function Page({ params }: { params: Promise<{ lang: string;
           <p className="font-mono text-xs text-foreground-muted" dir="ltr">{p.date}</p>
           <h1 className="mt-2 font-display text-3xl font-bold leading-tight sm:text-5xl"><span className="s-ul"><ScribbleStatic kind="underline" seed="post-h" rtl={lang === "ar"} />{p.title}</span></h1>
           <p className="mt-4 text-lg text-foreground-muted">{p.desc}</p>
+          <PostTags lang={lang} tags={p.tags} label={lang === "ar" ? "وسوم المقال" : "Post tags"} />
           <article className="prose-nashr mt-10" dangerouslySetInnerHTML={{ __html: render(p.body) }} />
         </div>
         <FinalCta t={t} lang={lang} />

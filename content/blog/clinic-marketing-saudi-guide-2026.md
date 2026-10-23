@@ -2,6 +2,8 @@
 title_ar: تسويق العيادات في السعودية: الدليل الكامل 2026
 title_en: Clinic Marketing in Saudi Arabia: The Complete Guide 2026
 date: 2026-09-17
+tags_ar: القطاعات
+tags_en: Sectors
 desc_ar: ما المسموح وما الممنوع في الإعلان الطبي، أفضل القنوات للعيادات ومراكز التجميل والأسنان، محتوى الطبيب، Google Business، والحجز عبر واتساب.
 desc_en: What medical advertising allows and forbids, the best channels for clinics, aesthetics and dental, doctor content, Google Business, and WhatsApp booking.
 ---

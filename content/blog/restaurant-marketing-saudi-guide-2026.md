@@ -2,6 +2,8 @@
 title_ar: تسويق المطاعم والكافيهات في السعودية: الدليل الكامل 2026
 title_en: Restaurant & Café Marketing in Saudi Arabia: The Complete Guide 2026
 date: 2026-09-17
+tags_ar: القطاعات، المطاعم
+tags_en: Sectors, Restaurants
 desc_ar: Google Business أولاً، أوقات النشر، الردود على المراجعات، تطبيقات التوصيل، محتوى الطبق، والفروع المتعددة.
 desc_en: Google Business first, posting times, review replies, delivery apps, dish content, and multi-branch.
 ---

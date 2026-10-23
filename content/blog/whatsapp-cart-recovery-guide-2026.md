@@ -2,6 +2,8 @@
 title_ar: استرجاع السلات المتروكة بواتساب: الدليل الكامل 2026
 title_en: WhatsApp Abandoned Cart Recovery: The Complete Guide 2026
 date: 2026-09-17
+tags_ar: المتاجر، واتساب
+tags_en: Stores, WhatsApp
 desc_ar: لماذا واتساب لاسترجاع السلات في الخليج، القوالب المعتمدة، التوقيت 1/24/72، والرسائل الجاهزة.
 desc_en: Why WhatsApp for cart recovery in the Gulf, approved templates, 1/24/72 timing, and ready messages.
 ---

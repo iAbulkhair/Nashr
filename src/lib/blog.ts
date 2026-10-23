@@ -1,8 +1,10 @@
 import { readFileSync, readdirSync } from "fs";
 import { join } from "path";
 import type { Lang } from "./i18n";
+import { splitTags, tagProblems } from "./blog-tags";
 
-export type Post = { slug: string; title: string; desc: string; date: string; body: string };
+/** `tags` is the post's tags in the page's language (rule 3140): empty when the front matter has none. */
+export type Post = { slug: string; title: string; desc: string; date: string; body: string; tags: string[] };
 
 const DIR = join(process.cwd(), "content", "blog");
 
@@ -17,7 +19,7 @@ function parse(raw: string) {
 
 const files = () => readdirSync(DIR).filter((f) => f.endsWith(".md")).sort();
 
-/** The front matter every post must carry, each non-empty. */
+/** The front matter every post must carry, each non-empty. `tags_ar` and `tags_en` are optional, but come as a pair. */
 export const POST_FIELDS = ["title_ar", "title_en", "desc_ar", "desc_en", "date"] as const;
 const SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const realDate = (d: string) => /^\d{4}-\d{2}-\d{2}$/.test(d) && new Date(`${d}T00:00:00Z`).toISOString().slice(0, 10) === d;
@@ -36,6 +38,11 @@ export function postProblems(file: string, raw: string): string[] {
   const { meta, ar, en, split } = parse(raw);
   for (const k of POST_FIELDS) if (!meta[k]) out.push(`${file}: ${k} is missing`);
   if (meta.date && !realDate(meta.date)) out.push(`${file}: date "${meta.date.slice(0, 20)}" is not a YYYY-MM-DD day`);
+  // Rule 3140: tags are optional, but a post tagged in one language is tagged in both, so the index filters the same way in each.
+  for (const [f, o] of [["tags_ar", "tags_en"], ["tags_en", "tags_ar"]] as const) {
+    if (meta[o] !== undefined && meta[o] !== "" && !meta[f]) out.push(`${file}: ${f} is missing (${o} is given; tags come in both languages)`);
+    if (meta[f]) out.push(...tagProblems(file, f, splitTags(meta[f])));
+  }
   if (!split) out.push(`${file}: no ---EN--- line between the Arabic and the English text`);
   else if (!ar || !en) out.push(`${file}: the ${ar ? "English" : "Arabic"} text is empty`);
   return out;
@@ -62,7 +69,7 @@ const byNewest = (a: { slug: string; date: string }, b: { slug: string; date: st
   b.date.localeCompare(a.date) || a.slug.localeCompare(b.slug);
 
 export function listPosts(lang: Lang): Post[] {
-  return readAll().map(({ slug, meta, ar, en }) => ({ slug, title: meta[`title_${lang}`], desc: meta[`desc_${lang}`], date: meta.date, body: lang === "ar" ? ar : en })).sort(byNewest);
+  return readAll().map(({ slug, meta, ar, en }) => ({ slug, title: meta[`title_${lang}`], desc: meta[`desc_${lang}`], date: meta.date, body: lang === "ar" ? ar : en, tags: splitTags(meta[`tags_${lang}`]) })).sort(byNewest);
 }
 export function getPost(lang: Lang, slug: string) {
   return listPosts(lang).find((p) => p.slug === slug) ?? null;

@@ -2,6 +2,8 @@
 title_ar: إعلانات سناب شات للمتاجر السعودية: الدليل الكامل 2026
 title_en: Snapchat Ads for Saudi Stores: The Complete Guide 2026
 date: 2026-09-17
+tags_ar: الإعلانات، المتاجر
+tags_en: Ads, Stores
 desc_ar: لماذا سناب في السعودية، هيكل الحساب، الكرييتف الذي ينجح، الميزانيات، القياس، والأخطاء التي تحرق المال.
 desc_en: Why Snap in Saudi, account structure, creative that works, budgets, measurement, and the mistakes that burn money.
 ---

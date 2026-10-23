@@ -2,6 +2,8 @@
 title_ar: التسويق بالذكاء الاصطناعي في الخليج 2026: أي نوع من الخيارات يناسبك؟
 title_en: AI marketing in the Gulf in 2026: which kind of option fits you?
 date: 2026-09-17
+tags_ar: الذكاء الاصطناعي
+tags_en: AI
 desc_ar: نقارن أنواع الخيارات لا أسماءها، بستة معايير: التنفيذ، العربية واللهجات، القنوات الخليجية، الالتزام، التحكم البشري، والسعر. ذكين يبني أحدها، لذلك نعرض رأينا بلا درجات ولا ترتيب، ونترك الاختبار لك.
 desc_en: We compare kinds of option, not names, on six criteria: execution, Arabic and dialects, Gulf channels, compliance, human control and price. Thakeen builds one of them, so this is our opinion with no scores and no ranking, and the test is yours.
 ---

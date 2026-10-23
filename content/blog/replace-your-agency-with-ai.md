@@ -2,6 +2,8 @@
 title_ar: كيف تستبدل وكالتك التسويقية بالذكاء الاصطناعي في 2026 — دليل عملي للخليج
 title_en: How to Replace Your Marketing Agency with AI in 2026 — a Gulf Playbook
 date: 2026-09-17
+tags_ar: الذكاء الاصطناعي
+tags_en: AI
 desc_ar: عمل تسويقي يومي يقوم به وكيل ذكاء اصطناعي ابتداءً من 299 ريالاً شهرياً. احسب تكلفة وكالتك بنفسك، ثم خطة 30 يوماً للانتقال، وما الذي يبقى للبشر.
 desc_en: Daily marketing work by an AI agent from SAR 299 a month. Work out what your own agency costs, then a 30-day migration plan, and what stays human.
 ---

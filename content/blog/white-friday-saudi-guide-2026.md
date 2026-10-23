@@ -2,6 +2,8 @@
 title_ar: الجمعة البيضاء 2026 للمتاجر السعودية: الدليل الكامل
 title_en: White Friday 2026 for Saudi Stores: The Complete Guide
 date: 2026-09-17
+tags_ar: المواسم، المتاجر
+tags_en: Seasons, Stores
 desc_ar: جدول 6 أسابيع: التسخين، قوائم الانتظار، إعادة الاستهداف، واتساب، الميزانيات، وما تفعله بعد الموسم.
 desc_en: A 6-week schedule: warm-up, waitlists, retargeting, WhatsApp, budgets, and what to do after the season.
 ---

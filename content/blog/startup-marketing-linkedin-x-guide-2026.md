@@ -2,6 +2,8 @@
 title_ar: تسويق الشركات الناشئة على LinkedIn وX في الخليج: الدليل الكامل 2026
 title_en: Startup Marketing on LinkedIn and X in the Gulf: The Complete Guide 2026
 date: 2026-09-17
+tags_ar: الشركات الناشئة
+tags_en: Startups
 desc_ar: صوت المؤسس، إيقاع أسبوعي، إطلاق منتج بسلسلة، تجارب إعلانية بميزانية صغيرة، والأرقام التي يقرؤها المستثمرون.
 desc_en: Founder voice, weekly cadence, launching with a thread, small-budget ad experiments, and the numbers investors read.
 ---
