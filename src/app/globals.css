@@ -330,6 +330,12 @@ details > summary::-webkit-details-marker { display: none; }
 .prose-nashr th { font-family: var(--font-display), var(--font-body), sans-serif; text-align: start; padding: 0.5rem 0.75rem; border-bottom: 1.5px solid var(--color-border-strong); }
 .prose-nashr td { border-top: 1px solid color-mix(in oklab, var(--color-foreground) 15%, transparent); padding: 0.5rem 0.75rem; }
 .prose-nashr strong { font-weight: 700; }
+/* An external link (rule 3312): marked by a small arrow after the text; `render` adds the attribute, the screen reader gets text. */
+.prose-nashr a[data-external]::after { content: "\2197"; font-size: 0.75em; margin-inline-start: 0.2em; text-decoration: none; display: inline-block; }
+/* Fenced code (rule 3311): always left to right, on the brand ink in both themes (no hex here: rule 513); the colours of the words come from the highlighter (src/lib/md-highlight.ts). */
+.prose-nashr pre.code { direction: ltr; text-align: left; margin-top: 1rem; padding: 1rem 1.1rem; overflow-x: auto; border-radius: 0.75rem; background: var(--color-ink); color: var(--color-paper); font-size: 0.85rem; line-height: 1.65; tab-size: 2; }
+.prose-nashr pre.code:focus-visible { outline: 2px solid var(--color-foreground); outline-offset: 2px; }
+.prose-nashr pre.code code { font-family: var(--font-mono), ui-monospace, SFMono-Regular, Menlo, monospace; background: none; padding: 0; color: inherit; white-space: pre; }
 
 /* Compact prose for inbox items and chat bubbles */
 .prose-compact h2, .prose-compact h3, .prose-compact h4 { font-size: 1rem; margin-top: 0.9rem; color: var(--color-primary); }
