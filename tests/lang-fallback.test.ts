@@ -209,7 +209,8 @@ describe("rule 3313: the pages and the files that list content", () => {
     expect(s).toMatch(/served: served\.lang/);
   });
   it("the topic page and both share cards read the served language", () => {
-    expect(src("src/app/[lang]/help/[topic]/page.tsx")).toMatch(/serveTopic\(t, lang\)/);
+    expect(src("src/app/[lang]/help/[topic]/page.tsx")).toMatch(/loadHelpTopic\(origin, lang, topic\)/);
+    expect(src("src/lib/help-loader.ts")).toMatch(/serveTopic\(topic, lang\)/);
     expect(src("src/app/[lang]/help/[topic]/page.tsx")).toMatch(/helpFaqJsonLd\(sl,/);
     expect(src("src/app/[lang]/help/[topic]/opengraph-image.tsx")).toMatch(/serveTopic/);
     expect(src("src/app/[lang]/blog/[slug]/opengraph-image.tsx")).toMatch(/getPostServed/);
@@ -217,7 +218,8 @@ describe("rule 3313: the pages and the files that list content", () => {
   it("the indexes, llms files, help index and chat prompt list native content only", () => {
     expect(src("src/app/llms-full.txt/route.ts")).toMatch(/helpTopicsIn\(base, lang\)/);
     expect(src("src/app/llms.txt/route.ts")).toMatch(/helpLangs\(h\)\.includes\(lang\)/);
-    expect(src("src/components/HelpCenter.tsx")).toMatch(/helpTopicsIn\(origin, lang\)/);
+    expect(src("src/components/HelpCenter.tsx")).toMatch(/loadHelpIndex\(origin, lang\)/);
+    expect(src("src/lib/help-loader.ts")).toMatch(/helpTopicsIn\(origin, lang\)/);
     expect(src("src/lib/chat-prompt.ts")).toMatch(/helpTopicsIn\(appOrigin\(\), "en"\)/);
   });
 });

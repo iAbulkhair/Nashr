@@ -157,6 +157,7 @@ describe("rule 3142: a blog post and a help topic each get their own share image
     const t = HELP[0];
     const d = describeTopic("en", t);
     expect(d.startsWith(`${t.title.en}: ${t.items[0].q.en}`)).toBe(true);
-    expect(readFileSync("src/app/[lang]/help/[topic]/page.tsx", "utf8")).toMatch(/description: describe\(s\.lang, t\)/);
+    expect(readFileSync("src/app/[lang]/help/[topic]/page.tsx", "utf8")).toMatch(/description: e\.description/);
+    expect(readFileSync("src/lib/help-loader.ts", "utf8")).toMatch(/description: describe\(lang, t\)/);
   });
 });

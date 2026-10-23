@@ -90,6 +90,22 @@ export function helpTopicsIn(origin: string, lang: Lang): HelpTopic[] {
 /** The language a topic page at `/{lang}/help/{id}` is shown in (rule 3313): `lang` when the topic exists in it, else the one it exists in. */
 export const serveTopic = (t: Pick<HelpTopic, "only">, lang: Lang): Served | null => serve(lang, helpLangs(t));
 
+/**
+ * The icon of each topic (rule 3318), a name from the app's own set (`Icon` in src/components/app/Icons.tsx: drawn strokes in
+ * one weight, no emoji and no icon package). Typed over every topic id, so a new topic without an icon fails the type
+ * check; tests/help-loader.test.ts holds each name to a drawn icon, not the set's fallback shape.
+ */
+export const HELP_ICONS: Record<HelpTopicId, string> = {
+  start: "spark",
+  credits: "plan",
+  team: "users",
+  inbox: "inbox",
+  connect: "plug",
+  automation: "clock",
+  mcp: "chat",
+  privacy: "shield",
+};
+
 /** The topic with this id, or undefined: the topic page's lookup of its URL segment. */
 export function helpTopic(id: string): HelpTopic | undefined {
   return HELP.find((t) => t.id === id);

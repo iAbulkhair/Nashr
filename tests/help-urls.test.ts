@@ -43,7 +43,8 @@ describe("rule 2140: one page per help topic, built from HELP, an unknown topic 
   });
 
   it("the public index links each topic's page; the in-app copy keeps its titles plain", () => {
-    expect(read("src/components/HelpCenter.tsx")).toContain("{inApp ? t.title[lang] : <a href={helpHref(lang, t.id)}");
+    expect(read("src/components/HelpCenter.tsx")).toContain("{inApp ? t.title : <a href={t.href}");
+    expect(read("src/lib/help-loader.ts")).toContain("href: helpHref(at, t.id),");
   });
 });
 
@@ -74,7 +75,8 @@ describe("rule 2142: an answer's anchor works on its topic page and on the index
   it("the topic page gives each answer its slug as id, with a link to itself", () => {
     const s = read(TOPIC_PAGE);
     expect(s).toContain("<section key={i.slug} id={i.slug}");
-    expect(s).toContain("href={helpHref(lang, t.id, i.slug)}");
+    expect(s).toContain("href={i.href}");
+    expect(read("src/lib/help-loader.ts")).toContain("href: helpHref(at, t.id, i.slug)");
   });
 
   it("the index gives each answer's <details> its slug and opens the one the hash names", () => {
@@ -146,7 +148,7 @@ describe("rule 2145: FAQPage structured data is the page's own questions and ans
   });
 
   it("the page serialises it with ldJson, so no string can close the script element", () => {
-    expect(read(TOPIC_PAGE)).toContain("dangerouslySetInnerHTML={{ __html: ldJson(helpFaqJsonLd(sl, origin, t)) }}");
+    expect(read(TOPIC_PAGE)).toContain("dangerouslySetInnerHTML={{ __html: ldJson(helpFaqJsonLd(sl, origin, raw)) }}");
     const first = helpTopics("https://x.example")[0];
     const t = { ...first, items: [{ ...first.items[0], a: { ar: "</script><script>alert(1)</script>", en: "</script>" } }] };
     const out = ldJson(helpFaqJsonLd("ar", "https://x.example", t));

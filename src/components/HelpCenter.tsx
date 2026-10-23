@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
-import { helpHref, helpTopicsIn } from "@/lib/help";
+import { loadHelpIndex } from "@/lib/help-loader";
+import { Icon } from "@/components/app/Icons";
 import type { Lang } from "@/lib/i18n";
 import Scribble from "@/components/Scribble";
 import ScribbleStatic from "@/components/ScribbleStatic";
@@ -8,7 +9,8 @@ import ScribbleStatic from "@/components/ScribbleStatic";
 /** `origin` is the canonical app origin (src/lib/origin.ts `appOrigin()`), read on the server: answers that name the MCP URL use it. */
 export default function HelpCenter({ lang, wa, origin, inApp = false }: { lang: Lang; wa: string | null; origin: string; inApp?: boolean }) {
   const ar = lang === "ar";
-  const HELP = helpTopicsIn(origin, lang);
+  // Rule 3318: every topic of this language as the loader reads it (title, icon, rendered answers), the same shape as the topic page.
+  const HELP = loadHelpIndex(origin, lang);
   const [q, setQ] = useState("");
   const [topic, setTopic] = useState("all");
   const [sent, setSent] = useState<"idle" | "busy" | "ok" | "err">("idle");
@@ -28,7 +30,7 @@ export default function HelpCenter({ lang, wa, origin, inApp = false }: { lang: 
     return () => window.removeEventListener("hashchange", open);
   }, []);
   const norm = (s: string) => s.toLowerCase();
-  const shown = HELP.filter((t) => topic === "all" || t.id === topic).map((t) => ({ ...t, items: t.items.filter((i) => !q || norm(i.q[lang] + " " + i.a[lang]).includes(norm(q))) })).filter((t) => t.items.length);
+  const shown = HELP.filter((t) => topic === "all" || t.id === topic).map((t) => ({ ...t, answers: t.answers.filter((i) => !q || norm(i.question + " " + i.answer).includes(norm(q))) })).filter((t) => t.answers.length);
   async function submit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setSent("busy");
@@ -59,20 +61,20 @@ export default function HelpCenter({ lang, wa, origin, inApp = false }: { lang: 
       </div>
       <div className="mt-4 flex flex-wrap gap-2">
         {chip(topic === "all", "all", ar ? "الكل" : "All", () => setTopic("all"))}
-        {HELP.map((t) => chip(topic === t.id, t.id, t.title[lang], () => setTopic(t.id)))}
+        {HELP.map((t) => chip(topic === t.id, t.id, t.title, () => setTopic(t.id)))}
       </div>
       <div className="mt-8 grid gap-8">
         {shown.length === 0 && <p className="text-sm text-foreground-muted">{ar ? "لا نتائج. اسأل نور أو راسلنا أدناه." : "No results. Ask Noor or message us below."}</p>}
         {shown.map((t) => (
           <section key={t.id}>
             {/* Rule 2140: each topic has its own page; the public index links it, the in-app copy stays in the app. */}
-            <h2 className="font-display text-xl font-bold">{inApp ? t.title[lang] : <a href={helpHref(lang, t.id)} className="hover:underline">{t.title[lang]}</a>}</h2>
+            <h2 className="font-display text-xl font-bold"><Icon name={t.icon} className="me-2 inline-block h-5 w-5 align-[-0.2em] text-foreground-muted" />{inApp ? t.title : <a href={t.href} className="hover:underline">{t.title}</a>}</h2>
             <div className="mt-3 divide-y divide-foreground/15 border-y-[1.5px] border-border-strong">
-              {t.items.map((i) => (
+              {t.answers.map((i) => (
                 <details key={i.slug} id={i.slug} className="scroll-mt-24 py-3">
-                  <summary className="cursor-pointer font-bold">{i.q[lang]}</summary>
-                  <p className="mt-2 text-sm leading-relaxed text-foreground-muted" dir="auto">{i.a[lang]}</p>
-                  <a href={helpHref(lang, t.id, i.slug)} className="mt-2 inline-block text-xs font-bold text-foreground-muted underline">{ar ? "رابط هذه الإجابة" : "Link to this answer"}</a>
+                  <summary className="cursor-pointer font-bold">{i.question}</summary>
+                  <p className="mt-2 text-sm leading-relaxed text-foreground-muted" dir="auto">{i.answer}</p>
+                  <a href={i.href} className="mt-2 inline-block text-xs font-bold text-foreground-muted underline">{ar ? "رابط هذه الإجابة" : "Link to this answer"}</a>
                 </details>
               ))}
             </div>
