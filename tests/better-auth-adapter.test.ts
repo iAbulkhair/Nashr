@@ -52,6 +52,32 @@ describe("rule 3401: the engine needs BETTER_AUTH_SECRET of 32 characters or mor
   });
 });
 
+describe("rules 3400-3401: the system docs name the switch, its routes, keys and flow (CLAUDE.md: docs change with the code)", () => {
+  const doc = (p: string) => readFileSync(p, "utf8");
+  const row = (text: string, name: string) => text.split("\n").find((l) => l.startsWith(`| \`${name}\` |`)) ?? "";
+  it("variables.md lists both names in section 2, the secret as a secret, and .env.example names them with no value", () => {
+    const v = doc("docs/system/variables.md");
+    const access = v.slice(v.indexOf("## 2. Access control"), v.indexOf("## 3. "));
+    expect(row(access, "AUTH_ENGINE")).toMatch(/\| No \|$/);
+    expect(row(access, "BETTER_AUTH_SECRET")).toMatch(/32 characters[\s\S]*\| Yes \|$/);
+    const example = doc(".env.example");
+    expect(example).toMatch(/^AUTH_ENGINE=$/m);
+    expect(example).toMatch(/^BETTER_AUTH_SECRET=$/m);
+  });
+  it("permissions.md has rows 265-267 for the three routes and the section; flows.md section 108; architecture.md keys and lifecycle", () => {
+    const p = doc("docs/system/permissions.md");
+    expect(p).toMatch(/^\| 265 \| GET, POST \| `\/api\/better-auth\/\[\.\.\.all\]` \|/m);
+    expect(p).toMatch(/^\| 266 \| POST \| `\/api\/auth\/magic` \|/m);
+    expect(p).toMatch(/^\| 267 \| POST \| `\/api\/rpc\/\[\[\.\.\.rest\]\]` \|/m);
+    expect(p).toContain("## Sign-in engine and typed API (2026-10-23");
+    expect(doc("docs/system/flows.md")).toMatch(/^## 108\. Sign-in engine behind AUTH_ENGINE/m);
+    const a = doc("docs/system/architecture.md");
+    expect(a).toContain("### 3.z better-auth keys");
+    expect(a).toContain("`ba:verify:{sha256(identifier)}`");
+    expect(a).toContain("### (g) Sign-in through better-auth");
+  });
+});
+
 describe("rule 3402: the five new packages are pinned exactly and the lockfile keeps the Linux bindings", () => {
   it("package.json and package-lock.json agree on exact versions", () => {
     const pkg = JSON.parse(readFileSync("package.json", "utf8")) as { dependencies: Record<string, string> };

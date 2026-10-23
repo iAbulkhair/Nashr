@@ -1787,3 +1787,48 @@ Rule file `docs/system/tests/2900-ai-usage-tracking.md`. Files: `src/lib/usage.t
 5. The owner (rule 2907). Settings → AI usage (`/{lang}/app/settings/usage`, owner and admins, `usage.view`) and `GET /api/usage?month=`: requests and share per person, brand, agent, model and day. No dollar figure: what a call costs Thakeen stays in the console; credits stay on the billing page.
 6. Release step: expand only. New hashes and one new sorted set, written alongside the old counters; old code never reads them, and nothing old changes shape. Rollback leaves them in place, to be removed with the account.
 
+
+## 108. Sign-in engine behind AUTH_ENGINE: better-auth and the typed API (2026-10-23, branch `claude/sup-foundation-migration`, rules 3400-3426, release "expand")
+
+Spec `docs/superpowers/specs/2026-10-23-better-auth-orpc-migration.md`; coverage `docs/system/tests/3400-better-auth-orpc.md`; permissions rows 265-267 and "Sign-in engine and typed API"; keys in architecture.md section 3.z, lifecycle (g). Founder decision of 2026-10-23: better-auth as the sign-in engine and oRPC as the typed API, the way Supastarter does it (better-auth 1.7.10, oRPC 1.15.7, TanStack Query 5.104.3). Redis stays the only store: better-auth reads the existing records through an adapter, nothing is copied.
+
+### 108.1 The switch
+
+1. `AUTH_ENGINE=better-auth` plus `BETTER_AUTH_SECRET` (32 characters or more) turns the engine on; anything else is the legacy engine (variables.md section 2). Both are read at call time, so one build serves both engines.
+2. Off (the default): `/api/better-auth/*`, `POST /api/auth/magic` and `/api/rpc/*` answer 404 before reading anything, `/{lang}/app/magic` is the app's 404, the log-in form has no tabs and posts to `POST /api/auth/login`, the security screen's device card uses its REST calls. No new cookie, key or field is written.
+3. On: the routes below answer, the log-in form shows Password / Email link tabs (`?tab=link` opens the second), and Settings > Security reads and ends devices through oRPC.
+
+### 108.2 Password sign-in (switch on)
+
+1. The password tab posts `{email, password}` to `POST /api/better-auth/sign-in/email`. The wrapper checks the allow-list, then the shared log-in buckets (`login:ip`, `login:em`: guesses through either engine count once), then calls better-auth.
+2. better-auth reads the login through the adapter (`getLogin`) and checks the bcrypt hash. Wrong password or unknown address: 401 `invalid`, as on the legacy route.
+3. The session gate re-resolves the login and runs `admitLogin`: 403 `suspended` (with `until`), `owner_unverified`, `disabled`; two-step on: 401 `mfa_required` with the `thakeen_mfa` challenge and NO session, and the form moves to the code step, which stays `POST /api/auth/login/mfa`.
+4. Admitted: the adapter writes the legacy session record and device entry and sets `thakeen_session` through `issueSession`. The answer is the legacy log-in body (`verify: true` for an owner who still owes the address code); the session token never appears in it.
+
+### 108.3 Sign-in link (switch on)
+
+1. The Email link tab posts `{email, lang, turnstile?}` to `POST /api/better-auth/sign-in/magic-link`. Malformed address: 400 `bad_email`. Then `magic:ip` (8 per 15 minutes), Turnstile when configured (400 `captcha_failed`), `magic:em` (3 per 15 minutes).
+2. Only an address that may sign in now and does not owe the address code gets a link, and only while mail is configured. Every request answers `{ok: true, status: true, mail}` alike; the form says that a link arrives within minutes if the address has an account that can sign in now (or, with `mail: false`, that mail is not set up).
+3. better-auth makes a 32-letter token and stores only its hash at `ba:verify:` for 15 minutes; `sendMagic` mails `{appOrigin}/{lang}/app/magic#t={token}` in Arabic (right to left) or English, from the form's language. The token rides in the fragment, never in a query string (rule 546).
+4. The link opens `/{lang}/app/magic`. The page reads the fragment once, removes it from the address bar and history and posts nothing on load (mail scanners open links). A signed-in visitor goes to the app.
+5. The person presses the button: `POST /api/auth/magic {token}` (`login:ip`), better-auth's verify server-side, the row taken once (`getdel`). Used, expired or unknown: 401 `bad_token`, and the page offers a new link (`/login?tab=link`). Then the same session gate as 108.2 step 3: a refusal shows its message, two-step sends the person to the code step (`/login?mfa=1`), otherwise the session as 108.2 step 4.
+6. A link is a first factor only and never creates an account.
+
+### 108.4 Sessions at cutover and rollback
+
+1. One session, one cookie under both engines: the legacy record at `session:h:{sha256(token)}` and `thakeen_session`. better-auth's internal cookie is signed from `thakeen_session` by the wrapper on every request and never reaches the browser.
+2. Switching on signs nobody out: every existing cookie keeps working for `currentUser()`, and better-auth's `get-session` answers it on the first request, through the same resolver.
+3. Switching off (or a code rollback to main) signs nobody out: a session made while on is a legacy record behind the legacy cookie. Only sign-in links already mailed stop working: with the switch off `/{lang}/app/magic` is not public, so the layout sends a signed-out visitor to the log-in page (a signed-in one gets the app's 404), and the person signs in with the password; the unused `ba:verify:` row expires on its own within 15 minutes.
+4. Changing `BETTER_AUTH_SECRET` signs nobody out either: the browser never holds a cookie signed with it.
+5. Founder impersonation and the console's staff sign-in are untouched; an impersonation session is never a better-auth session.
+
+### 108.5 Typed API (switch on)
+
+1. `POST /api/rpc/{procedure}` with the session cookie; `currentUser()` first, then oRPC. Procedures today: `account.devices.list`, `account.devices.revoke {id, password}`, `account.passkeys.list`. They give the same answers and refusals as `GET`/`DELETE /api/account/sessions` and `GET /api/account/passkeys`, and a test runs both paths on the same fixtures.
+2. Settings > Security's device card calls them through the typed client (loaded only while the switch is on); the passkey card keeps its REST calls. The REST routes stay for the PWA, MCP and every other caller until the contract release.
+
+### 108.6 Readiness check and release
+
+1. Before switching staging, and again before production, the founder runs `npx --no-install jiti scripts/better-auth-check.ts` with the app's own store variables set privately. It only reads and prints counts: logins with a password, a two-way Google link or neither, addresses that sign in as nobody, address and person mismatches (exit 1), sessions by shape. `--apply` is refused: there is nothing to migrate.
+2. Then: set `BETTER_AUTH_SECRET` and `AUTH_ENGINE=better-auth` on staging, sign in with a password, a link, a passkey and Google (the legacy Google routes), end a device in Settings > Security; then production. Rollback: unset `AUTH_ENGINE`.
+3. Release steps (rule 679). Expand (this branch): new routes off by default, one new key family (`ba:verify:`), three new rate buckets, no stored shape changed. Contract (a later release, after a month on): the legacy `POST /api/auth/login` path and the form's legacy branch go, and one of the two device and passkey copies (REST or oRPC) stays. better-auth's own Google is a separate change that starts with the founder registering its redirect URI.

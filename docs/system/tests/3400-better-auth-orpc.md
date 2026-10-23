@@ -1,6 +1,6 @@
-# Coverage: better-auth and oRPC behind AUTH_ENGINE (rules 3400-3434)
+# Coverage: better-auth and oRPC behind AUTH_ENGINE (rules 3400-3426)
 
-Status on 2026-10-23 on branch `claude/sup-foundation-migration`. Spec: `docs/superpowers/specs/2026-10-23-better-auth-orpc-migration.md`. Release step: **expand**. With `AUTH_ENGINE` unset nothing changes: no new route answers, no new cookie, key or field is written. Every test below runs with the switch off and on where the rule has two sides.
+Status on 2026-10-23 on branch `claude/sup-foundation-migration`. Spec: `docs/superpowers/specs/2026-10-23-better-auth-orpc-migration.md`. Release step: **expand**. With `AUTH_ENGINE` unset nothing changes: no new route answers, no new cookie, key or field is written. Every test below runs with the switch off and on where the rule has two sides. Rules 3427-3499 stay reserved for this work and are unused. The system docs (variables.md section 2 and `.env.example`, architecture.md sections 2.4, 2.5, 3.z, 4(g) and 5, permissions.md rows 265-267 and "Sign-in engine and typed API", flows.md section 108) are pinned by `tests/better-auth-adapter.test.ts` (rules 3400-3401, "the system docs").
 
 | # | Rule | Verified today | First test to write |
 |---|---|---|---|

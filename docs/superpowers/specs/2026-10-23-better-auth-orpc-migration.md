@@ -1,6 +1,6 @@
 # better-auth and oRPC behind a switch (design)
 
-Status: **design**, written 2026-10-23 on branch `claude/sup-foundation-migration` from main `42dd8fb1`. Founder decision of 2026-10-23: move the sign-in engine to better-auth and the typed API to oRPC "the way Supastarter does it" (`~/projects/supastarter`, read only: better-auth 1.7.7, oRPC 1.15.4). Rules **3400-3499** are reserved (3400-3434 used here; coverage in `docs/system/tests/3400-better-auth-orpc.md`). Release step: **expand**. Nothing changes for a live customer until the founder sets the switch; with it off, behaviour, cookies, routes and stored data are exactly as on main.
+Status: **design**, written 2026-10-23 on branch `claude/sup-foundation-migration` from main `42dd8fb1`. Founder decision of 2026-10-23: move the sign-in engine to better-auth and the typed API to oRPC "the way Supastarter does it" (`~/projects/supastarter`, read only: better-auth 1.7.7, oRPC 1.15.4). Rules **3400-3499** are reserved (3400-3426 used here, 3427-3499 free; coverage in `docs/system/tests/3400-better-auth-orpc.md`). Release step: **expand**. Nothing changes for a live customer until the founder sets the switch; with it off, behaviour, cookies, routes and stored data are exactly as on main.
 
 ## 1. Current and target
 
@@ -51,6 +51,8 @@ session:h:{sha256(token)} = { email, at, pid?, acct?,            // legacy Sessi
                               id, userId, expiresAt, createdAt,   // better-auth
                               updatedAt, ipAddress, userAgent }    // better-auth
 ```
+
+**As built (steps a-b):** simpler than this design. The record keeps the legacy shape only (`{email, at, pid?, acct?}`): the adapter's session `create` calls `issueSession`, the body `createSession` runs, and better-auth's fields are projected when it reads (`projectSession`: `id` = the device id, `userId` = the pid, `expiresAt` = 30 days after `at`), never stored. The rest of this subsection is the original design.
 
 The raw token is never stored (rule 1345 holds). Every legacy reader ignores the extra fields; `setSessionAccount` spreads the record, so a workspace switch keeps them. The TTL is the time to `expiresAt` (30 days, `SESSION_TTL`; refresh is off, so a session never outlives that). The legacy fields are written by the same code as today (`sessionIds`, `recordDevice`), so `currentUser`, the device list and every stamp treat a better-auth session exactly like a legacy one.
 
@@ -172,7 +174,7 @@ The plan was `socialProviders.google` from the existing `GOOGLE_CLIENT_ID`/`GOOG
 
 1. Merge this branch (expand). The switch is off: nothing changes; the new routes answer 404.
 2. Founder sets `BETTER_AUTH_SECRET` (`openssl rand -base64 48`) and `AUTH_ENGINE=better-auth` on **staging**, signs in with a password, a magic link, a passkey and Google, checks the security screen. Then production.
-3. Rollback: unset `AUTH_ENGINE` (or set any other value). Every session stays valid; the magic-link mails already sent stop working (their page then answers "link expired").
+3. Rollback: unset `AUTH_ENGINE` (or set any other value). Every session stays valid; the magic-link mails already sent stop working (as built: `/magic` is then not public, so the layout sends a signed-out visitor to the log-in page and a signed-in one gets the 404; the unused row expires within 15 minutes).
 4. Contract (later release, after a month on): the legacy `POST /api/auth/login` and the form's legacy path go; `AUTH_ENGINE` becomes the only path. Not part of this change.
 
 ## 12. Risks
