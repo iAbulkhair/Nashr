@@ -2,12 +2,16 @@
   "name": "nashr",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
     "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
     "check": "tsc --noEmit -p . && eslint && vitest run",
     "build:hostinger": "next build --webpack"
   },
@@ -36,6 +40,7 @@
     "@types/node": "^24.13.5",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@vitest/coverage-v8": "^5.0.3",
     "axe-core": "^4.14.0",
     "eslint": "^9",
     "eslint-config-next": "16.3.8",

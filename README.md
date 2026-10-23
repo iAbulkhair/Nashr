@@ -1,36 +1,29 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Thakeen (code name Nashr)
 
-## Getting Started
+Thakeen (ذكين) is a multi-tenant web application that gives a small business a team of named AI marketing and sales agents. The owner connects a brand, the agents prepare content and plans, and the owner approves before anything is published. The repository and its identifiers keep the code name Nashr. It is built with Next.js (app router), Upstash Redis and the Anthropic SDK.
 
-First, run the development server:
+## Set up
+
+Node 22 or later is required (`engines` in `package.json`).
 
 ```bash
+npm ci
+cp .env.example .env.local   # fill in only what you need; names only are listed, never commit values
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Without Redis credentials outside production the app uses an in-memory store. What each variable does is in `docs/system/variables.md`.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Checks
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+npm run check           # type-check, lint, unit tests (run before every commit)
+npx next build          # run before every commit when code changed
+npm run test:coverage   # optional, local only, writes ./coverage (not part of CI)
+```
 
-## Learn More
+## Where the rules live
 
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- `CLAUDE.md` and `AGENTS.md`: the rules every change must keep, for people and coding agents.
+- `docs/system/architecture.md`, `docs/system/flows.md`, `docs/system/permissions.md`, `docs/system/variables.md`, and the rule-to-test lists `docs/system/tests.md` and `docs/system/tests/`. Update them in the same commit when a route, permission or environment variable changes.
+- `PRODUCT.md`: product description and users.
