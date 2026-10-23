@@ -13,7 +13,16 @@ import { log } from "./log";
  *   reached anyone: every caller that asks "did it go?" gets the same answer it got before this provider existed.
  * On a production deploy without a key there is no provider and `sendEmail` answers false, as before.
  */
-export type MailMessage = { from: string; to: string; subject: string; text: string; html?: string };
+export type MailMessage = { from: string; to: string; subject: string; text: string; html?: string; /** Where a reply goes (rule 3106); a plain address only (`plainAddress`). */ replyTo?: string };
+
+/**
+ * Whether `v` is one plain email address and nothing else (rule 3107): no display name, no list, no angle brackets,
+ * quotes, commas, semicolons or white space (so no CR or LF), at most 254 characters. A reply-to is the only header
+ * value a caller can take from a person's input (the support form's own address), so anything that could add a second
+ * address or a header line is refused here, before a provider sees it.
+ */
+export const plainAddress = (v: unknown): v is string =>
+  typeof v === "string" && v.length <= 254 && /^[^\s@<>()[\]\\,;:"']+@[^\s@<>()[\]\\,;:"']+\.[^\s@<>()[\]\\,;:"']+$/.test(v);
 export type MailResult = { delivered: true } | { delivered: false; refused?: string };
 export interface MailProvider {
   readonly name: "resend" | "console";
@@ -25,7 +34,7 @@ export function resendProvider(key: string): MailProvider {
     name: "resend",
     async send(m) {
       const { Resend } = await import("resend");
-      const res = await new Resend(key).emails.send({ from: m.from, to: m.to, subject: m.subject, text: m.text, ...(m.html ? { html: m.html } : {}) });
+      const res = await new Resend(key).emails.send({ from: m.from, to: m.to, subject: m.subject, text: m.text, ...(m.html ? { html: m.html } : {}), ...(plainAddress(m.replyTo) ? { replyTo: m.replyTo } : {}) });
       return res.error ? { delivered: false, refused: res.error.message ?? res.error.name ?? "unknown" } : { delivered: true };
     },
   };
@@ -42,7 +51,7 @@ export const consoleProvider: MailProvider = {
   async send(m) {
     outbox.push(m);
     if (outbox.length > OUTBOX_MAX) outbox.splice(0, outbox.length - OUTBOX_MAX);
-    log.debug("mail kept by the console provider", { toDomain: m.to.split("@")[1] ?? "", subjectChars: m.subject.length, textChars: m.text.length, html: !!m.html });
+    log.debug("mail kept by the console provider", { toDomain: m.to.split("@")[1] ?? "", subjectChars: m.subject.length, textChars: m.text.length, html: !!m.html, replyTo: !!m.replyTo });
     return { delivered: false };
   },
 };

@@ -71,8 +71,19 @@ export function authMessage(code: string, lang: AuthLang, own: Record<string, st
   return own[code] ?? (AUTH_ERR[lang] as Record<string, string>)[code] ?? AUTH_ERR[lang].server;
 }
 
-/** The three password rules, in the order the forms list them. Must agree with `strongPassword` in src/lib/auth.ts. */
-export const passwordChecks = (pw: string): [boolean, boolean, boolean] => [pw.length >= 8, /\p{L}/u.test(pw), /\d/.test(pw)];
+/**
+ * The longest password, in UTF-8 bytes (rule 3100): bcrypt reads only the first 72 bytes, so a longer password would
+ * be accepted while its tail was silently ignored. An Arabic letter is 2 bytes, so 36 Arabic characters or 72 Latin ones.
+ */
+export const PASSWORD_MAX_BYTES = 72;
+/** A password's length in UTF-8 bytes, the way bcrypt counts it. `TextEncoder` exists in the browser and in Node. */
+export const passwordBytes = (pw: string): number => new TextEncoder().encode(pw).length;
+
+/**
+ * The four password rules, in the order the forms list them: 8+ characters, a letter, a digit, and at most
+ * `PASSWORD_MAX_BYTES` bytes (rule 3100). Must agree with `strongPassword` in src/lib/auth.ts.
+ */
+export const passwordChecks = (pw: string): [boolean, boolean, boolean, boolean] => [pw.length >= 8, /\p{L}/u.test(pw), /\d/.test(pw), passwordBytes(pw) <= PASSWORD_MAX_BYTES];
 
 export const RULE_TEXT = {
   ar: { met: "متحقق", unmet: "غير متحقق", needs: "كلمة المرور ما زالت تحتاج:", sep: "، " },

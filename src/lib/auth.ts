@@ -25,6 +25,7 @@ import { parseStored } from "./stored";
 import { MULTI_ORG } from "./multi-org";
 import { WS_HEADER, asHandle } from "./ws-path";
 import { handleOf, matchHandle, wsHandle } from "./ws-handle";
+import { PASSWORD_MAX_BYTES, passwordBytes } from "./auth-client";
 
 export { acct, accountOfScope } from "./account-id";
 
@@ -303,8 +304,11 @@ export const trialOver = (u: Pick<User, "plan" | "trialEnds" | "billing" | "hand
 
 export const trialDaysLeft = (trialEnds: string) => Math.max(0, Math.ceil((new Date(trialEnds).getTime() - Date.now()) / 864e5));
 
-/** One password rule for signup, change and reset: 8+ characters with a letter and a digit. */
-export const strongPassword = (pw: string) => pw.length >= 8 && /\p{L}/u.test(pw) && /\d/.test(pw);
+/**
+ * One password rule for signup, change, reset and an invite's join: 8+ characters with a letter and a digit, and at most
+ * 72 UTF-8 bytes (rule 3100, bcrypt's limit: a longer password's tail would be silently ignored).
+ */
+export const strongPassword = (pw: string) => pw.length >= 8 && /\p{L}/u.test(pw) && /\d/.test(pw) && passwordBytes(pw) <= PASSWORD_MAX_BYTES;
 /** Emails become part of Redis keys (prefix:{scope}[:id], extra brands are email#brandId), so ":" and "#" could make two accounts share keys. */
 export const validEmail = (e: string) => /^[^\s@:#]+@[^\s@:#]+\.[^\s@:#]+$/.test(e) && e.length <= 120;
 

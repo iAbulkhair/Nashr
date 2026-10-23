@@ -22,6 +22,7 @@ import { buttonClass } from "@/components/ui/button-class";
 import Callout from "@/components/ui/Callout";
 import { Field, Input } from "@/components/ui/Field";
 import { appHref } from "@/lib/ws-path";
+import { isLastUsed, LAST_USED_TEXT, readLastUsed, type LoginMethod } from "@/lib/last-used-method";
 
 // Every field has a visible label (rule 1090): a placeholder is an example and disappears as soon as someone types.
 
@@ -47,20 +48,33 @@ function googleMessage(code: string | null, lang: Lang): string {
   return code in GOOGLE[lang] && !["login", "signup", "or"].includes(code) ? GOOGLE[lang][code as GoogleCode] : code === "slow_down" ? authMessage("slow_down", lang) : authMessage("invalid", lang);
 }
 
-function GoogleButton({ lang, mode, next, refCode = "" }: { lang: Lang; mode: "login" | "signup"; next: string; refCode?: string }) {
+/**
+ * The "last used" tag (rules 3103-3105): a small label inside the button the browser last signed in with. Text, not
+ * colour alone, so a screen reader hears it as part of the button's name. Logical margin, so it sits right in RTL.
+ */
+function LastUsedTag({ lang, last, method }: { lang: Lang; last: LoginMethod | null; method: LoginMethod }) {
+  if (!isLastUsed(last, method)) return null;
+  return <span data-testid={`last-used-${method}`} className="ms-2 rounded-full bg-background-muted px-2 py-0.5 text-[11px] font-medium leading-none text-foreground-muted">{LAST_USED_TEXT[lang]}</span>;
+}
+
+/** The hint is read from `document.cookie` in the browser only; on the server and during hydration there is none. */
+const lastUsedNow = () => readLastUsed(document.cookie);
+const noHintOnServer = (): LoginMethod | null => null;
+
+function GoogleButton({ lang, mode, next, refCode = "", last = null }: { lang: Lang; mode: "login" | "signup"; next: string; refCode?: string; last?: LoginMethod | null }) {
   const q = new URLSearchParams({ mode, lang, ...(next ? { next } : {}), ...(refCode ? { ref: refCode } : {}) });
   return (
     <div className="grid gap-3">
       {/* A plain link: the start route answers with a redirect to Google, so no script is needed. */}
-      <a href={`/api/auth/google/start?${q.toString()}`} className={buttonClass({ variant: "secondary", block: true })}>{GOOGLE[lang][mode]}</a>
+      <a href={`/api/auth/google/start?${q.toString()}`} className={buttonClass({ variant: "secondary", block: true })}>{GOOGLE[lang][mode]}<LastUsedTag lang={lang} last={last} method="google" /></a>
       <p className="text-center text-xs text-foreground-muted">{GOOGLE[lang].or}</p>
     </div>
   );
 }
 
 const SU = {
-  ar: { emailStep: "ابدأ مجاناً", cont: "متابعة", edit: "تعديل", rules: ["8 أحرف على الأقل", "حرف واحد على الأقل", "رقم واحد على الأقل"], trial: `تجربة 3 أيام · ${PLAN_CREDITS.trial} كريدت · بدون بطاقة دفع`, legal1: "بالمتابعة أنت توافق على", terms: "الشروط", and: "و", privacy: "سياسة الخصوصية", nameOpt: "اسمك" },
-  en: { emailStep: "Start free", cont: "Continue", edit: "Edit", rules: ["At least 8 characters", "At least one letter", "At least one number"], trial: `3-day trial · ${PLAN_CREDITS.trial} credits · no card required`, legal1: "By continuing you agree to the", terms: "Terms", and: "and", privacy: "Privacy Policy", nameOpt: "Your name" },
+  ar: { emailStep: "ابدأ مجاناً", cont: "متابعة", edit: "تعديل", rules: ["8 أحرف على الأقل", "حرف واحد على الأقل", "رقم واحد على الأقل", "لا تزيد عن 72 حرفاً لاتينياً أو 36 حرفاً عربياً"], trial: `تجربة 3 أيام · ${PLAN_CREDITS.trial} كريدت · بدون بطاقة دفع`, legal1: "بالمتابعة أنت توافق على", terms: "الشروط", and: "و", privacy: "سياسة الخصوصية", nameOpt: "اسمك" },
+  en: { emailStep: "Start free", cont: "Continue", edit: "Edit", rules: ["At least 8 characters", "At least one letter", "At least one number", "No more than 72 Latin or 36 Arabic characters"], trial: `3-day trial · ${PLAN_CREDITS.trial} credits · no card required`, legal1: "By continuing you agree to the", terms: "Terms", and: "and", privacy: "Privacy Policy", nameOpt: "Your name" },
 } as const;
 
 /** Email first, then name and password with live requirements. Phone is asked later, inside onboarding. */
@@ -244,6 +258,8 @@ export function LoginForm({ t, lang, google = false, passkeys = false }: { t: Ap
   const [mfa, setMfa] = useState(sp.get("mfa") === "1");
   const M = MFA[lang];
   const supported = useSyncExternalStore(noChange, browserSupportsWebAuthn, unknownOnServer);
+  // The way this browser last signed in (rule 3105): a display hint the server wrote after that sign-in.
+  const last = useSyncExternalStore(noChange, lastUsedNow, noHintOnServer);
   // The autofill ceremony is re-armed by bumping `arm` (an effect dependency); `leaving` stops it once a sign-in navigates.
   const [arm, setArm] = useState(0);
   const [leaving, setLeaving] = useState(false);
@@ -380,14 +396,14 @@ export function LoginForm({ t, lang, google = false, passkeys = false }: { t: Ap
   return (
     <div className="mx-auto w-full max-w-md">
       <h1 className="page-title"><span className="s-ul"><Scribble kind="underline" seed="authform-t2" />{t.login.title}</span></h1>
-      {google && <div className="mt-6"><GoogleButton lang={lang} mode="login" next={next} /></div>}
+      {google && <div className="mt-6"><GoogleButton lang={lang} mode="login" next={next} last={last} /></div>}
       <form onSubmit={onSubmit} className={google ? "mt-3 grid gap-3" : "mt-6 grid gap-3"}>
         {/* `webauthn` lets the browser offer saved passkeys in the address field's suggestions (conditional UI). */}
         <Field label={t.login.email}><Input name="email" required type="email" autoComplete={passkeys ? "username webauthn" : "username"} /></Field>
         <Field label={t.login.password}><PasswordField lang={lang} name="password" required autoComplete="current-password" /></Field>
         {err && <Callout tone="danger">{err}</Callout>}
-        <Button type="submit" variant="pill" seed="authform-b2" loading={busy}>{t.login.submit}</Button>
-        {showPasskeyButton(passkeys, supported) && <Button type="button" variant="secondary" block onClick={onPasskey}>{t.login.passkey}</Button>}
+        <Button type="submit" variant="pill" seed="authform-b2" loading={busy}>{t.login.submit}<LastUsedTag lang={lang} last={last} method="password" /></Button>
+        {showPasskeyButton(passkeys, supported) && <Button type="button" variant="secondary" block onClick={onPasskey}>{t.login.passkey}<LastUsedTag lang={lang} last={last} method="passkey" /></Button>}
         <Link href={`/${lang}/app/forgot`} className="text-center text-sm text-foreground-muted underline">{lang === "ar" ? "نسيت كلمة المرور؟" : "Forgot your password?"}</Link>
       </form>
       <p className="mt-4 text-sm text-foreground-muted">

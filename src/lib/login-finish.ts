@@ -7,6 +7,8 @@ import { endExpiredSuspension } from "./suspension-server";
 import { acct } from "./account-id";
 import { MULTI_ORG } from "./multi-org";
 import { loginBornAt } from "./own-password";
+import { cookies } from "next/headers";
+import { lastUsedCookie, type LoginMethod } from "./last-used-method";
 
 /**
  * What every sign-in path shares once the person has proved who they are (a password in POST /api/auth/login, a
@@ -97,10 +99,21 @@ export async function finishLogin(l: Login, opts: FinishVia): Promise<Finish> {
     return { kind: "mfa" };
   }
   await createSession(email);
+  await rememberLoginMethod(opts.via);
   // Product analytics count ACCOUNTS: a member's activity is the owner's account being active.
   const counted = accountOf(l);
   if (counted) await track(counted.email, "login");
   return l.kind === "owner" ? { kind: "signed_in", verify: !emailVerified(l.user) } : { kind: "signed_in" };
+}
+
+/**
+ * After a session was issued (rule 3104): the browser keeps the NAME of the way in, nothing else, so the log-in page can
+ * tag that button "last used" next time (src/lib/last-used-method.ts). Written only here and after a Google sign-up,
+ * never on a refusal or an open two-step challenge, so a wrong password never moves the hint.
+ */
+export async function rememberLoginMethod(method: LoginMethod): Promise<void> {
+  const c = lastUsedCookie(method, process.env.NODE_ENV === "production");
+  (await cookies()).set(c.name, c.value, c.options);
 }
 
 /** The JSON answer the log-in form reads for a finish. */

@@ -11,6 +11,7 @@ import TwoStepSettings from "./TwoStepSettings";
 import DeviceList from "./DeviceList";
 import GoogleLink from "./GoogleLink";
 import PasskeySettings from "./PasskeySettings";
+import SetPasswordCard from "./SetPasswordCard";
 import type { AppDict } from "@/lib/app-i18n";
 
 const COPY = {
@@ -39,9 +40,11 @@ const COPY = {
  * same `passwordChecks` and words as signup, reset and the invite form), two-step sign-in (rules 1930-1937,
  * `TwoStepSettings`), passkeys (rules 2410-2416, 2426, 2429, `PasskeySettings`), and "sign out other devices" with the device list (rules 1938-1941, `DeviceList`, which uses the
  * same password field to sign one device out). Each is its own card; none keeps a typed password once it is sent.
- * `may`: from `can()` on the server (a founder viewing the account may do none of them).
+ * `may`: from `can()` on the server (a founder viewing the account may do none of them). `password`: whether the acting
+ * login's person has a password, and its own sign-in address (`actingLogin` on the server, rule 3101). Without one (a
+ * Google sign-up) the change form, which asks for the current password, gives way to "Set a password" (`SetPasswordCard`).
  */
-export default function SecuritySettings({ lang, rules, may, owner, forbidden, passkeys }: { lang: Lang; rules: readonly string[]; may: boolean; owner: boolean; forbidden: string; passkeys: { T: AppDict["passkeys"]; enabled: boolean } }) {
+export default function SecuritySettings({ lang, rules, may, owner, forbidden, passkeys, password = { has: true, email: "" } }: { lang: Lang; rules: readonly string[]; may: boolean; owner: boolean; forbidden: string; passkeys: { T: AppDict["passkeys"]; enabled: boolean }; password?: { has: boolean; email: string } }) {
   const T = COPY[lang];
   const [cur, setCur] = useState("");
   const [pw, setPw] = useState("");
@@ -76,7 +79,7 @@ export default function SecuritySettings({ lang, rules, may, owner, forbidden, p
 
   return (
     <div className="grid gap-4">
-      <SettingsCard title={T.pw} sub={owner ? T.pwOwnerSub : T.pwSub} onSave={change} dirty={cur.length > 0 && pw.length > 0} valid={ready} busy={busy === "pw"} status={pwStatus} saveLabel={T.change} savingLabel={T.changing}>
+      {!password.has ? <SetPasswordCard lang={lang} email={password.email} forbidden={forbidden} /> : <SettingsCard title={T.pw} sub={owner ? T.pwOwnerSub : T.pwSub} onSave={change} dirty={cur.length > 0 && pw.length > 0} valid={ready} busy={busy === "pw"} status={pwStatus} saveLabel={T.change} savingLabel={T.changing}>
         <div className="grid gap-3 sm:grid-cols-2">
           <Field label={T.current} required>
             <PasswordField lang={lang} name="currentPassword" autoComplete="current-password" value={cur} onChange={(e) => setCur(e.target.value)} />
@@ -86,7 +89,7 @@ export default function SecuritySettings({ lang, rules, may, owner, forbidden, p
             <PasswordRules id="settings-pw-rules" rules={rules} checks={checks} lang={lang} />
           </Field>
         </div>
-      </SettingsCard>
+      </SettingsCard>}
 
       <TwoStepSettings lang={lang} forbidden={forbidden} />
       <PasskeySettings lang={lang} T={passkeys.T} enabled={passkeys.enabled} forbidden={forbidden} />

@@ -26,6 +26,12 @@ export const LANG_COOKIE = "thakeen_lang";
 export const THEME_COOKIE = "thakeen_theme";
 export const PARTNER_COOKIE = "thakeen_partner";
 export const OAUTH_COOKIE = "thakeen_oauth";
+/**
+ * Display hint only (rule 3103): the name of the way the browser last signed in ("password", "google" or "passkey"),
+ * nothing else. Not HttpOnly, because the log-in form reads it to mark that button "last used". Never trusted, never
+ * logged. New in this name, so it has no `nashr_` spelling.
+ */
+export const LAST_LOGIN_COOKIE = "thakeen_last_login";
 
 /** sessionStorage: the invite token from the link's fragment, so a language switch keeps it. */
 export const INVITE_TOKEN_KEY = "thakeen_invite_token";

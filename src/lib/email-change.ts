@@ -1,4 +1,5 @@
 import { createHash, randomInt } from "crypto";
+import { SUPPORT_EMAIL } from "./i18n";
 import { db } from "./db";
 import { activityKey } from "./activity";
 import { acct, getLogin, normalizeEmail, validEmail, type User } from "./auth";
@@ -190,7 +191,8 @@ export async function confirmEmailChange(u: User, me: Acting, typed: unknown, la
   }
   if (mailReady()) {
     const m = mail(lang).notice(to, revert ? `${appOrigin()}/${lang}/app/reset#r=${revert}` : undefined);
-    await sendEmail(me.email, m.subject, m.text).catch(() => false);
+    // The notice asks the old address to reply at once if the change was not theirs: the reply goes to support (rule 3108).
+    await sendEmail(me.email, m.subject, m.text, undefined, { replyTo: SUPPORT_EMAIL }).catch(() => false);
   }
   return { ok: true, to };
 }

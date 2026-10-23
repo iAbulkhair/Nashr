@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { createSession, currentUser } from "@/lib/auth";
 import { exchangeCode, googleSignInOn, linkGoogle, resolveGoogle, takeState } from "@/lib/google-signin";
-import { finishLogin } from "@/lib/login-finish";
+import { finishLogin, rememberLoginMethod } from "@/lib/login-finish";
 import { isPersonLockTimeout } from "@/lib/person";
 import { actingLogin } from "@/lib/own-password";
 import { appOrigin } from "@/lib/origin";
@@ -61,6 +61,7 @@ export async function GET(req: Request) {
     const partner = await signupPartner(undefined).catch(() => null);
     if (partner && partner !== "bad") await afterSignup({ id, email: res.email }, partner).catch(() => false);
     await createSession(res.email);
+    await rememberLoginMethod("google");
     await track(id, "signup");
     // A new account has one brand, "default": its start page by name, no legacy hop (rule 894).
     return go(st.next || appHref(lang, "/start", null, "default"));

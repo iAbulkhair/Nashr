@@ -224,6 +224,7 @@ const ROUTE_ROLES: Record<string, Gate> = {
   "PATCH /api/account": g("member", "password.change"),
   // Sign out other devices (rule 1150): the caller's own sessions only, never while impersonating.
   "POST /api/account/sessions": g("member", "sessions.revoke"),
+  "POST /api/account/password-link": g("member", "password.change"),
   // One device out of the login's own list (rule 1939).
   "DELETE /api/account/sessions": g("member", "sessions.revoke"),
   // The login's own two-step sign-in (rules 1930-1937).
@@ -449,7 +450,7 @@ const SESSION_RATE_LIMITED = ["POST /api/chat/feedback", "POST /api/team/transfe
   // Core-file rewrite cards (rule 2306).
   "POST /api/files/proposals/[id]",
   // UI/UX phase 3 (rules 1145, 1150, 1155); the status poll is a read, limited all the same.
-  "POST /api/account/sessions", "PUT /api/notifications/prefs", "GET /api/billing/status",
+  "POST /api/account/sessions", "POST /api/account/password-link", "PUT /api/notifications/prefs", "GET /api/billing/status",
   // The digest email choice (rule 2355).
   "PUT /api/notifications/digest",
   // Phone notifications (rules 2562-2567): per-login hourly buckets.

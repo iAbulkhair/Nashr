@@ -403,6 +403,11 @@ export const globalKey = {
   emailRevertIpBucket: (ip: string) => `emailrevert:ip:${ip}`,
   /** json `{ email, kind }`: a password reset link, under the SHA-256 hex of its token; 1 hour (POST /api/auth/forgot). */
   passwordReset: (tokenHash: string) => `pwreset:${tokenHash}`,
+  /**
+   * bucket name for `allow` (stored as `rate:forgot:em:{email}`): reset links mailed to one address, 3 per 15 minutes,
+   * shared by POST /api/auth/forgot and the signed-in "set a password" card (POST /api/account/password-link, rule 3101).
+   */
+  resetLinkBucket: (email: string) => `forgot:em:${email}`,
 } as const;
 
 /**

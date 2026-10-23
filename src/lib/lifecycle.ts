@@ -9,6 +9,10 @@ import { PLAN_CREDITS, PLAN_PRICE_SAR, formatCount } from "./pricing";
 import { appOrigin } from "./origin";
 import { COPY, paragraphs, renderEmail } from "../emails";
 import { appHrefFor } from "@/lib/ws-href";
+import { SUPPORT_EMAIL } from "./i18n";
+
+/** The notes whose text asks for a reply (day 2 "reply and tell me", day 10 "I read every reply"): reply-to support (rule 3110). */
+export const REPLY_INVITED: ReadonlySet<string> = new Set(["day2", "day10"]);
 
 /**
  * Lifecycle emails (from the founder): a plain-text part written here, and the same words as an HTML notice
@@ -90,6 +94,7 @@ export function lifecyclePart(u: Pick<User, "lang" | "id" | "email">, key: strin
       paragraphs: paragraphs(tpl.body).filter((p) => p !== app),
       cta: billing ? { href: `${appOrigin()}${appHrefFor(u, u.lang, "/billing")}`, label: COPY[u.lang].notice.billing } : { href: app, label: COPY[u.lang].notice.open },
     },
+    ...(REPLY_INVITED.has(key) ? { replyTo: SUPPORT_EMAIL } : {}),
   };
 }
 

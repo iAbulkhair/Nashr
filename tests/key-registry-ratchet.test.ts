@@ -106,7 +106,7 @@ const RAW_KEYS: Record<string, number> = {
   "src/app/api/admin/topups/route.ts": 2,
   "src/app/api/admin/wishlist/route.ts": 1,
   "src/app/api/affiliates/route.ts": 1,
-  "src/app/api/auth/forgot/route.ts": 3,
+  "src/app/api/auth/forgot/route.ts": 1,
   "src/app/api/auth/google/callback/route.ts": 2,
   "src/app/api/auth/google/start/route.ts": 1,
   "src/app/api/auth/login/mfa/route.ts": 2,

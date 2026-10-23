@@ -599,10 +599,10 @@ describe("password rules are not colour-only (rule 434)", () => {
 
   it("a live status line counts the rules met, and an early press names the unmet ones", async () => {
     const { passwordChecks, rulesStatus, unmetRules } = await import("@/lib/auth-client");
-    const rules = { en: ["At least 8 characters", "At least one letter", "At least one number"], ar: ["8 أحرف على الأقل", "حرف واحد على الأقل", "رقم واحد على الأقل"] };
-    expect(rulesStatus(passwordChecks("abc"), "en")).toBe("1 of 3 password rules met");
-    expect(rulesStatus(passwordChecks("abcdefg1"), "en")).toBe("3 of 3 password rules met");
-    expect(rulesStatus(passwordChecks("abc"), "ar")).toBe("1 من 3 شروط لكلمة المرور متحققة");
+    const rules = { en: ["At least 8 characters", "At least one letter", "At least one number", "No more than 72 Latin or 36 Arabic characters"], ar: ["8 أحرف على الأقل", "حرف واحد على الأقل", "رقم واحد على الأقل", "لا تزيد عن 72 حرفاً لاتينياً أو 36 حرفاً عربياً"] };
+    expect(rulesStatus(passwordChecks("abc"), "en")).toBe("2 of 4 password rules met");
+    expect(rulesStatus(passwordChecks("abcdefg1"), "en")).toBe("4 of 4 password rules met");
+    expect(rulesStatus(passwordChecks("abc"), "ar")).toBe("2 من 4 شروط لكلمة المرور متحققة");
     expect(unmetRules(passwordChecks("abc"), rules.en, "en")).toBe("Your password still needs: At least 8 characters, At least one number.");
     expect(unmetRules(passwordChecks("abc"), rules.ar, "ar")).toBe("كلمة المرور ما زالت تحتاج: 8 أحرف على الأقل، رقم واحد على الأقل.");
     expect(unmetRules(passwordChecks("abcdefg1"), rules.en, "en")).toBe("");

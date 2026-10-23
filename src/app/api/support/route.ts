@@ -13,7 +13,9 @@ export async function POST(req: Request) {
   // `user` is the login that wrote the ticket (a member's own address for a member); `account` is whose workspace it is.
   const rec = { email: b.email.slice(0, 120), user: u ? (u.actor?.email ?? u.email) : null, account: u?.email ?? null, type: (b.type ?? "question").slice(0, 20), message: b.message.slice(0, 4000), page: (b.page ?? "").slice(0, 200), lang: b.lang === "en" ? "en" : "ar", at: new Date().toISOString(), status: "open" };
   await pushCapped("support-tickets", JSON.stringify(rec), CAPS.tickets);
-  if (process.env.WAITLIST_TO) await sendEmail(process.env.WAITLIST_TO, `Thakeen support [${rec.type}] ${rec.email}`, JSON.stringify(rec, null, 2));
+  // Reply-to is the address the customer typed (rule 3109), so the founder answers them with one click. `sendEmail` passes
+  // it on only when it is one plain address (rule 3107); anything else is dropped and the ticket still arrives.
+  if (process.env.WAITLIST_TO) await sendEmail(process.env.WAITLIST_TO, `Thakeen support [${rec.type}] ${rec.email}`, JSON.stringify(rec, null, 2), undefined, { replyTo: rec.email });
   return NextResponse.json({ ok: true });
 }
 export async function GET(req: Request) {

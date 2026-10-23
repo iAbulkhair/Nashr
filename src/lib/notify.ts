@@ -4,7 +4,7 @@ import { renderEmail, type EmailContext, type EmailTemplateId } from "../emails"
 import type { Lang } from "./i18n";
 import { log } from "./log";
 import { wsKey } from "./keys";
-import { mailProvider } from "./mail-provider";
+import { mailProvider, plainAddress } from "./mail-provider";
 
 /**
  * Whether email can actually reach a customer. It needs the API key AND a real sender. Without MAIL_FROM the sender is
@@ -26,14 +26,21 @@ export const EMAIL_TIMEOUT_MS = 10_000;
  * the reader's `locale`, and keeps writing the subject and the plain-text part itself (tests parse tokens and links out
  * of the text, so it stays word for word). `sendEmail` renders the HTML part from src/emails/ and sends both.
  */
-export type TemplateMail<T extends EmailTemplateId = EmailTemplateId> = { to: string; subject: string; text: string; template: T; context: EmailContext<T>; locale: Lang };
+export type TemplateMail<T extends EmailTemplateId = EmailTemplateId> = { to: string; subject: string; text: string; template: T; context: EmailContext<T>; locale: Lang; /** Where a reply goes (rule 3106). */ replyTo?: string };
+/** Options of the plain form: where a reply goes (rule 3106). */
+export type MailOptions = { replyTo?: string };
 
 /**
  * Send one email. Two forms:
  * - typed: `sendEmail({ to, subject, text, template, context, locale })`, for every message a customer receives. The
  *   template's context is checked at compile time against its function in src/emails/ (`EmailContext`).
- * - plain: `sendEmail(to, subject, text, html?)`, for internal text-only mail (the support inbox, staff alerts) and the
- *   routes that still build their HTML themselves. Expand step: the typed form is new, the plain one stays.
+ * - plain: `sendEmail(to, subject, text, html?, {replyTo}?)`, for internal text-only mail (the support inbox, staff alerts)
+ *   and the routes that still build their HTML themselves. Expand step: the typed form is new, the plain one stays.
+ *
+ * `replyTo` (rule 3106): where the reader's reply goes, when it should not go to MAIL_FROM: the support address
+ * (`SUPPORT_EMAIL`) on customer mail whose text invites a reply, the customer's own address on a support ticket sent to
+ * the founder. Only a plain address is passed on (`plainAddress`, rule 3107); anything else is dropped and logged without
+ * its value, and the message still goes, as it would have without a reply-to.
  *
  * The message goes to the provider for this process (src/lib/mail-provider.ts, rule 1963): Resend when RESEND_API_KEY is
  * set, the console provider on a non-production deploy without one, none on production without one. The answer is true
@@ -44,9 +51,12 @@ export type TemplateMail<T extends EmailTemplateId = EmailTemplateId> = { to: st
  * 546, src/emails/reset-password.ts).
  */
 export async function sendEmail<T extends EmailTemplateId>(mail: TemplateMail<T>): Promise<boolean>;
-export async function sendEmail(to: string, subject: string, text: string, html?: string): Promise<boolean>;
-export async function sendEmail(a: string | TemplateMail, subject?: string, text?: string, html?: string): Promise<boolean> {
-  const msg = typeof a === "string" ? { to: a, subject: subject ?? "", text: text ?? "", html } : { to: a.to, subject: a.subject, text: a.text, html: renderEmail(a.template, a.context, a.locale) };
+export async function sendEmail(to: string, subject: string, text: string, html?: string, opts?: MailOptions): Promise<boolean>;
+export async function sendEmail(a: string | TemplateMail, subject?: string, text?: string, html?: string, opts: MailOptions = {}): Promise<boolean> {
+  const asked = typeof a === "string" ? opts.replyTo : a.replyTo;
+  if (asked !== undefined && !plainAddress(asked)) log.warn("reply-to dropped: not a plain address", { chars: String(asked).length });
+  const reply = plainAddress(asked) ? { replyTo: asked } : {};
+  const msg = typeof a === "string" ? { to: a, subject: subject ?? "", text: text ?? "", html, ...reply } : { to: a.to, subject: a.subject, text: a.text, html: renderEmail(a.template, a.context, a.locale), ...reply };
   const provider = mailProvider();
   if (!provider) return false;
   const from = process.env.MAIL_FROM ?? "Noor at Thakeen <onboarding@resend.dev>";
@@ -155,7 +165,7 @@ export async function sendOnce<T extends EmailTemplateId>(email: string, key: st
 }
 export type OnceResult = "sent" | "already" | "busy" | "failed";
 /** The template half of a typed message, for `sendOnce`: the address, subject and text are its own arguments. */
-export type OncePart<T extends EmailTemplateId = EmailTemplateId> = Pick<TemplateMail<T>, "template" | "context" | "locale">;
+export type OncePart<T extends EmailTemplateId = EmailTemplateId> = Pick<TemplateMail<T>, "template" | "context" | "locale" | "replyTo">;
 
 /** What `markSent` stores: the moment Resend accepted the message. The old claim-before-send guard stored a bare lock. */
 type SentRecord = { sent: string };

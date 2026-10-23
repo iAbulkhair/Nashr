@@ -34,7 +34,7 @@ export const arTeam = {
   join: {
     title: "انضم إلى حساب", checking: "نتحقق من الدعوة…",
     invited: "{inviter} يدعوك للانضمام إلى {team} بدور {role}.", email: "بريدك", expires: "صالحة حتى",
-    name: "اسمك", password: "كلمة المرور", rules: ["8 أحرف على الأقل", "حرف واحد على الأقل", "رقم واحد على الأقل"],
+    name: "اسمك", password: "كلمة المرور", rules: ["8 أحرف على الأقل", "حرف واحد على الأقل", "رقم واحد على الأقل", "لا تزيد عن 72 حرفاً لاتينياً أو 36 حرفاً عربياً"],
     submit: "انضم", joining: "جارٍ الانضمام…", note: "تعمل داخل حساب {team}: الكريدت والعلامات للحساب، ومالكه يدير الاشتراك.",
     noToken: "رابط الدعوة ناقص. افتحه من رسالة الدعوة مرة أخرى، أو اطلب دعوة جديدة.",
     signedIn: "أنت مسجّل الدخول بـ {email}. سجّل خروجك أولاً لتقبل هذه الدعوة.", logout: "سجّل الخروج", back: "رجوع للتطبيق",
@@ -216,7 +216,7 @@ export const enTeam: typeof arTeam = {
   join: {
     title: "Join an account", checking: "Checking your invite…",
     invited: "{inviter} invited you to join {team} as {role}.", email: "Your email", expires: "Valid until",
-    name: "Your name", password: "Password", rules: ["At least 8 characters", "At least one letter", "At least one number"],
+    name: "Your name", password: "Password", rules: ["At least 8 characters", "At least one letter", "At least one number", "No more than 72 Latin or 36 Arabic characters"],
     submit: "Join", joining: "Joining…", note: "You work inside {team}'s account: credits and brands belong to the account, and its owner manages the subscription.",
     noToken: "This invite link is incomplete. Open it from the invite message again, or ask for a new invite.",
     signedIn: "You are signed in as {email}. Log out first to accept this invite.", logout: "Log out", back: "Back to the app",

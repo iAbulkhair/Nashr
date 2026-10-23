@@ -222,6 +222,7 @@ describe("rule 888: the guarded list is held to the routes on disk", () => {
       "/api/account/email": "the login's address change",
       "/api/account/google": "the login's Google sign-in link",
       "/api/account/sessions": "the login's sessions",
+      "/api/account/password-link": "mails a reset link to the login's own address (rule 3101)",
       "/api/auth/verify/check": "the owner's address verification",
       "/api/auth/verify/email": "the owner's address verification",
       "/api/auth/verify/send": "the owner's address verification",

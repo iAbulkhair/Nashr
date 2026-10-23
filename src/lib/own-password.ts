@@ -55,9 +55,11 @@ export const ownPasswordMatches = async (u: User, password: unknown) => {
  * The acting LOGIN behind a session (rules 1930-1947): the person, its own address and when its login was born
  * (`loginBornAt`, rule 2990). Null for a founder impersonating, a token, or a member no longer in this
  * account. Every per-login setting (two-step sign-in, the device list, the address change) keys on this address, never
- * on one from the request (class B keys keep the address, plan reconciliation 8).
+ * on one from the request (class B keys keep the address, plan reconciliation 8). `hasPassword` (rule 3101): whether the
+ * PERSON holds a password hash. A Google sign-up's person has none (src/lib/google-signin.ts); the random hash a legacy
+ * Google account carries for rolled-back builds is the account's, never the person's, so it does not count.
  */
-export async function actingLogin(u: User): Promise<{ kind: "owner" | "member"; pid: PersonId; email: string; bornAt: string | undefined } | null> {
+export async function actingLogin(u: User): Promise<{ kind: "owner" | "member"; pid: PersonId; email: string; bornAt: string | undefined; hasPassword: boolean } | null> {
   const me = await acting(u);
-  return me ? { kind: me.kind, pid: me.person.pid, email: me.person.email, bornAt: me.bornAt } : null;
+  return me ? { kind: me.kind, pid: me.person.pid, email: me.person.email, bornAt: me.bornAt, hasPassword: typeof me.person.passHash === "string" && me.person.passHash.length > 0 } : null;
 }
