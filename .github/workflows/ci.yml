@@ -186,24 +186,47 @@ jobs:
         run: npx vitest run
       # Playwright's browsers, keyed on the installed Playwright version. A cache saved by a pull request serves only
       # that PR, so a PR's first end-to-end run downloads them (about 30 seconds) and its later runs restore them.
+      # The key also names the runner's OS release (rule 3210): WebKit is built per Ubuntu release, and one saved on
+      # ubuntu-24.04 does not start on ubuntu-26.04 (libicudata.so.74 missing), as PR #437 found while `ubuntu-latest`
+      # moved between them.
       - name: Playwright version
         id: playwright
         if: steps.scope.outputs.e2e == 'true'
-        run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
+        run: |
+          echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
+          echo "image=$(. /etc/os-release && echo "$ID$VERSION_ID")" >> "$GITHUB_OUTPUT"
       - name: Cache Playwright browsers
         id: playwright-cache
         if: steps.playwright.outputs.version != ''
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}-chromium-webkit
+          key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}-${{ steps.playwright.outputs.image }}-chromium-webkit
+      # Rule 3211: both installs are bounded, so a slow download fails the step instead of eating the job's 40-minute
+      # cap. The browsers come from Playwright's CDN (about 20 seconds): two tries of 5 minutes, on a cache miss only.
+      # The system packages come from apt on every run, cached or not, since they live outside the cached directory.
+      # On PR #442 the runner's Azure mirror sent them at about 40 KB/s (142 MB to fetch), so after a first try of
+      # 6 minutes the next two use archive.ubuntu.com. They run as root under `timeout`, so a kill reaches apt-get
+      # and frees the dpkg lock; a try that ran as the runner user left apt-get holding it and the retries failed.
       - name: Install Playwright browsers
         if: steps.scope.outputs.e2e == 'true' && steps.playwright-cache.outputs.cache-hit != 'true'
-        run: npx playwright install --with-deps chromium webkit
-      # A cache hit has the browsers but not the runner's system packages, which live outside the cached directory.
+        run: |
+          for try in 1 2; do
+            timeout 5m npx playwright install chromium webkit && exit 0
+            echo "::warning::Playwright browsers try $try failed or ran past 5 minutes"
+          done
+          exit 1
       - name: Install Playwright system dependencies
-        if: steps.scope.outputs.e2e == 'true' && steps.playwright-cache.outputs.cache-hit == 'true'
-        run: npx playwright install-deps chromium webkit
+        if: steps.scope.outputs.e2e == 'true'
+        run: |
+          for try in 1 2 3; do
+            sudo env "PATH=$PATH" timeout --kill-after=30s 6m npx playwright install-deps chromium webkit && exit 0
+            echo "::warning::Playwright system dependencies try $try failed or ran past 6 minutes; next try uses archive.ubuntu.com"
+            sudo pkill -x apt-get || true; sleep 5
+            sudo dpkg --configure -a || true
+            sudo sed -i 's/azure\.archive\.ubuntu\.com/archive.ubuntu.com/g' /etc/apt/apt-mirrors.txt /etc/apt/sources.list /etc/apt/sources.list.d/* 2>/dev/null || true
+          done
+          exit 1
       - name: End-to-end tests
         if: steps.scope.outputs.e2e == 'true'
         run: npx playwright test
