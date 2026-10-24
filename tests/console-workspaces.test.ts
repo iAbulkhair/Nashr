@@ -45,13 +45,13 @@ async function put(owner: User, rows: Activity[]) {
   await recordActivity(scopeFor(acct(owner), brand.id), rows);
 }
 async function task(owner: User, id: string, createdAt: string) {
-  await saveTask(owner.email, { id, type: "social", channel: "instagram", title: id, body: id, status: "pending", createdAt, lang: "ar" }, true);
+  await saveTask(acct(owner), { id, type: "social", channel: "instagram", title: id, body: id, status: "pending", createdAt, lang: "ar" }, true);
 }
 /** An owner with an admin and a member, one pending invite, three tasks and activity naming the admin (and a person who is not on the roster). */
 async function workspace() {
   const owner0 = await newUser("cw-owner");
-  await saveUser({ ...(await getUser(owner0.email))!, seats: 6 });
-  const owner = (await getUser(owner0.email))!;
+  await saveUser({ ...(await getUser(acct(owner0)))!, seats: 6 });
+  const owner = (await getUser(acct(owner0)))!;
   const [a, m] = await Promise.all([newMember(owner, "admin", "cwa"), newMember(owner, "member", "cwm")]);
   const actor = { kind: "owner" as const, pid: owner.ownerPid!, home: true, email: owner.email, name: owner.name, lang: owner.lang, role: "owner" as const };
   const inv = await createInvite(owner, actor as never, `cw-inv-${Date.now()}@test.example`, "member", "ar");

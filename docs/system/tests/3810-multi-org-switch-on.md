@@ -17,3 +17,11 @@ Status on 2026-10-24 on branch `claude/multi-org-switch-on-620420` (`flows.md` s
 | 3820 | The partner side: `PUT /api/partner` saves the bank details under the partner's sign-in address (the partner record is the person's); it passed the account id, so every partner got 404 `not_partner` and no payout could follow. `settle` (the commission decision) checks "same team" as `claimPartnerCode` does: the partner's person (through its login) on the customer's roster, or the customer's owner on the roster of the partner's own account; it compared an address with an account id | `tests/partners.test.ts` rules 398, 399, 405, 411, 412, 416, 417 (10 tests, red before the fix) and rule 396 "same team" both directions; `tests/multi-org-switch-on.test.ts` (rule 3820) | none |
 | 3821 | A login is counted in the `active:d/w/m` sets under the account id, as every other event is (`login-finish.ts`); it counted the owner's address, so an `a_` account was counted twice. The admin 7-day retention reads the week set with the account id | `tests/teams-flows.test.ts` ("a login counts the ACCOUNT", red before the fix); `tests/multi-org-switch-on.test.ts` (rule 3821) | a retention figure test with an `a_` cohort |
 | 3822 | Hardening: no code falls back from a missing `scope` to the sign-in address; the fallback is the account id (`scope ?? acct(u)`, what `sc(u)` returns). Every live caller (session users, the cron roster) sets `scope`, so no customer saw this | `tests/multi-org-switch-on.test.ts` (rule 3822, eight sources) | none |
+
+Update 2026-10-24 (CI's `TEST_PERSONS=legacy` step, ready pull requests only, and the merge of `main`). Every change here is a test change; no production code changed.
+- Rule 3818's test accepts the production person shape: the owner's person id is its account id (`a_`).
+- Rule 2428's reborn case:
+  - Only owners and `p_` persons are deleted. With `MULTI_ORG` on, a legacy-shaped member keeps its person when removed, and cannot delete it before M4 (rules 2124 and 2754).
+  - A new owner at the deleted owner's address gets a fresh id.
+- The tests merged from #446 (`tests/console-workspaces.test.ts`) and #447 (`tests/customer-roles.test.ts`) now read accounts, tasks and connections by `acct(u)`, as rule 3815 asks.
+- Both suites pass: 10300 tests by default; 10297 passed and 3 skipped with `TEST_PERSONS=legacy`.
