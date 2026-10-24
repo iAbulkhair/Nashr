@@ -563,7 +563,9 @@ describe("source scans (rule 2132, credential part)", () => {
     const libWriters = files(join("src", "lib")).filter((f) => /\b(updatePerson|createUser|withPersonLock|withMovePersonLock|forgetPassword)\(/.test(readFileSync(f, "utf8")) && !/src\/lib\/(person|auth)\.ts$/.test(f));
     // The library files that call a person writer, so a new one fails here until its routes are listed above.
     // src/lib/email-move.ts (account-id R2): reached from the email change route, the verify route and the revert route.
-    expect(libWriters.map((f) => f.replace(/\\/g, "/")).sort()).toEqual(["src/lib/email-move.ts", "src/lib/google-signin.ts", "src/lib/passkeys.ts", "src/lib/person-delete.ts", "src/lib/team.ts", "src/lib/transfer.ts", "src/lib/verify-email.ts", "src/lib/workspaces.ts"]);
+    // src/lib/conversions/multi-org-index.ts (S1, rule 4100): its apply takes the person lock, but only the terminal
+    // script applies it; the console route runs it dry only and refuses an apply before any lock (rule 4104).
+    expect(libWriters.map((f) => f.replace(/\\/g, "/")).sort()).toEqual(["src/lib/conversions/multi-org-index.ts", "src/lib/email-move.ts", "src/lib/google-signin.ts", "src/lib/passkeys.ts", "src/lib/person-delete.ts", "src/lib/team.ts", "src/lib/transfer.ts", "src/lib/verify-email.ts", "src/lib/workspaces.ts"]);
     // src/lib/passkeys.ts: every route that imports the store is listed, so a new one (the sign-in verify route) fails
     // here until it is, and then must answer the lock timeout (Task 3 review minor 7).
     const passkeyRoutes = files(join("src", "app")).filter((f) => /from "@\/lib\/passkeys"/.test(readFileSync(f, "utf8")));
