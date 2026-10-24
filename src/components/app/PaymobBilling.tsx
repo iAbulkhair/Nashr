@@ -11,7 +11,7 @@ const T = {
     errors: {
       need_phone: "أضف رقم جوالك في الملف الشخصي أولاً: بوابة الدفع تطلبه.", topup_needs_paid_plan: "باقات الشحن متاحة بعد الاشتراك في خطة مدفوعة.",
       agency: "خطة الوكالات بعقد، تواصل معنا.", slow_down: "محاولات كثيرة. حاول بعد ساعة.", not_enabled: "الدفع الإلكتروني غير متاح الآن.",
-      paymob_error: "تعذّر فتح صفحة الدفع. حاول مرة أخرى.", forbidden: "الدفع لمالك الحساب فقط.", server: "تعذّر الطلب. حاول مرة أخرى.",
+      paymob_error: "تعذّر فتح صفحة الدفع. حاول مرة أخرى.", provider_error: "تعذّر فتح صفحة الدفع. حاول مرة أخرى.", forbidden: "الدفع لمالك الحساب فقط.", server: "تعذّر الطلب. حاول مرة أخرى.",
       no_card: "لا توجد بطاقة محفوظة. ادفع الشهر القادم بالبطاقة لحفظها.", no_billing: "لا يوجد اشتراك إلكتروني.",
     } as Record<string, string>,
     title: "اشتراكك", active: "نشط", past_due: "متأخر السداد", locked: "موقوف", paidThrough: "مدفوع حتى", grace: "مهلة السداد حتى",
@@ -33,7 +33,7 @@ const T = {
     errors: {
       need_phone: "Add your mobile number in your profile first: the payment gateway needs it.", topup_needs_paid_plan: "Top-up packs are available once you subscribe to a paid plan.",
       agency: "Agency is sold by contract: contact us.", slow_down: "Too many tries. Try again in an hour.", not_enabled: "Online payment is not available right now.",
-      paymob_error: "Could not open the payment page. Try again.", forbidden: "Only the account owner can pay.", server: "Could not complete the request. Try again.",
+      paymob_error: "Could not open the payment page. Try again.", provider_error: "Could not open the payment page. Try again.", forbidden: "Only the account owner can pay.", server: "Could not complete the request. Try again.",
       no_card: "No saved card. Pay the next month by card to save one.", no_billing: "No online subscription.",
     } as Record<string, string>,
     title: "Your subscription", active: "Active", past_due: "Payment overdue", locked: "Paused", paidThrough: "Paid through", grace: "Grace until",

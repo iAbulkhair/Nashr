@@ -318,6 +318,21 @@ Going live is not a build step. It is the founder's, in this order:
 
 ## 10. Open questions
 
+### Founder decisions (2026-10-24, after the build on `claude/sup-geidea`)
+
+The founder answered on 2026-10-24. Each answer matches what the build does, so no code changed for them:
+
+- **F1. Renewals:** our own MIT, charged by us with the saved card (section 6.4), not Geidea's Subscriptions. It runs only with `GEIDEA_MIT=1`, after Geidea confirms G1-G3 and switches MIT on for the account.
+- **F3. Payment methods:** cards only at launch (mada, Visa, Mastercard; wallets hidden). Apple Pay and STC Pay wait.
+- **F4. Customer data:** name and email only, no phone. The privacy policy says so (rule 3918).
+- **F5. Partial refund:** waits. It is not built; the console refunds the whole order (rule 3912). A later change takes it up from rule 3919.
+- **F6. A refund made in Geidea's dashboard** is logged only (`geidea_external_refund`, rule 3913) and changes nothing on the account.
+- **A second paid order for one checkout** is refunded by hand by the founder (`geidea_second_order`, rule 3907), not automatically.
+- **An old Paymob subscription after the switch** is not charged by Geidea: its month goes past due, then grace, then lock, and the owner pays again from the billing page (rule 3910).
+- **Reconciliation:** the daily job plus the return page (rule 3909), no tighter schedule.
+
+The questions below are kept as they were asked on 2026-10-18.
+
 ### For the founder
 
 - **F1. Renewals.** Our own monthly charge with a saved card (self-run MIT, keeps every money rule in our code), or Geidea's Subscriptions (6.4 fallback)? Default: our own, if Geidea confirms G1-G3 below.

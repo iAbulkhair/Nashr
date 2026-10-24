@@ -49,7 +49,9 @@ export default async function Page({ params, searchParams }: { params: Promise<{
   // stay the way to pay, exactly as before.
   const online = can(u, "billing.pay") && paymentsEnabled();
   const sub = online ? billingView(u.billing) : null;
-  const returned = (await searchParams)?.paymob === "return";
+  // `?paymob=return` from Paymob's page, `?pay=return` from Geidea's (rule 3909).
+  const sp = await searchParams;
+  const returned = sp?.paymob === "return" || sp?.pay === "return";
   // One pay link per self-serve tier, keyed by plan id: each card finds its own copy by id, never by position, so a card
   // can never show one tier's price with another tier's link. Agency has no pay link (PAY_LINK_AGENCY is not read): it is
   // sold by contract, through the contact card below.

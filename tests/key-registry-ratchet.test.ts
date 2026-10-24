@@ -190,7 +190,7 @@ const RAW_KEYS: Record<string, number> = {
   "src/lib/admin-stats.ts": 4,
   "src/lib/agent-scope.ts": 1,
   "src/lib/auth.ts": 4,
-  "src/lib/billing.ts": 15,
+  "src/lib/billing.ts": 12,
   "src/lib/booking-token.ts": 4,
   "src/lib/brand-proposals.ts": 5,
   "src/lib/brand-rules.ts": 2,

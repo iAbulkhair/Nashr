@@ -1,4 +1,4 @@
-import { createHash, randomBytes } from "node:crypto";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { db } from "./db";
 import { getUser, normalizeEmail, normalizePhone, saveUser, trialOver, type User } from "./auth";
 import { monthKey, withUserLock } from "./credits";
@@ -10,22 +10,26 @@ import { enforceSeats, isTeamLockTimeout } from "./team";
 import { appOrigin } from "./origin";
 import { invoiceForPayment } from "./invoice";
 import { GRACE_DAYS, addDays, addMonths, billingLocked, intentOutdatesOwner, paymobRenewalDue, type Billing } from "./billing-state";
-import { PaymentError, paymentProvider, type CardTokenEvent, type PaymentProvider, type PaymentTxn } from "./payments";
+import { PaymentDeclined, PaymentError, paymentProvider, type CardTokenEvent, type PaymentProvider, type PaymentTxn, type ProviderName } from "./payments";
 import { adminAudit } from "./admin-audit";
 import { claimOnPayment, endOnRefund, foundingOfferOpen, freePlaces, lockedBaseHalalas, type ClaimOutcome } from "./founding";
 import { log as logger } from "./log";
 import { acct } from "./account-id";
-import { globalKey } from "./keys";
+import { accountKey, globalKey } from "./keys";
+import { allow } from "./rate";
+import { pmap } from "./parallel";
 import { handPlanEnded } from "./hand-plan";
 import { appHrefFor } from "@/lib/ws-href";
 
 /**
- * Online billing through Paymob KSA (spec docs/superpowers/specs/2026-10-08-paymob-billing-design.md, rules 700-729):
- * checkout, the callbacks, saved-card renewals with grace and lock, the owner's renewal settings and the founder's
- * refund. Everything is off unless `paymentProvider()` answers (src/lib/payments, rule 2050: Paymob is its only
- * provider and every processor call goes through that type; the stored keys and shapes stay `paymob:*`). Amounts always come from
- * src/lib/pricing.ts, never from a request; the account always comes from the session or from our own intent record,
- * never from a callback's payload.
+ * Online billing through Paymob KSA (spec docs/superpowers/specs/2026-10-08-paymob-billing-design.md, rules 700-729) or
+ * Geidea KSA (spec docs/superpowers/specs/2026-10-18-geidea-payment-provider-design.md, rules 3900-3917): checkout, the
+ * callbacks, saved-card renewals with grace and lock, the owner's renewal settings and the founder's refund. Everything
+ * is off unless `paymentProvider()` answers (src/lib/payments, rule 2050: every processor call goes through that type).
+ * Paymob's stored keys and shapes stay `paymob:*` with numeric ids; Geidea's are new `pay:*` families (src/lib/keys.ts)
+ * with UUID references and order ids, so the id's type picks the family and no Paymob key changes bytes. Amounts always
+ * come from src/lib/pricing.ts, never from a request; the account always comes from the session or from our own intent
+ * record, never from a callback's payload.
  */
 
 /** VAT is added on top of the ex-VAT prices (`VAT_RATE`). False until Thakeen is VAT-registered, if it is not (spec open question 5). */
@@ -33,29 +37,40 @@ export const PAYMOB_CHARGES_VAT = true;
 
 const DAYS_400 = 400 * 86400;
 const REF = /^pmi_[a-f0-9]{24}$/;
-const intentKey = (ref: string) => `paymob:intent:${ref}`;
+/** A Geidea checkout reference: a UUID v4 from `randomUUID` (rule 3906). */
+const GREF = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+/** The provider whose checkout a reference is: Paymob's `pmi_…`, Geidea's UUID. Null for anything else. */
+const refProvider = (ref: unknown): ProviderName | null => (typeof ref !== "string" ? null : REF.test(ref) ? "paymob" : GREF.test(ref) ? "geidea" : null);
+/** A provider's transaction id: a number at Paymob, an order UUID at Geidea. The type picks the key family. */
+type TxnId = number | string;
+const intentKey = (ref: string) => (GREF.test(ref) ? globalKey.payIntent(ref) : `paymob:intent:${ref}`);
 const orderKey = (orderId: number) => `paymob:order:${orderId}`;
-const txnKey = (txnId: number) => `paymob:txn:${txnId}`;
-const doneKey = (txnId: number) => `paymob:done:${txnId}`;
-const txLockKey = (txnId: number) => `paymob:txlock:${txnId}`;
-const refundedKey = (txnId: number) => `paymob:refunded:${txnId}`;
-const refundLockKey = (txnId: number) => `paymob:refundlock:${txnId}`;
+const txnKey = (txnId: TxnId) => (typeof txnId === "string" ? globalKey.payTxn("geidea", txnId) : `paymob:txn:${txnId}`);
+const doneKey = (txnId: TxnId) => (typeof txnId === "string" ? globalKey.payDone("geidea", txnId) : `paymob:done:${txnId}`);
+const txLockKey = (txnId: TxnId) => (typeof txnId === "string" ? globalKey.payTxLock("geidea", txnId) : `paymob:txlock:${txnId}`);
+const refundedKey = (txnId: TxnId) => (typeof txnId === "string" ? globalKey.payRefunded("geidea", txnId) : `paymob:refunded:${txnId}`);
+const refundLockKey = (txnId: TxnId) => (typeof txnId === "string" ? globalKey.payRefundLock("geidea", txnId) : `paymob:refundlock:${txnId}`);
 /**
  * What a refund of this transaction did to the plan (`endPlanOnRefund`): the payment id when it ended the plan (a retry
  * still answers `planEnded: true`), or `"none"` when it found no plan to end (a later repeat never ends one and answers
  * false). Either value means this transaction never ends a plan again.
  */
-const refundEndedKey = globalKey.paymobRefundEnded;
-const attemptKey = (email: string, day: string) => `paymob:attempt:${email}:${day}`;
+const refundEndedKey = (txnId: TxnId) => (typeof txnId === "string" ? globalKey.payRefundEnded("geidea", txnId) : globalKey.paymobRefundEnded(txnId));
+const attemptKey = (p: ProviderName, email: string, day: string) => (p === "geidea" ? accountKey.payAttempt(email, day) : `paymob:attempt:${email}:${day}`);
 export const cardKey = (email: string) => `paymob:card:${email}`;
+/** The saved card of the provider that saved it: Paymob's under `paymob:card:`, Geidea's (with its agreement) under `pay:card:`. */
+const cardKeyOf = (p: ProviderName, email: string) => (p === "geidea" ? accountKey.payCard(email) : cardKey(email));
+/** Both providers' saved cards go together: leaving, removing the card and a refund that ends the plan (rules 1955, 2270, 3914). */
+const delCards = (email: string) => Promise.all([db.del(cardKey(email)), db.del(accountKey.payCard(email))]);
 /**
  * The account's latest checkout ref (rule 1155), so the return page asks "how did my payment go?" with the session's
  * account alone and never a ref from the request. A new key only (expand): code without it never reads or misses it.
  */
 export const lastCheckoutKey = (email: string) => `paymob:last:${email}`;
+const lastKeyOf = (p: ProviderName, email: string) => (p === "geidea" ? accountKey.payLast(email) : lastCheckoutKey(email));
 const LAST_TTL = 86400;
-/** Keys that belong to one account and leave with it (src/lib/account.ts `wipeAccount`). */
-export const paymobAccountKeys = (email: string) => [cardKey(email), lastCheckoutKey(email)];
+/** Keys that belong to one account and leave with it (src/lib/account.ts `wipeAccount`), Geidea's included (rule 3914). */
+export const paymobAccountKeys = (email: string) => [cardKey(email), lastCheckoutKey(email), accountKey.payCard(email), accountKey.payLast(email)];
 
 export type IntentKind = "plan" | "topup" | "renewal";
 /** What we asked Paymob to charge, stored before the call. The only source of the account and the amount for a callback. */
@@ -88,13 +103,22 @@ export type PayIntent = {
   lockedBaseHalalas?: number;
   createdAt: string;
   by: string;
-  orderId?: number;
+  orderId?: number | string;
   status: "open" | "paid" | "failed" | "mismatch";
-  txnId?: number;
+  txnId?: TxnId;
+  /** The provider that wrote it. Written by Geidea checkouts only (expand, rule 3906): an intent without it is Paymob's. */
+  provider?: ProviderName;
+  /** Geidea: the card-on-file agreement a plan checkout creates, or the one a renewal charges under (rules 3906, 3910). */
+  agreementId?: string;
 };
 /** A saved card. The token never leaves this record: no page, API answer or log reads it. */
-export type SavedCard = { token: string; last4: string; brand: string; expMonth: string; expYear: string; savedAt: string; orderId: number };
-type TxnRecord = { ref: string; email: string; acct?: string; kind: IntentKind; amountCents: number; paymentId: string };
+export type SavedCard = {
+  token: string; last4: string; brand: string; expMonth: string; expYear: string; savedAt: string; orderId: number | string;
+  /** Geidea: the agreement the card was saved under; a renewal charges under it (rule 3910). Absent on a Paymob card. */
+  agreementId?: string | null;
+  provider?: ProviderName;
+};
+type TxnRecord = { ref: string; email: string; acct?: string; kind: IntentKind; amountCents: number; paymentId: string; provider?: ProviderName };
 /** The account an intent pays for: its `acct`, or `email` on an intent written before R1. */
 const intentAccount = (i: Pick<PayIntent, "acct" | "email">): string => i.acct ?? i.email;
 /** The billing address the provider was given: `billingEmail`, or `email` on an intent written before R1. */
@@ -123,10 +147,15 @@ export function priceFor(kind: IntentKind, item: { plan?: unknown; credits?: unk
   return { baseHalalas, vatHalalas, amountCents: baseHalalas + vatHalalas };
 }
 
-/** The payment id recorded for a Paymob transaction: the same on every retry, so `recordPayment` records it once. */
-export const paymentIdFor = (txnId: number) => `pay_${createHash("sha256").update(`paymob:${txnId}`).digest("hex").slice(0, 24)}`;
+/**
+ * The payment id recorded for a provider transaction: the same on every retry, so `recordPayment` records it once. A
+ * Paymob id hashes exactly as before (`paymob:{id}`), so its payment ids do not change (rule 3915).
+ */
+export const paymentIdFor = (txnId: TxnId, provider: ProviderName = "paymob") => `pay_${createHash("sha256").update(`${provider}:${txnId}`).digest("hex").slice(0, 24)}`;
 const newRef = () => `pmi_${randomBytes(12).toString("hex")}`;
-const log = (email: string, what: string) => adminAudit({ actor: "paymob", section: "billing", target: email, what });
+const log = (email: string, what: string, actor: ProviderName = "paymob") => adminAudit({ actor, section: "billing", target: email, what });
+/** A Geidea reference leaves the reconciliation set once its checkout settles (rule 3909); a Paymob one was never in it. */
+const unopen = (ref: string) => (refProvider(ref) === "geidea" ? db.zrem(globalKey.payOpen(), ref) : Promise.resolve());
 const keepTxns = (txns: string[] | undefined, id: string) => [...(txns ?? []).filter((t) => t !== id), id].slice(-12);
 
 function billingName(u: Pick<User, "name" | "email">): { firstName: string; lastName: string } {
@@ -135,7 +164,7 @@ function billingName(u: Pick<User, "name" | "email">): { firstName: string; last
   return { firstName: first, lastName: (parts.slice(1).join(" ") || "NA").slice(0, 50) };
 }
 
-export type CheckoutError = "not_enabled" | "bad_request" | "bad_plan" | "bad_pack" | "agency" | "topup_needs_paid_plan" | "need_phone" | "paymob_error" | "not_found";
+export type CheckoutError = "not_enabled" | "bad_request" | "bad_plan" | "bad_pack" | "agency" | "topup_needs_paid_plan" | "need_phone" | "paymob_error" | "provider_error" | "not_found";
 
 /**
  * Start a payment (spec 4.1): the owner's plan month or top-up pack. `owner` is the session's account (the caller checked
@@ -154,36 +183,47 @@ export async function startCheckout(owner: Pick<User, "id" | "email">, body: unk
   // Agency is sold by contract at its own price: no online checkout.
   if (acc.plan === "agency") return { ok: false, error: "agency" };
   if (kind === "topup" && (!topupsSold(acc.plan) || billingLocked(acc.billing))) return { ok: false, error: "topup_needs_paid_plan" };
+  const geidea = p.name === "geidea";
   const phone = normalizePhone(acc.phone ?? "");
-  if (!/^\+\d{8,15}$/.test(phone)) return { ok: false, error: "need_phone" };
+  // Paymob needs a mobile number; Geidea's hosted page asks none for a card payment (spec F4).
+  if (!geidea && !/^\+\d{8,15}$/.test(phone)) return { ok: false, error: "need_phone" };
   const offer = kind === "plan" && !!openOffer(acc);
   // The founding offer (rule 1702): the body only asks; the sale, a free seat and an account that never paid online decide.
   const founding = kind === "plan" && b.founding === true && (await foundingOfferOpen(acc));
   const item = kind === "plan" ? { plan: b.plan } : { credits: b.credits };
   const price = priceFor(kind, item, offer)!;
-  const ref = newRef();
+  const ref = geidea ? randomUUID() : newRef();
+  // A Geidea plan saves the card under our own agreement id, the one every renewal charges under (rule 3906); a pack saves none.
+  const agreementId = geidea && kind === "plan" ? randomUUID() : undefined;
   const intent: PayIntent = {
     ref, email: acct(acc), acct: acct(acc), billingEmail: acc.email, kind, ...(kind === "plan" ? { plan: b.plan as SelfServePlan } : { credits: b.credits as number }),
     ...price, currency: "SAR", offer, ...(founding ? { founding: true } : {}), createdAt: new Date().toISOString(), by: acc.email, status: "open",
+    ...(geidea ? { provider: "geidea" as const, ...(agreementId ? { agreementId } : {}) } : {}),
   };
-  await Promise.all([db.set(intentKey(ref), intent, DAYS_400), db.set(lastCheckoutKey(acct(acc)), ref, LAST_TTL)]);
+  await Promise.all([
+    db.set(intentKey(ref), intent, DAYS_400), db.set(lastKeyOf(p.name, acct(acc)), ref, LAST_TTL),
+    ...(geidea ? [db.zadd(globalKey.payOpen(), Date.now(), ref)] : []),
+  ]);
   const label = kind === "plan" ? `Thakeen ${intent.plan} plan, 1 month` : `Thakeen ${intent.credits} credits top-up`;
   try {
     const it = await p.createCheckout({
       amountCents: price.amountCents,
       item: { name: label, description: `${label}${price.vatHalalas ? " (incl. VAT)" : ""}` },
-      billing: { ...billingName(acc), email: acc.email, phone },
+      billing: { ...billingName(acc), email: acc.email, phone: geidea ? "" : phone },
       reference: ref,
-      notificationUrl: `${appOrigin()}/api/billing/paymob/webhook`,
-      redirectionUrl: `${appOrigin()}${appHrefFor(acc, lang, "/billing?paymob=return")}`,
+      notificationUrl: `${appOrigin()}/api/billing/${p.name}/webhook`,
+      redirectionUrl: `${appOrigin()}${appHrefFor(acc, lang, geidea ? "/billing?pay=return" : "/billing?paymob=return")}`,
       expirationS: 3600,
+      lang,
+      ...(agreementId ? { agreementId } : {}),
     });
-    await Promise.all([db.set(intentKey(ref), { ...intent, orderId: it.orderId }, DAYS_400), db.set(orderKey(it.orderId), ref, DAYS_400)]);
+    // Geidea answers no order before the payment (the order id arrives with the callback); Paymob's order points back here.
+    if (typeof it.orderId === "number") await Promise.all([db.set(intentKey(ref), { ...intent, orderId: it.orderId }, DAYS_400), db.set(orderKey(it.orderId), ref, DAYS_400)]);
     return { ok: true, url: it.url, ref };
   } catch (e) {
-    await db.set(intentKey(ref), { ...intent, status: "failed" }, DAYS_400);
-    logger.error("paymob checkout", { error: e instanceof PaymentError ? e.message : "error" });
-    return { ok: false, error: "paymob_error" };
+    await Promise.all([db.set(intentKey(ref), { ...intent, status: "failed" }, DAYS_400), unopen(ref)]);
+    logger.error(`${p.name} checkout`, { error: e instanceof PaymentError ? e.message : "error" });
+    return { ok: false, error: geidea ? "provider_error" : "paymob_error" };
   }
 }
 
@@ -196,15 +236,15 @@ type Applied = { ok: true; already: boolean; payment?: Payment } | { ok: false; 
  * nothing else, and only for the plan it was priced for (rule 2983). A pack: `addPaidTopup`. Every step is idempotent on
  * the transaction id (`billing.txns`) or the payment id derived from it.
  */
-async function applyPaid(intent: PayIntent, txnId: number, paymentId: string): Promise<Applied> {
+async function applyPaid(intent: PayIntent, txnId: TxnId, paymentId: string, provider: ProviderName = "paymob"): Promise<Applied> {
   const today = ksaDay();
   const baseSar = intent.baseHalalas / 100;
   if (intent.kind === "topup") {
-    const r = await addPaidTopup(intentAccount(intent), { credits: intent.credits!, paidSar: baseSar, paidOn: today, ref: `paymob:${txnId}`, paymentId }, "paymob");
+    const r = await addPaidTopup(intentAccount(intent), { credits: intent.credits!, paidSar: baseSar, paidOn: today, ref: `${provider}:${txnId}`, paymentId }, provider);
     return r.ok ? { ok: true, already: r.already, payment: r.payment ?? undefined } : { ok: false, error: r.error };
   }
   const plan = intent.plan!;
-  const cardRead = await db.get<SavedCard>(cardKey(intentAccount(intent)));
+  const cardRead = await db.get<SavedCard>(cardKeyOf(provider, intentAccount(intent)));
   const id = String(txnId);
   let claim: ClaimOutcome | null = null;
   const step = await withUserLock(intentAccount(intent), async (u): Promise<"already" | "changed" | "same" | "no_billing" | "plan_changed" | "offer_used"> => {
@@ -232,7 +272,7 @@ async function applyPaid(intent: PayIntent, txnId: number, paymentId: string): P
       return "same";
     }
     // The account's first online subscription: the founding seat (when asked) and the price lock (rules 1703-1705).
-    if (!b) claim = await claimOnPayment(u, { founding: !!intent.founding, plan, paidHalalas: intent.amountCents, paymentId, day: today });
+    if (!b) claim = await claimOnPayment(u, { founding: !!intent.founding, plan, paidHalalas: intent.amountCents, paymentId, day: today, by: provider });
     // Rule 2981: the account's first online subscription, or one replacing a plan set by hand, starts a paid period today
     // whatever the plan was: its month's credits and `renewedOn` today. Before, the same plan held by hand (or set by hand
     // with no paid-through day) counted as unchanged, so the payment gave no credits and the next refill waited for the
@@ -251,7 +291,7 @@ async function applyPaid(intent: PayIntent, txnId: number, paymentId: string): P
     // The same plan paid again before its month ran out adds a month to it; anything else starts a month today.
     const extend = !!b && !billingLocked(b) && b.plan === plan && b.paidThrough > today;
     u.billing = {
-      provider: "paymob", plan, status: "active",
+      provider, plan, status: "active",
       paidThrough: extend ? addMonths(b.paidThrough, 1, b.anchor) : addMonths(today, 1), anchor: extend ? b.anchor : Number(today.slice(8, 10)),
       autoRenew: !!card || (b?.autoRenew ?? false), failures: 0, txns: keepTxns(b?.txns, id),
       ...(card ? { card: { brand: card.brand, last4: card.last4 } } : b?.card ? { card: b.card } : {}),
@@ -263,12 +303,12 @@ async function applyPaid(intent: PayIntent, txnId: number, paymentId: string): P
   if (step === "plan_changed") return { ok: false, error: "plan_changed" };
   if (step === "offer_used") return { ok: false, error: "offer_used" };
   const c = claim as ClaimOutcome | null;
-  if (c && (c.seat || c.lock)) await log(intentAccount(intent), `founding txn:${txnId}${c.seat ? ` seat:${c.seat}` : ""}${c.lock ? ` price_lock_months:${c.lock}` : ""}`);
+  if (c && (c.seat || c.lock)) await log(intentAccount(intent), `founding txn:${txnId}${c.seat ? ` seat:${c.seat}` : ""}${c.lock ? ` price_lock_months:${c.lock}` : ""}`, provider);
   // Seats fit the new plan. Also on a plan transaction already applied (multi-workspace M1, 2026-10-19): a first try whose
   // `lock:team` wait ran out (`team_lock_timeout`, answered 503 "busy" by `applyTransaction`) saved the plan and its id,
   // so the retry finds it "already" and fits the seats then. `enforceSeats` is idempotent: a team that fits is not changed.
   if (step === "changed" || (step === "already" && intent.kind === "plan")) await enforceSeats(intentAccount(intent));
-  const rec = await recordPayment(intentAccount(intent), { id: paymentId, amountSar: baseSar, plan, date: today, reference: `paymob:${txnId}` }, "paymob");
+  const rec = await recordPayment(intentAccount(intent), { id: paymentId, amountSar: baseSar, plan, date: today, reference: `${provider}:${txnId}` }, provider);
   if (!rec.ok) return { ok: false, error: rec.error };
   // `already` is the payment record's own: the plan step of a retry after a busy answer is "already", but its payment
   // is recorded (and `paymob_paid` logged) only now, once.
@@ -286,38 +326,60 @@ const ok = (result: string): CallbackResult => ({ status: 200, result });
  * seats and finishes the rest once (`applyPaid`).
  */
 export async function applyTransaction(p: PaymentProvider, t: PaymentTxn): Promise<CallbackResult> {
-  // A refund or void made in Paymob's dashboard, full or partial, arrives here as a child or refunded transaction and
-  // changes nothing on the account (rule 1301): only the founder console's refund ends a plan (`refundPaymobPayment`).
+  // A refund or void made in the provider's dashboard, full or partial, arrives here as a child or refunded transaction and
+  // changes nothing on the account (rules 1301, 3913): only the founder console's refund ends a plan (`refundPaymobPayment`).
+  // Geidea's is logged for the founder, unless it is the callback of our own refund.
+  if (t.isRefunded && p.name === "geidea" && refProvider(t.ref) === "geidea") await noteExternalRefund(p, t);
   if (t.hasParent || t.isRefunded || t.isVoided || t.pending) return ok("ignored");
-  if (!t.ref || !REF.test(t.ref)) return ok("ignored");
+  if (!t.ref || refProvider(t.ref) !== p.name) return ok("ignored");
   if (await db.get(doneKey(t.id))) return ok("already");
   const intent = await db.get<PayIntent>(intentKey(t.ref));
-  if (!intent) return ok("ignored");
+  // Rule 3907: an intent answers only to the provider that wrote it.
+  if (!intent || (intent.provider ?? "paymob") !== p.name) return ok("ignored");
+  const geidea = p.name === "geidea";
+  // Rule 3907: Geidea keeps every attempt of one checkout in one order, so another paid order for an intent already paid
+  // is never applied (the intent keeps its paid status); the founder refunds it.
+  if (geidea && intent.status === "paid" && intent.txnId !== undefined && intent.txnId !== t.id) {
+    if (!t.success) return ok("ignored");
+    await Promise.all([log(intentAccount(intent), `geidea_second_order order:${t.id} ref:${intent.ref}`, p.name), db.set(doneKey(t.id), "mismatch", DAYS_400)]);
+    return ok("mismatch");
+  }
   if (!(await db.lock(txLockKey(t.id), 60))) return { status: 503, result: "busy" };
   try {
     if (await db.get(doneKey(t.id))) return ok("already");
     // Rule 2051: the provider only reports the transaction; our own price and our own intent decide whether it is paid.
     const expected = priceFor(intent.kind, intent, intent.offer, intent.lockedBaseHalalas);
     const mismatch = !expected || expected.amountCents !== intent.amountCents || t.amountCents !== intent.amountCents || t.currency !== "SAR"
-      || (intent.orderId !== undefined && t.orderId !== intent.orderId) || (t.isLive !== null && t.isLive !== p.live);
+      || (intent.orderId !== undefined && t.orderId !== intent.orderId) || (t.isLive !== null && t.isLive !== p.live)
+      // Rule 3907: a Geidea order under another card-on-file agreement than the one this checkout created or charges under.
+      || (geidea && intent.agreementId !== undefined && t.agreementId != null && t.agreementId !== intent.agreementId);
     if (mismatch) {
       await Promise.all([
         db.set(intentKey(intent.ref), { ...intent, status: "mismatch", txnId: t.id }, DAYS_400),
-        log(intentAccount(intent), `paymob_mismatch txn:${t.id} ref:${intent.ref} cents:${t.amountCents} expected:${intent.amountCents} currency:${t.currency}`),
+        log(intentAccount(intent), `${p.name}_mismatch txn:${t.id} ref:${intent.ref} cents:${t.amountCents} expected:${intent.amountCents} currency:${t.currency}`, p.name),
+        unopen(intent.ref),
       ]);
       await db.set(doneKey(t.id), "mismatch", DAYS_400);
       return ok("mismatch");
     }
     if (!t.success) {
+      if (geidea) {
+        // Rule 3911: one Geidea order holds every attempt of its checkout, so a decline marks nothing done: a later attempt
+        // in the same order may still pay it. The intent reads failed until then.
+        if (intent.status === "open") await db.set(intentKey(intent.ref), { ...intent, status: "failed", txnId: t.id }, DAYS_400);
+        return ok("declined");
+      }
       await db.set(intentKey(intent.ref), { ...intent, status: "failed", txnId: t.id }, DAYS_400);
       await db.set(doneKey(t.id), "declined", DAYS_400);
       return ok("declined");
     }
-    const paymentId = paymentIdFor(t.id);
-    await db.set(txnKey(t.id), { ref: intent.ref, email: intentAccount(intent), acct: intentAccount(intent), kind: intent.kind, amountCents: t.amountCents, paymentId } satisfies TxnRecord, DAYS_400);
+    const paymentId = paymentIdFor(t.id, p.name);
+    await db.set(txnKey(t.id), { ref: intent.ref, email: intentAccount(intent), acct: intentAccount(intent), kind: intent.kind, amountCents: t.amountCents, paymentId, ...(geidea ? { provider: p.name } : {}) } satisfies TxnRecord, DAYS_400);
+    // Geidea sends the saved card inside the paid order itself, not in a callback of its own (rule 3906).
+    if (geidea && intent.kind === "plan" && t.card) await storeTxnCard(p, intent, t);
     let applied: Applied;
     try {
-      applied = await applyPaid(intent, t.id, paymentId);
+      applied = await applyPaid(intent, t.id, paymentId, p.name);
     } catch (e) {
       if (isTeamLockTimeout(e)) return { status: 503, result: "busy" };
       throw e;
@@ -325,23 +387,59 @@ export async function applyTransaction(p: PaymentProvider, t: PaymentTxn): Promi
     if (!applied.ok) {
       // Paid but not applicable (a pack for an account no longer on a paid plan, a renewal with no subscription): the
       // founder refunds it from the console. Not retried: retrying cannot change the answer.
-      await log(intentAccount(intent), `paymob_unapplied txn:${t.id} ref:${intent.ref} error:${applied.error}`);
+      await Promise.all([log(intentAccount(intent), `${p.name}_unapplied txn:${t.id} ref:${intent.ref} error:${applied.error}`, p.name), unopen(intent.ref)]);
       await db.set(doneKey(t.id), "unapplied", DAYS_400);
       return ok("unapplied");
     }
     await invoiceForPayment({
       email: intentAccount(intent), paymentId, kind: intent.kind, baseHalalas: intent.baseHalalas, vatHalalas: intent.vatHalalas,
-      totalHalalas: intent.amountCents, currency: "SAR", provider: "paymob", providerRef: String(t.id), day: ksaDay(),
+      totalHalalas: intent.amountCents, currency: "SAR", provider: p.name, providerRef: String(t.id), day: ksaDay(),
     });
     await Promise.all([
       db.set(intentKey(intent.ref), { ...intent, status: "paid", txnId: t.id }, DAYS_400),
-      applied.already ? Promise.resolve() : log(intentAccount(intent), `paymob_paid txn:${t.id} kind:${intent.kind} ${intent.kind === "topup" ? `credits:${intent.credits}` : `plan:${intent.plan}`} sar:${intent.baseHalalas / 100} vat:${intent.vatHalalas / 100} payment:${paymentId}`),
+      applied.already ? Promise.resolve() : log(intentAccount(intent), `${p.name}_paid txn:${t.id} kind:${intent.kind} ${intent.kind === "topup" ? `credits:${intent.credits}` : `plan:${intent.plan}`} sar:${intent.baseHalalas / 100} vat:${intent.vatHalalas / 100} payment:${paymentId}`, p.name),
+      unopen(intent.ref),
     ]);
     await db.set(doneKey(t.id), "paid", DAYS_400);
     return ok("paid");
   } finally {
     await db.unlock(txLockKey(t.id));
   }
+}
+
+/**
+ * Rule 3906: the card a Geidea plan payment saved, read from the paid order (Geidea sends no card callback of its own).
+ * The same guards as `saveCard`, under the account lock: never for an order we refunded, never across an owner change,
+ * and only under the agreement this checkout created, the one a renewal charges under (another would answer 750.005).
+ */
+async function storeTxnCard(p: PaymentProvider, intent: PayIntent, t: PaymentTxn): Promise<void> {
+  const c = t.card;
+  if (!c || !intent.agreementId || (c.agreementId !== null && c.agreementId !== intent.agreementId)) return;
+  const card: SavedCard = {
+    token: c.token, last4: c.last4, brand: c.brand || "card", expMonth: c.expMonth, expYear: c.expYear,
+    savedAt: new Date().toISOString(), orderId: t.id, agreementId: intent.agreementId, provider: p.name,
+  };
+  let refused = false;
+  await withUserLock(intentAccount(intent), async (u) => {
+    if (await db.get(refundedKey(t.id))) return;
+    if (intentOutdatesOwner(u, intent.createdAt)) {
+      refused = true;
+      return;
+    }
+    await db.set(cardKeyOf(p.name, intentAccount(intent)), card);
+  });
+  if (refused) await log(intentAccount(intent), `card_refused reason:owner_changed ref:${intent.ref}`, p.name);
+}
+
+/**
+ * Rule 3913: a refund made in Geidea's own dashboard reaches us as a refunded order and changes nothing on the account
+ * (as Paymob's, rule 1301); it is logged for the founder, who ends the plan from the console if that was meant. Our own
+ * refund's callback (its marker or its lock is there) is not logged.
+ */
+async function noteExternalRefund(p: PaymentProvider, t: PaymentTxn): Promise<void> {
+  const [ours, busy, intent] = await Promise.all([db.get(refundedKey(t.id)), db.get(refundLockKey(t.id)), db.get<PayIntent>(intentKey(t.ref!))]);
+  if (ours || busy || !intent || intent.provider !== p.name) return;
+  await log(intentAccount(intent), `${p.name}_external_refund order:${t.id} ref:${intent.ref}`, p.name);
 }
 
 /**
@@ -388,11 +486,26 @@ async function saveCard(ct: CardTokenEvent | null): Promise<CallbackResult> {
  */
 export async function handlePaymobCallback(body: unknown, hmac: string | null): Promise<CallbackResult> {
   const p = paymentProvider();
-  if (!p) return { status: 404, result: "not_enabled" };
+  if (!p || p.name !== "paymob") return { status: 404, result: "not_enabled" };
   const e = p.parseEvent(body);
   if (!e) return { status: 400, result: "bad_body" };
   if (!p.verifyWebhook(e, hmac)) return { status: 401, result: "bad_hmac" };
   if (e.kind === "card_token") return saveCard(p.parseCardToken(e.obj));
+  const t = p.parseTransaction(e.obj);
+  return t ? applyTransaction(p, t) : ok("ignored");
+}
+
+/**
+ * Geidea's callback after the route's size and rate checks (rules 3903, 3905): the signature inside the body first (it
+ * covers the amount, currency, order, status, our reference and the timestamp), and nothing is used before it matches.
+ * Geidea sends the same callback for the payment and for a refund; the card comes inside the paid order.
+ */
+export async function handleGeideaCallback(body: unknown): Promise<CallbackResult> {
+  const p = paymentProvider();
+  if (!p || p.name !== "geidea") return { status: 404, result: "not_enabled" };
+  const e = p.parseEvent(body);
+  if (!e) return { status: 400, result: "bad_body" };
+  if (!p.verifyWebhook(e, null)) return { status: 401, result: "bad_signature" };
   const t = p.parseTransaction(e.obj);
   return t ? applyTransaction(p, t) : ok("ignored");
 }
@@ -416,30 +529,36 @@ export async function renewPaymob(email: string, now = Date.now()): Promise<stri
       await saveUser(x);
       return true;
     });
-    if (locked) await log(email, `paymob_locked paid_through:${b.paidThrough}`);
-    return locked ? "paymob_locked" : null;
+    if (locked) await log(email, `${p.name}_locked paid_through:${b.paidThrough}`, p.name);
+    return locked ? `${p.name}_locked` : null;
   }
   // A charge still pending from the last two days: its callback decides, nothing is sent twice.
   if (b.pending && b.pending.day >= addDays(today, -2)) {
     const prev = await db.get<PayIntent>(intentKey(b.pending.ref));
-    if (prev?.status === "open") return "paymob_pending";
+    if (prev?.status === "open") return `${p.name}_pending`;
   }
-  if (!(await db.setNx(attemptKey(email, today), 1, 3 * 86400))) return null;
-  const saved = b.autoRenew ? p.savedCard : null;
-  const card = saved ? await db.get<SavedCard>(cardKey(email)) : null;
-  let outcome = card ? "paymob_declined" : "paymob_due";
+  if (!(await db.setNx(attemptKey(p.name, email, today), 1, 3 * 86400))) return null;
+  // Rule 3910: a card is charged only by the provider that saved it. A subscription of the other provider (Paymob's after
+  // the switch to Geidea) goes past due, then grace, then lock, and the owner pays the month from the billing page.
+  const saved = b.autoRenew && b.provider === p.name ? p.savedCard : null;
+  const card = saved ? await db.get<SavedCard>(cardKeyOf(p.name, email)) : null;
+  let outcome = card ? `${p.name}_declined` : `${p.name}_due`;
+  let dropCard = false;
   // Rule 2984: the charge call itself failed with no answer (a timeout, a network error, a 5xx): the card may have been
   // charged. Its `pending` stays, so the two-day guard above waits for the callback instead of charging the card again.
   let keepPending: string | null = null;
   if (card) {
     try {
       const r = await chargeSavedCard(p, saved!, u, b, card, today);
-      if (r === "paid") return "paymob_renewed";
-      if (r === "pending") return "paymob_pending";
+      if (r === "paid") return `${p.name}_renewed`;
+      if (r === "pending") return `${p.name}_pending`;
     } catch (e) {
-      outcome = "paymob_error";
+      // Rule 3911: refused before anything was charged (Geidea 750.005, 750.006 or another code): a definite decline. An
+      // agreement Geidea no longer knows can never be charged again, so its card goes and renewal turns off.
+      if (e instanceof PaymentDeclined) dropCard = e.reason === "agreement_mismatch";
+      else outcome = `${p.name}_error`;
       if (e instanceof ChargeUnanswered) keepPending = e.ref;
-      logger.error("paymob renewal", { error: e instanceof PaymentError ? e.message : "error" });
+      logger.error(`${p.name} renewal`, { error: e instanceof PaymentError ? e.message : "error" });
     }
   }
   await withUserLock(email, async (x) => {
@@ -448,6 +567,11 @@ export async function renewPaymob(email: string, now = Date.now()): Promise<stri
     x.billing = { ...xb, status: "past_due", failures: xb.failures + 1, graceUntil: xb.graceUntil ?? addDays(xb.paidThrough, GRACE_DAYS) };
     // A definite decline (or nothing charged) clears it; a charge with no answer keeps its own (rule 2984).
     if (!keepPending || xb.pending?.ref !== keepPending) delete x.billing.pending;
+    if (dropCard) {
+      await db.del(cardKeyOf(p.name, email));
+      x.billing.autoRenew = false;
+      delete x.billing.card;
+    }
     await saveUser(x);
   });
   return outcome;
@@ -468,30 +592,37 @@ async function chargeSavedCard(p: PaymentProvider, saved: NonNullable<PaymentPro
   // The period being paid starts at `paidThrough`: a lock that covers it prices the renewal (rule 1706).
   const locked = lockedBaseHalalas(u, b.plan, b.paidThrough);
   const price = priceFor("renewal", { plan: b.plan }, false, locked ?? undefined)!;
-  const ref = newRef();
-  const intent: PayIntent = { ref, email: acct(u), acct: acct(u), billingEmail: u.email, kind: "renewal", plan: b.plan, ...price, currency: "SAR", offer: false, ...(locked !== null ? { lockedBaseHalalas: locked } : {}), createdAt: new Date().toISOString(), by: "cron", status: "open" };
-  await db.set(intentKey(ref), intent, DAYS_400);
+  const geidea = p.name === "geidea";
+  const ref = geidea ? randomUUID() : newRef();
+  const intent: PayIntent = {
+    ref, email: acct(u), acct: acct(u), billingEmail: u.email, kind: "renewal", plan: b.plan, ...price, currency: "SAR", offer: false, ...(locked !== null ? { lockedBaseHalalas: locked } : {}), createdAt: new Date().toISOString(), by: "cron", status: "open",
+    ...(geidea ? { provider: "geidea" as const, ...(card.agreementId ? { agreementId: card.agreementId } : {}) } : {}),
+  };
+  await Promise.all([db.set(intentKey(ref), intent, DAYS_400), ...(geidea ? [db.zadd(globalKey.payOpen(), Date.now(), ref)] : [])]);
   let paymentKey: string | null = null;
-  let orderId = 0;
+  // Paymob's order id, known before the charge; null at Geidea, whose order arrives with the answer.
+  let orderId: number | string | null = null;
+  const withOrder = () => (orderId !== null ? { orderId } : {});
   try {
     const it = await saved.prepare({
       amountCents: price.amountCents,
       item: { name: `Thakeen ${b.plan} plan, 1 month`, description: `Thakeen ${b.plan} plan renewal${price.vatHalalas ? " (incl. VAT)" : ""}` },
       billing: { ...billingName(u), email: u.email, phone: normalizePhone(u.phone ?? "") || "NA" },
       reference: ref,
-      notificationUrl: `${appOrigin()}/api/billing/paymob/webhook`,
+      notificationUrl: `${appOrigin()}/api/billing/${p.name}/webhook`,
       redirectionUrl: `${appOrigin()}${appHrefFor(u, u.lang, "/billing")}`,
       expirationS: 3600,
-    });
+      lang: u.lang === "en" ? "en" : "ar",
+    }, { token: card.token, agreementId: card.agreementId ?? null });
     paymentKey = it.paymentKey;
     orderId = it.orderId;
-    await Promise.all([db.set(intentKey(ref), { ...intent, orderId }, DAYS_400), db.set(orderKey(orderId), ref, DAYS_400)]);
+    if (typeof orderId === "number") await Promise.all([db.set(intentKey(ref), { ...intent, orderId }, DAYS_400), db.set(orderKey(orderId), ref, DAYS_400)]);
   } catch (e) {
-    await db.set(intentKey(ref), { ...intent, status: "failed" }, DAYS_400);
+    await Promise.all([db.set(intentKey(ref), { ...intent, status: "failed" }, DAYS_400), unopen(ref)]);
     throw e;
   }
   if (!paymentKey) {
-    await db.set(intentKey(ref), { ...intent, orderId, status: "failed" }, DAYS_400);
+    await Promise.all([db.set(intentKey(ref), { ...intent, ...withOrder(), status: "failed" }, DAYS_400), unopen(ref)]);
     throw new PaymentError(p.name, "no_payment_key");
   }
   // Rule 1956: the card is charged only if, under the account lock, the account still exists, renewal is still on and
@@ -499,26 +630,33 @@ async function chargeSavedCard(p: PaymentProvider, saved: NonNullable<PaymentPro
   // the card under the same lock, so a renewal that read the card before the deletion stops here instead of charging
   // it. A deleted account throws `user_not_found` out of the lock, which the daily job records and never retries.
   const still = await withUserLock(acct(u), async (x) => {
-    if (!x.billing || !x.billing.autoRenew || !(await db.get(cardKey(acct(u))))) return false;
+    if (!x.billing || !x.billing.autoRenew || !(await db.get(cardKeyOf(p.name, acct(u))))) return false;
     x.billing = { ...x.billing, pending: { ref, day: today } };
     await saveUser(x);
     return true;
   });
   if (!still) {
-    await db.set(intentKey(ref), { ...intent, orderId, status: "failed" }, DAYS_400);
+    await Promise.all([db.set(intentKey(ref), { ...intent, ...withOrder(), status: "failed" }, DAYS_400), unopen(ref)]);
     throw new PaymentError(p.name, "renewal_off");
   }
   let txn: PaymentTxn | null;
   try {
-    txn = await saved.charge(paymentKey, card.token);
+    txn = await saved.charge(paymentKey, card.token, card.agreementId ?? null);
   } catch (cause) {
+    // Rule 3911: refused before anything was charged (Geidea 750.005, 750.006 or another code): the intent fails and
+    // `renewPaymob` counts a decline, not a charge with no answer.
+    if (cause instanceof PaymentDeclined) {
+      await Promise.all([db.set(intentKey(ref), { ...intent, status: "failed" }, DAYS_400), unopen(ref)]);
+      throw cause;
+    }
     // Rule 2984: sent, and no answer. The intent stays open and `pending` stays on the subscription (written above), so
     // its callback still applies it and no later run charges the period again inside the two-day guard.
     throw new ChargeUnanswered(p.name, ref, cause);
   }
   if (!txn || txn.pending) return "pending";
   // Our own call's answer over TLS: the reference is ours even when the answer does not echo it, but the order must match.
-  if (txn.orderId !== null && txn.orderId !== orderId) return "pending";
+  // At Geidea no order is known before the charge: the answer's own reference, when it gives one, must be ours.
+  if (orderId === null ? !!txn.ref && txn.ref !== ref : txn.orderId !== null && txn.orderId !== orderId) return "pending";
   let r: CallbackResult;
   try {
     r = await applyTransaction(p, { ...txn, ref: txn.ref ?? ref });
@@ -539,12 +677,12 @@ async function chargeSavedCard(p: PaymentProvider, saved: NonNullable<PaymentPro
  */
 export async function stopRenewals(email: string, opts: { userLocked?: boolean } = {}): Promise<void> {
   if (opts.userLocked) {
-    await db.del(cardKey(email));
+    await delCards(email);
     return;
   }
   try {
     await withUserLock(email, async (x) => {
-      await db.del(cardKey(email));
+      await delCards(email);
       if (x.billing?.autoRenew) {
         x.billing = { ...x.billing, autoRenew: false };
         await saveUser(x);
@@ -552,7 +690,7 @@ export async function stopRenewals(email: string, opts: { userLocked?: boolean }
     });
   } catch (e) {
     if (!(e instanceof Error && e.message === "user_not_found")) throw e;
-    await db.del(cardKey(email));
+    await delCards(email);
   }
 }
 
@@ -568,12 +706,63 @@ export const checkoutState = (status: PayIntent["status"] | undefined): Checkout
  * state and what it was for, never the amount's internals, the order or the transaction. The ref comes from the
  * account's own pointer, and an intent that names another account answers "none".
  */
-export async function lastCheckout(email: string): Promise<{ state: CheckoutState; kind?: IntentKind; plan?: SelfServePlan; credits?: number }> {
-  const ref = await db.get<string>(lastCheckoutKey(email));
-  if (typeof ref !== "string" || !REF.test(ref)) return { state: "none" };
-  const intent = await db.get<PayIntent>(intentKey(ref));
+export async function lastCheckout(email: string, now = Date.now()): Promise<{ state: CheckoutState; kind?: IntentKind; plan?: SelfServePlan; credits?: number }> {
+  const p = paymentProvider();
+  const ref = await db.get<string>(lastKeyOf(p?.name ?? "paymob", email));
+  if (typeof ref !== "string" || refProvider(ref) !== (p?.name ?? "paymob")) return { state: "none" };
+  let intent = await db.get<PayIntent>(intentKey(ref));
   if (!intent || intentAccount(intent) !== email) return { state: "none" };
+  // Rule 3909: Geidea's callback has no published retry, so the return page asks Geidea itself about a checkout still
+  // open (or declined: a later attempt in the same order may have paid), a minute to two days old, once per 20 s.
+  if (p?.name === "geidea" && (intent.status === "open" || intent.status === "failed") && reconcileDue(intent, now) && (await allow("geidearecon:" + email, 1, 20))) {
+    intent = await reconcileIntent(p, intent);
+  }
   return { state: checkoutState(intent.status), kind: intent.kind, ...(intent.plan ? { plan: intent.plan } : {}), ...(intent.credits ? { credits: intent.credits } : {}) };
+}
+
+const RECONCILE_MIN_MS = 60_000;
+const RECONCILE_MAX_MS = 48 * 3600_000;
+const reconcileDue = (intent: PayIntent, now: number) => {
+  const age = now - Date.parse(intent.createdAt);
+  return age >= RECONCILE_MIN_MS && age <= RECONCILE_MAX_MS;
+};
+
+/**
+ * Rule 3909: what Geidea holds under our reference, applied through `applyTransaction` exactly like a verified callback:
+ * our own call over TLS to Geidea's fixed host, and the order's reference must be ours. Answers the intent as it is now.
+ * A failure is logged and changes nothing: the next look tries again.
+ */
+async function reconcileIntent(p: PaymentProvider, intent: PayIntent): Promise<PayIntent> {
+  if (!p.fetchByReference) return intent;
+  try {
+    const t = await p.fetchByReference(intent.ref);
+    if (!t || (t.ref && t.ref !== intent.ref)) return intent;
+    await applyTransaction(p, { ...t, ref: intent.ref });
+  } catch (e) {
+    logger.error("geidea reconcile", e);
+    return intent;
+  }
+  return (await db.get<PayIntent>(intentKey(intent.ref))) ?? intent;
+}
+
+/**
+ * Rule 3909: the daily job's sweep of Geidea checkouts left open (a callback that never came): up to 50 references at
+ * least 20 minutes old, five at a time, each asked of Geidea and applied as a callback would be. References older than
+ * two days, and ones already settled, leave the set. Nothing while Geidea is not the chosen provider.
+ */
+export async function reconcileOpenCheckouts(now = Date.now()): Promise<{ checked: number; dropped: number }> {
+  const p = paymentProvider();
+  if (!p || p.name !== "geidea" || !p.fetchByReference) return { checked: 0, dropped: 0 };
+  const rows = await db.zrangeByScore(globalKey.payOpen(), now - 20 * 60_000, 100);
+  const stale = rows.filter((r) => r.score < now - RECONCILE_MAX_MS || !GREF.test(r.member));
+  const due = rows.filter((r) => !stale.includes(r)).slice(0, 50);
+  await Promise.all(stale.map((r) => db.zrem(globalKey.payOpen(), r.member)));
+  const intents = await Promise.all(due.map((r) => db.get<PayIntent>(intentKey(r.member))));
+  const settled = due.filter((_, i) => !intents[i] || intents[i]!.status === "paid" || intents[i]!.status === "mismatch");
+  await Promise.all(settled.map((r) => db.zrem(globalKey.payOpen(), r.member)));
+  const open = intents.filter((it): it is PayIntent => !!it && (it.status === "open" || it.status === "failed"));
+  await pmap(open, (it) => reconcileIntent(p, it), 5);
+  return { checked: open.length, dropped: stale.length + settled.length };
 }
 
 /** One row of the owner's payment history: the recorded payment's day, what it bought, the amount before VAT and its state. */
@@ -597,15 +786,17 @@ export async function paymentHistory(email: string): Promise<PaymentRow[]> {
 export type BillingView = { plan: string; status: Billing["status"]; paidThrough: string; graceUntil: string | null; autoRenew: boolean; card: { brand: string; last4: string } | null };
 /** What a page may show of the subscription: never the token. */
 export const billingView = (b: Billing | undefined): BillingView | null =>
-  b?.provider === "paymob" ? { plan: b.plan, status: b.status, paidThrough: b.paidThrough, graceUntil: b.graceUntil ?? null, autoRenew: b.autoRenew, card: b.card ?? null } : null;
+  b && (b.provider === "paymob" || b.provider === "geidea") ? { plan: b.plan, status: b.status, paidThrough: b.paidThrough, graceUntil: b.graceUntil ?? null, autoRenew: b.autoRenew, card: b.card ?? null } : null;
 
 /** The owner's renewal settings (spec 4.3). `email` is the session's account. */
 export async function setRenewal(email: string, action: unknown): Promise<{ ok: true; billing: BillingView | null } | { ok: false; error: "bad_action" | "no_billing" | "no_card" }> {
   if (action !== "cancel" && action !== "resume" && action !== "remove_card") return { ok: false, error: "bad_action" };
-  const card = action === "resume" ? await db.get<SavedCard>(cardKey(email)) : null;
-  if (action === "remove_card") await db.del(cardKey(email));
+  // Both providers' cards are read in one round trip; the subscription's own provider picks which one counts (rule 3914).
+  const cards = action === "resume" ? await Promise.all([db.get<SavedCard>(cardKey(email)), db.get<SavedCard>(accountKey.payCard(email))]) : null;
+  if (action === "remove_card") await delCards(email);
   return withUserLock(email, async (u) => {
     if (!u.billing) return action === "remove_card" ? { ok: true as const, billing: null } : { ok: false as const, error: "no_billing" as const };
+    const card = cards ? cards[u.billing.provider === "geidea" ? 1 : 0] : null;
     if (action === "resume" && !card) return { ok: false as const, error: "no_card" as const };
     const next: Billing = { ...u.billing, autoRenew: action === "resume" };
     if (action === "remove_card") delete next.card;
@@ -628,8 +819,11 @@ export async function refundPaymobPayment(email: string, id: unknown, by: string
   if (typeof id !== "string" || !/^pay_[a-f0-9]{8,32}$/.test(id)) return { ok: false, error: "not_found" };
   const p = (await db.hgetall<Payment>(paymentsKey(e)))[id];
   if (!p) return { ok: false, error: "not_found" };
+  // `paymob:{number}` or `geidea:{order uuid}` (rule 3912); only the chosen provider can refund its own payment.
   const m = /^paymob:(\d{1,15})$/.exec(p.reference ?? "");
-  const txnId = m ? Number(m[1]) : 0;
+  const g = /^geidea:([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/.exec(p.reference ?? "");
+  const txnId: TxnId = m ? Number(m[1]) : g && pp.name === "geidea" ? g[1] : 0;
+  if (m && pp.name !== "paymob") return { ok: false, error: "not_paymob" };
   const rec = txnId ? await db.get<TxnRecord>(txnKey(txnId)) : null;
   if (!rec || (rec.acct ?? rec.email) !== e || rec.paymentId !== id) return { ok: false, error: "not_paymob" };
   let alreadyRefunded = !!(await db.get(refundedKey(txnId)));
@@ -641,7 +835,7 @@ export async function refundPaymobPayment(email: string, id: unknown, by: string
         try {
           await pp.refund(txnId, rec.amountCents);
         } catch (err) {
-          logger.error("paymob refund", { error: err instanceof PaymentError ? err.message : "error" });
+          logger.error(`${pp.name} refund`, { error: err instanceof PaymentError ? err.message : "error" });
           return { ok: false, error: "paymob_refund_failed" };
         }
         await db.set(refundedKey(txnId), JSON.stringify({ at: new Date().toISOString(), by }), DAYS_400);
@@ -650,7 +844,7 @@ export async function refundPaymobPayment(email: string, id: unknown, by: string
       await db.unlock(refundLockKey(txnId));
     }
   }
-  const why = typeof reason === "string" && reason.trim() ? reason : "paymob refund";
+  const why = typeof reason === "string" && reason.trim() ? reason : `${pp.name} refund`;
   if (p.topup || rec.kind === "topup") {
     const r = p.topup ? await voidPaidTopup(e, p.topup.lot, by, why) : null;
     if (r?.ok) return { ok: true, payment: r.payment ?? p, alreadyRefunded, planEnded: false };
@@ -712,7 +906,7 @@ export async function refundPaymobPayment(email: string, id: unknown, by: string
  * lands in that window still lets that one renewal charge, the existing rule 1956 design. `saveCard` checks the refund
  * and writes the card under this same lock (rule 2280). A pack's refund never reaches here: the plan and its card stay.
  */
-async function endPlanOnRefund(email: string, paymentId: string, by: string, txnId: number): Promise<boolean> {
+async function endPlanOnRefund(email: string, paymentId: string, by: string, txnId: TxnId): Promise<boolean> {
   const now = new Date();
   const change = await withUserLock(email, async (u) => {
     // A marker (either value) means a run of this refund already finished, card delete included: keep today's card.
@@ -720,7 +914,7 @@ async function endPlanOnRefund(email: string, paymentId: string, by: string, txn
     if (mark === "none") return "nothing_before" as const;
     if (mark) return "ended_before" as const;
     // Rule 2270: the card goes before any marker is written (see above), so no marker exists without its delete.
-    await db.del(cardKey(email));
+    await Promise.all([db.del(cardKey(email)), db.del(accountKey.payCard(email))]);
     // Already an ended trial with no subscription (a retry, or a second refund in one period). Not a hand-set plan whose
     // paid-through day passed: it reads as `trialOver` too (rule 2273), and its refund still ends it.
     if (!u.billing && trialOver(u) && !handPlanEnded(u, ksaDay())) {

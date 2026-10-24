@@ -1799,6 +1799,28 @@ The founder console's Users section opens on one row per workspace, not one row 
 5. Roles. Every role name is drawn by `roleLabel`, which shows a role it does not know (the customer-roles phase adds `editor` and `viewer`) as the stored word.
 6. Release step: expand only. One new key `admin:wsagg` (a JSON value with an hour's expiry), written by the list; old code never reads it. Rollback leaves it to expire. No environment variable. Past about 500 accounts, replace the on-demand rebuild with a daily cron that writes the same key.
 
+
+## 109. Card payments through Geidea KSA (2026-10-24, branch `claude/sup-geidea`, rules 3900-3918; spec `docs/superpowers/specs/2026-10-18-geidea-payment-provider-design.md`)
+
+Geidea replaces Paymob (section 47) behind the same provider seam (section 85). Off until `GEIDEA_PUBLIC_KEY` and `GEIDEA_API_PASSWORD` are set; Paymob stays readable and off.
+
+1. Checkout. The owner presses a plan or a pack. `startCheckout` stores `pay:intent:{ref}` (a UUID v4 reference, our price, a new agreement id for a plan), adds the ref to `pay:open`, then asks Geidea for a session (signed, no phone, wallets hidden) and sends the owner to Geidea's hosted page built from the session id alone.
+2. Callback. Geidea posts the order to `POST /api/billing/geidea/webhook` (permissions row 151b). The signature inside the body is checked first; the account and amount come from our intent. A paid order applies the plan or pack once and, for a plan, saves the card (token and agreement) in `pay:card:{account}`. A declined attempt leaves the checkout failed but open to a later paid attempt of the same order.
+3. Return page. `/billing?pay=return` asks `GET /api/billing/status`; for a checkout a minute to two days old that is still open or failed, it asks Geidea itself (at most once per 20 s).
+4. Daily job. The first hop of `/api/cron/daily` runs `reconcileOpenCheckouts`: refs in `pay:open` aged 20 minutes to two days are asked of Geidea and applied like a callback; older or settled ones leave the set. Then the renewal step charges a due month by saved card only with `GEIDEA_MIT=1` (a Merchant session, then `pay/token`); without it, and for a Paymob subscription, the month goes past due, then grace, then lock, and the owner pays from the billing page.
+5. Refunds. The founder's console refund (permissions row 130) refunds the whole order at Geidea, ends the plan and deletes the card. A refund made in Geidea's dashboard is only logged (`geidea_external_refund`).
+6. Release step: expand. New `pay:*` keys only; Paymob's keys, payment ids and log lines unchanged. Rollback: unset the two variables; open `pay:*` records expire or are ignored.
+7. Founder decisions, 2026-10-24 (spec section 10), all as built:
+   - Renewals by our own MIT (F1).
+   - Cards only at launch (F3).
+   - Name and email sent, no phone (F4).
+   - No partial refund for now (F5).
+   - A dashboard refund is only logged (F6).
+   - A second paid order is refunded by hand.
+   - An old Paymob subscription goes past due, then grace, then lock.
+   - Reconciliation runs in the daily job and on the return page.
+8. Privacy. The privacy policy (version 2026-10-24) and the help's processors answer name Geidea for card payments, with Paymob only if switched on instead (rule 3918).
+
 ## 120. Customer roles: Viewer, Editor, brand scope, approval and per-member cap (2026-10-23, branch `claude/m3-customer-roles-b97625`, rules 3750-3789)
 
 Phase م3 of the customer team. Permissions in `permissions.md` 0.1a and rows 7e and 7r; tests in `docs/system/tests/3750-customer-roles.md`. Rules 3765-3769 and 3775-3789 are reserved and unused.

@@ -237,7 +237,7 @@ const helpAnswer = (en: string) => {
   return item.a;
 };
 /** The services the code calls (docs/system/variables.md), as the privacy text names them. */
-const PROCESSORS = ["Hostinger", "Upstash", "Anthropic", "Straitly", "fal.ai", "kie.ai", "Higgsfield", "Vercel Blob", "Resend", "Composio", "Cloudflare Turnstile", "Paymob"];
+const PROCESSORS = ["Hostinger", "Upstash", "Anthropic", "Straitly", "fal.ai", "kie.ai", "Higgsfield", "Vercel Blob", "Resend", "Composio", "Cloudflare Turnstile", "Geidea", "Paymob"];
 
 describe("rule 1327: the privacy text names the processors the code uses, in both languages", () => {
   it("every processor, Straitly as off by default, and Vercel only as the media storage", () => {
@@ -253,7 +253,7 @@ describe("rule 1327: the privacy text names the processors the code uses, in bot
 
   it("the code still wires each named service (an env name in docs/system/variables.md)", () => {
     const vars = readFileSync("docs/system/variables.md", "utf8");
-    for (const env of ["KV_REST_API_URL", "ANTHROPIC_API_KEY", "STRAITLY_API_KEY", "FAL_KEY", "KIE_API_KEY", "HIGGSFIELD_API_KEY_ID", "BLOB_READ_WRITE_TOKEN", "RESEND_API_KEY", "COMPOSIO_API_KEY", "TURNSTILE_SECRET_KEY", "PAYMOB_SECRET_KEY"]) expect(vars, env).toContain(`\`${env}\``);
+    for (const env of ["KV_REST_API_URL", "ANTHROPIC_API_KEY", "STRAITLY_API_KEY", "FAL_KEY", "KIE_API_KEY", "HIGGSFIELD_API_KEY_ID", "BLOB_READ_WRITE_TOKEN", "RESEND_API_KEY", "COMPOSIO_API_KEY", "TURNSTILE_SECRET_KEY", "GEIDEA_API_PASSWORD", "PAYMOB_SECRET_KEY"]) expect(vars, env).toContain(`\`${env}\``);
     expect(readFileSync("docs/system/architecture.md", "utf8")).toContain("deployed on Hostinger");
   });
 });

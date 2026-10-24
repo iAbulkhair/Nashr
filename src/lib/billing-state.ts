@@ -8,7 +8,8 @@ import type { SelfServePlan } from "./pricing";
  */
 export type BillingStatus = "active" | "past_due" | "locked";
 export type Billing = {
-  provider: "paymob";
+  /** Who charges it: Paymob, or Geidea (rule 3900; expand: older builds read a Geidea subscription as no online subscription). */
+  provider: "paymob" | "geidea";
   plan: SelfServePlan;
   status: BillingStatus;
   /** Riyadh day (YYYY-MM-DD) the paid month runs to. The renewal is due on that day. */
@@ -33,7 +34,7 @@ export type Billing = {
 export const GRACE_DAYS = 7;
 
 /** A locked subscription spends nothing, exactly like an ended trial (`trialOver` in src/lib/auth.ts). */
-export const billingLocked = (b: Billing | null | undefined): boolean => !!b && b.provider === "paymob" && b.status === "locked";
+export const billingLocked = (b: Billing | null | undefined): boolean => !!b && (b.provider === "paymob" || b.provider === "geidea") && b.status === "locked";
 
 /**
  * A checkout started before the account last changed owner (`ownerSince`, set by the M3 ownership transfer) carries the
@@ -71,4 +72,4 @@ export function addMonths(day: string, n: number, anchor?: number): string {
 
 /** The renewal is due: an active or past-due Paymob subscription whose paid month ends today or earlier (Riyadh days). */
 export const paymobRenewalDue = (b: Billing | null | undefined, today: string): b is Billing =>
-  !!b && b.provider === "paymob" && (b.status === "active" || b.status === "past_due") && b.paidThrough <= today;
+  !!b && (b.provider === "paymob" || b.provider === "geidea") && (b.status === "active" || b.status === "past_due") && b.paidThrough <= today;
