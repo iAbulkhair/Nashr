@@ -3,6 +3,7 @@ import { CAPS } from "./db";
 import { pmap } from "./parallel";
 import { listBrands, scopeFor } from "./brands";
 import { listDecisions, type Decision } from "./decisions";
+import { brandAllowed } from "./membership";
 
 /**
  * Who approved what, per person on the team (rules 1479, 1480): from the decision records (`decisions:{scope}`, each with
@@ -38,10 +39,11 @@ export function approverStats(ds: Decision[], owner: string, now: number): Recor
 /**
  * The owner's team, across every brand of the account: one read per brand, in parallel. The account comes from the owner
  * record (`acct`, rule 1980), never a request's; the owner's own records are keyed by its sign-in address for the page.
+ * An admin narrowed to some brands counts only those brands' records (rule 3773).
  */
-export async function teamApprovals(owner: { id?: string; email: string }, now: number = Date.now()): Promise<Record<string, ApproverStat>> {
+export async function teamApprovals(owner: { id?: string; email: string; actor?: { brands?: readonly string[] } }, now: number = Date.now()): Promise<Record<string, ApproverStat>> {
   const id = acct(owner);
-  const brands = await listBrands(id);
+  const brands = (await listBrands(id)).filter((b) => brandAllowed(owner, b.id));
   const lists = await pmap(brands, (b) => listDecisions(scopeFor(id, b.id), CAPS.decisions));
   return approverStats(lists.flat(), owner.email, now);
 }

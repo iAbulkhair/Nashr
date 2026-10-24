@@ -3,7 +3,7 @@ import { notFound, redirect } from "next/navigation";
 import { isLang } from "@/lib/i18n";
 import { appDict } from "@/lib/app-i18n";
 import { currentUser } from "@/lib/auth";
-import { listNotifs } from "@/lib/notifications";
+import { listNotifs, visibleNotifs } from "@/lib/notifications";
 import NotificationsPanel from "@/components/app/NotificationsPanel";
 import { acct } from "@/lib/account-id";
 
@@ -16,5 +16,5 @@ export default async function Page({ params }: { params: Promise<{ lang: string 
   if (!isLang(lang)) notFound();
   const u = await currentUser();
   if (!u) redirect(`/${lang}/app/login`);
-  return <NotificationsPanel t={appDict[lang]} lang={lang} initial={await listNotifs(acct(u))} />;
+  return <NotificationsPanel t={appDict[lang]} lang={lang} initial={await listNotifs(acct(u)).then((all) => visibleNotifs(all, u))} />;
 }
