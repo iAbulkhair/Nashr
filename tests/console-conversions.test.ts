@@ -24,8 +24,9 @@ import * as route from "@/app/api/admin/conversions/[name]/route";
  * and an answer of counts only.
  */
 
-// Records as a build from before R1 left them (address-keyed persons), as tests/account-id-r1.test.ts builds them.
-const newUser = (prefix?: string) => helperNewUser(prefix, { legacy: true });
+// Records as a build from before R1 left them (address-keyed persons), as tests/account-id-r1.test.ts builds them. With
+// `OPAQUE_IDS` on the owner keeps its address as its account id (`addressId`), as every account production holds (rule 3810).
+const newUser = (prefix?: string) => helperNewUser(prefix, { legacy: true, addressId: true });
 const newMember = (owner: Parameters<typeof helperNewMember>[0]) => helperNewMember(owner, undefined, undefined, { legacy: true });
 
 const KEY = "console-conversions-admin-key-0123456789";
