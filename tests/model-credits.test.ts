@@ -229,11 +229,11 @@ describe("chatTurnMaxUsd and the overflow hold scale with the chat tier (rules 3
     expect(eco.chatTurnMaxUsd(ECONOMY.id)).toBeCloseTo(0.084, 12);
   });
 
-  it("the hold: 2 credits at x1 (today's chatOverflowHold), 4 on Opus 5.5, 2 on an economy model", async () => {
-    expect(chatOverflowHold()).toBe(2);
-    expect([SONNET55, SONNET, OPUS].map(chatHoldFor)).toEqual([2, 2, 4]);
-    expect(chatOverflowHold(maxCostPerCreditUsd(), 0.28)).toBe(4);
-    for (const id of NOT_IDS) expect(chatHoldFor(id as string), String(id)).toBe(2);
+  it("the hold: 3 credits at x1 (today's chatOverflowHold), 5 on Opus 5.5, 2 on an economy model (2 and 4 before yearly billing, rule 4033)", async () => {
+    expect(chatOverflowHold()).toBe(3);
+    expect([SONNET55, SONNET, OPUS].map(chatHoldFor)).toEqual([3, 3, 5]);
+    expect(chatOverflowHold(maxCostPerCreditUsd(), 0.28)).toBe(5);
+    for (const id of NOT_IDS) expect(chatHoldFor(id as string), String(id)).toBe(3);
     const eco = await withEconomy();
     expect(eco.chatHoldFor(ECONOMY.id)).toBe(2);
   });
@@ -314,7 +314,7 @@ describe("the chat allowance per tier: a message counts chatUnitsFor(model), com
     const s = await settleChatTurn(u, g, null);
     expect(await msgs(u)).toBe(0);
     expect(s).toMatchObject({ charged: 0, status: { used: 0, left: 250, counted: 0 } });
-    expect((await chatStatus(u, SONNET55)).overflow.hold).toBe(2);
+    expect((await chatStatus(u, SONNET55)).overflow.hold).toBe(3);
     expect(await reserved(u, SONNET)).toMatchObject({ mode: "included", units: 1 });
   });
 
@@ -362,14 +362,14 @@ describe("the chat allowance per tier: a message counts chatUnitsFor(model), com
     expect(await msgs(off)).toBe(0);
   });
 
-  it("past the allowance the overflow scales the same way: Opus needs a hold of 4, counts 2 on chat_over, gives back 2", async () => {
+  it("past the allowance the overflow scales the same way: Opus needs a hold of 5, counts 2 on chat_over, gives back 2", async () => {
     const u = await owner({ credits: 3 });
     await db.set(chatMsgKey(u.email), 250);
-    expect(await reserveChatTurn(u, OPUS)).toMatchObject({ ok: false, error: "chat_credits", need: 4, credits: 3 });
+    expect(await reserveChatTurn(u, OPUS)).toMatchObject({ ok: false, error: "chat_credits", need: 5, credits: 3 });
     expect([await msgs(u), await over(u)]).toEqual([250, 0]);
-    // 3 credits cover a Sonnet message's hold of 2.
+    // 3 credits cover a Sonnet message's hold of 3.
     const s = await reserved(u, SONNET55);
-    expect(s).toMatchObject({ mode: "overflow", units: 1, hold: 2 });
+    expect(s).toMatchObject({ mode: "overflow", units: 1, hold: 3 });
     expect(await over(u)).toBe(1);
     await settleChatTurn(u, s, null);
     expect(await over(u)).toBe(0);
@@ -377,20 +377,20 @@ describe("the chat allowance per tier: a message counts chatUnitsFor(model), com
     const v = await owner({ credits: 10 });
     await db.set(chatMsgKey(v.email), 249); // one left: Opus counts 2, so the whole message goes on credits
     const g = await reserved(v, OPUS);
-    expect(g).toMatchObject({ mode: "overflow", units: 2, hold: 4, status: { used: 249, overflow: { used: 2, hold: 4 } } });
+    expect(g).toMatchObject({ mode: "overflow", units: 2, hold: 5, status: { used: 249, overflow: { used: 2, hold: 5 } } });
     expect([await msgs(v), await over(v)]).toEqual([249, 2]);
     expect(await settleChatTurn(v, g, null)).toMatchObject({ charged: 0, status: { overflow: { used: 0 } } });
     expect([await msgs(v), await over(v), (await getUser(v.email))!.credits]).toEqual([249, 0, 10]);
-    // Answered at its $0.28 ceiling: billed 3 credits at the floor rate (the rest carried), at most the hold of 4.
+    // Answered at its $0.28 ceiling: billed 4 credits at the floor rate (the rest carried), at most the hold of 5.
     const a = await reserved(v, OPUS);
     const r = await settleChatTurn(v, a, chatTurnMaxUsd(OPUS));
     expect(r.charged).toBe(Math.floor(Math.round(chatTurnMaxUsd(OPUS) * 1e6) / Math.round(maxCostPerCreditUsd() * 1e6)));
-    expect(r.charged).toBe(3);
-    expect([await over(v), await db.get<number>(chatCredKey(v.email)), (await getUser(v.email))!.credits]).toEqual([2, 3, 7]);
+    expect(r.charged).toBe(4);
+    expect([await over(v), await db.get<number>(chatCredKey(v.email)), (await getUser(v.email))!.credits]).toEqual([2, 4, 6]);
     // A metered cost past the ceiling is still billed at most the hold.
     const b = await reserved(v, OPUS);
-    expect((await settleChatTurn(v, b, 1)).charged).toBe(4);
-    expect([await over(v), (await getUser(v.email))!.credits]).toEqual([4, 3]);
+    expect((await settleChatTurn(v, b, 1)).charged).toBe(5);
+    expect([await over(v), (await getUser(v.email))!.credits]).toEqual([4, 1]);
   });
 
   it("an id that is not exactly a catalog id is refused before anything is counted", async () => {
@@ -485,12 +485,12 @@ describe("a charge then a refund returns exactly the charged credits, for each t
     }
   });
 
-  it("a one-item draft at x0.5 is charged 1 credit, never 0, and refunded 1", async () => {
+  it("a one-item social draft at x0.5 is charged social's draft minimum, 2 credits, and refunded 2 (1 before rule 4031)", async () => {
     const { generateBatch, seen } = await load();
     const u = await brandOwner("mc-draft");
     const before = await credits(u.email);
     await generateBatch(u, u.email, { type: "social", source: "chat", via: "chat", count: 1, model: SONNET });
-    expect([seen.charges.at(-1), seen.refunds.at(-1), await credits(u.email)]).toEqual([1, 1, before]);
+    expect([seen.charges.at(-1), seen.refunds.at(-1), await credits(u.email)]).toEqual([2, 2, before]);
   });
 
   it("an id that is not exactly a catalog id is refused before any read or charge", async () => {
@@ -543,7 +543,7 @@ describe("a charge then a refund returns exactly the charged credits, for each t
 
   it("charge and refund read one value in the source: creditsFor once, used by charge, chargeOnce and refund", () => {
     const src = readFileSync("src/lib/generate-batch.ts", "utf8").replace(/\s+/g, "");
-    expect(src).toContain('constcost=creditsFor(base,model,"generate",type);');
+    expect(src).toContain('constcost=opts.count?draftCharge(type,opts.count,model):creditsFor(base,model,"generate",type);');
     expect(src.match(/creditsFor\(/g)?.length).toBe(1);
     expect(src).toContain("chargeOnce(acct(user),cost,meta,opts.once)");
     expect(src).toContain("charge(acct(user),cost,meta)");

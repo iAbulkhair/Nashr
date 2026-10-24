@@ -6,16 +6,16 @@ import { limitFromError } from "./LimitModal";
 
 /**
  * The Reports page's read buttons (spec section 8): "Refresh" for the site (`sync_site`, rule 735) and the social parts
- * (`sync_social`), free and open to any member, and "Refresh X (1 credit)" (`sync_x`, rule 744), paid by the account.
+ * (`sync_social`), free and open to any member, and "Refresh X (2 credits)" (`sync_x`, rule 744; `X_READ_CREDITS`, 1 before rule 4034), paid by the account.
  * The route checks the role, the hourly limit and the charge; these only post the action and say what the answer means.
  * Every message is a constant here: nothing from the answer but its codes reaches the page.
  */
 const STR = {
   ar: {
-    social: "حدّث", site: "حدّث", x: "حدّث إكس (رصيد واحد)", reading: "جارٍ القراءة…",
+    social: "حدّث", site: "حدّث", x: "حدّث إكس (رصيدان)", reading: "جارٍ القراءة…",
     done: "قُرئت الآن.", nothing: "لم يُقرأ شيء: أعد ربط حساباتك من صفحة التكاملات.",
     reconnectOne: "قُرئ الباقي. أعد ربط {name} من صفحة التكاملات.",
-    xDone: "قُرئ إكس وخُصم رصيد واحد.", xFree: "قُرئ إكس اليوم من قبل، فلم يُخصم رصيد.",
+    xDone: "قُرئ إكس وخُصم رصيدان.", xFree: "قُرئ إكس اليوم من قبل، فلم يُخصم رصيد.",
     slowDown: "تحديثات كثيرة. حاول بعد ساعة.", busy: "تحديث آخر لهذا الربط يجري الآن. حاول بعد ثوانٍ.", trialOver: "انتهت الفترة التجريبية: اختر خطة لتحديث إكس.",
     noCredits: "رصيدك لا يكفي لتحديث إكس.", agentCap: "بلغت دانة سقف رصيدها لهذا الشهر.",
     xUnavailable: "إكس غير متاح الآن. حاول لاحقاً.", xDirectOnly: "نقرأ إكس من ربطه المباشر فقط. اربطه مباشرة من صفحة التكاملات.",
@@ -26,10 +26,10 @@ const STR = {
     providers: { meta: "إنستقرام وفيسبوك", linkedin: "لينكدإن", youtube: "يوتيوب", tiktok: "تيك توك", google: "Google", x: "إكس" } as Record<string, string>,
   },
   en: {
-    social: "Refresh", site: "Refresh", x: "Refresh X (1 credit)", reading: "Reading…",
+    social: "Refresh", site: "Refresh", x: "Refresh X (2 credits)", reading: "Reading…",
     done: "Read just now.", nothing: "Nothing was read: connect your accounts again on the Integrations page.",
     reconnectOne: "The rest was read. Connect {name} again on the Integrations page.",
-    xDone: "X was read. One credit was used.", xFree: "X was already read today, so no credit was used.",
+    xDone: "X was read. Two credits were used.", xFree: "X was already read today, so no credit was used.",
     slowDown: "Too many refreshes. Try again in an hour.", busy: "Another refresh of this connection is running. Try again in a few seconds.", trialOver: "The trial is over: choose a plan to refresh X.",
     noCredits: "Not enough credits to refresh X.", agentCap: "Dana has reached her credit cap for this month.",
     xUnavailable: "X is not available right now. Try again later.", xDirectOnly: "X is read only through its own direct connection. Connect it directly on the Integrations page.",

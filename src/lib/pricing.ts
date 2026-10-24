@@ -58,7 +58,10 @@ export const readInterval = (v: unknown): BillingInterval | null =>
  * >>> FOUNDER: FILL IN THE YEARLY PRICES HERE. <<<
  *
  * The yearly list price per self-serve plan, in whole SAR excluding VAT (like PLAN_PRICE_SAR), or null for "yearly is not
- * offered for this plan". With every entry null (today: the founder has not set any amount), nothing changes anywhere:
+ * offered for this plan". Set 2026-10-24 by the founder: 2 months free on every plan (2,990 / 4,990 / 9,990 SAR a year,
+ * rule 4035). That moved the cheapest credit to Business yearly ($0.148) and the ceiling to $0.0592, so the social and ads
+ * chat drafts have a 2-credit minimum, an X refresh costs 2 credits and the chat hold rose (rules 4030-4039, task-costs.ts
+ * `DRAFT_MIN_CREDITS`). With every entry null, nothing changes anywhere:
  * the pricing page shows no monthly/yearly switch, the billing page shows no yearly button, and the checkout refuses
  * `interval: "year"` (409 `yearly_not_offered`). Set EITHER the price (PLAN_YEARLY_PRICE_SAR) OR the months free
  * (PLAN_YEARLY_MONTHS_FREE) for a plan, never both: a plan with both is refused as not offered, so a typo never sells.
@@ -69,7 +72,7 @@ export const readInterval = (v: unknown): BillingInterval | null =>
  */
 export const PLAN_YEARLY_PRICE_SAR: Readonly<Record<SelfServePlan, number | null>> = { starter: null, pro: null, business: null };
 /** The alternative input: months of the year given free. Null = not set. Read the FOUNDER note above. */
-export const PLAN_YEARLY_MONTHS_FREE: Readonly<Record<SelfServePlan, number | null>> = { starter: null, pro: null, business: null };
+export const PLAN_YEARLY_MONTHS_FREE: Readonly<Record<SelfServePlan, number | null>> = { starter: 2, pro: 2, business: 2 };
 /** The most months free a yearly price may give: only a guard against a typo, never a default. */
 export const MAX_YEARLY_MONTHS_FREE = 6;
 
@@ -311,16 +314,17 @@ export function chatAllowanceOf(u: { plan: Plan; chatAllowance?: number }): numb
  *
  * $0.35 on Opus 5 (founder decision 2026-10-01); $0.14 since chat moved to Sonnet 5.5 (founder decision 2026-10-02).
  * Sonnet 5.5's rates are Opus 5's divided by 2.5 and so is this ceiling, so a message gets the same tokens as before and
- * the worst full allowance costs 2.5 times less (docs/system/costs.md section 4.1). `chatOverflowHold()` follows: 2.
+ * the worst full allowance costs 2.5 times less (docs/system/costs.md section 4.1). `chatOverflowHold()` follows: 3 since
+ * yearly billing lowered the ceiling to $0.0592 (2 before, rule 4033).
  */
 export const CHAT_TURN_MAX_USD = 0.14;
 
 /**
  * The most a message past the allowance can cost the owner, when they turned "continue on credits" on: the ceiling above
- * at the floor rate, rounded up (2 today). The balance must cover it before the turn (nothing is taken then); after the
+ * at the floor rate, rounded up (3 today, 2 before yearly billing at 2 months free, rule 4033). The balance must cover it before the turn (nothing is taken then); after the
  * reply the message is billed its metered cost at the floor rate, never more than this (src/lib/credits.ts
  * `settleChatOverflow`). `ceilingUsd` is a chat model's own ceiling when it is not the default's (src/lib/models/credits.ts
- * `chatHoldFor`: Opus 5's $0.28 gives 4); without it, the default chat model's.
+ * `chatHoldFor`: Opus 5.5's $0.28 gives 5); without it, the default chat model's.
  */
 export const chatOverflowHold = (maxCostUsd: number = maxCostPerCreditUsd(), ceilingUsd: number = CHAT_TURN_MAX_USD): number => Math.ceil(ceilingUsd / maxCostUsd);
 

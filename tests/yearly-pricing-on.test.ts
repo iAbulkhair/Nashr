@@ -30,7 +30,9 @@ import * as webhook from "@/app/api/billing/paymob/webhook/route";
 const TEST_STARTER_YEARLY = 2990;
 const TEST_PRO_MONTHS_FREE = 2;
 Object.assign(PLAN_YEARLY_PRICE_SAR as Record<SelfServePlan, number | null>, { starter: TEST_STARTER_YEARLY });
-Object.assign(PLAN_YEARLY_MONTHS_FREE as Record<SelfServePlan, number | null>, { pro: TEST_PRO_MONTHS_FREE });
+// The whole table, not one entry: pricing.ts now sets 2 months free on every plan (rule 4035), and a plan with both a set
+// price and months free is offered for no price (`yearlyPriceSar`). tests/yearly-pricing.test.ts pins the real values.
+Object.assign(PLAN_YEARLY_MONTHS_FREE as Record<SelfServePlan, number | null>, { starter: null, pro: TEST_PRO_MONTHS_FREE, business: null });
 
 vi.mock("next/navigation", async (orig) => ({
   ...(await orig<typeof import("next/navigation")>()),

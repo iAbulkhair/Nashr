@@ -8,6 +8,7 @@ import { listTasks, type Brand } from "@/lib/brand";
 import { saveGov } from "@/lib/governance";
 import { writeFile } from "@/lib/files";
 import { countCost } from "@/lib/generate-batch";
+import { DRAFT_MIN_CREDITS } from "@/lib/task-costs";
 import { creditsFor } from "@/lib/models/credits";
 import { generateRouteFor } from "@/lib/models/overrides";
 import { setPaused } from "@/lib/instructions-store";
@@ -71,10 +72,10 @@ async function owner(prefix = "itest", withDraft = true): Promise<User> {
   if (withDraft) expect((await put([item("DRAFT")])).status).toBe(200);
   return (await getUser(u.email))!;
 }
-/** The price the spec names: two items of the type, at the brand's model. */
+/** The price the spec names: two items of the type, at the brand's model, each at least the type's draft minimum (rule 4032). */
 const priceOf = async (u: User, type: TaskType = "social") => {
   const m = generateRouteFor(u, brand, type).model;
-  return 2 * creditsFor(countCost(type, 1), m, "generate", type);
+  return 2 * Math.max(DRAFT_MIN_CREDITS[type] ?? 1, creditsFor(countCost(type, 1), m, "generate", type));
 };
 
 beforeEach(() => {
@@ -240,7 +241,7 @@ describe("rule 952: a test that could show nothing is refused before the claim a
 });
 
 describe("rule 952: the price and the charge", () => {
-  it("rule 952: the price is 2 x creditsFor(countCost(type, 1)) and the balance drops by exactly that; spent says so", async () => {
+  it("rule 952: the price is 2 x creditsFor(countCost(type, 1)), at least the draft minimum, and the balance drops by exactly that; spent says so", async () => {
     const u = await owner();
     const want = await priceOf(u);
     expect(want).toBeGreaterThanOrEqual(2);

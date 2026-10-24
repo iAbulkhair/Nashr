@@ -56,7 +56,7 @@ import { taskVersion } from "@/lib/task-version";
 import { AGENT_SCOPE_KEYS } from "@/lib/agent-scope";
 import { accountKey, globalKey } from "@/lib/keys";
 import { creditsFor } from "@/lib/models/credits";
-import { draftCredits } from "@/lib/task-costs";
+import { DRAFT_MIN_CREDITS, draftCredits } from "@/lib/task-costs";
 import { REVISE_MAX_NOTES, linesOf, parseNotes, revisePrice } from "@/lib/revise";
 import { reviseDraft } from "@/lib/noor";
 import LineNotes, { LINE_NOTES, MAX_NOTES, NOTE_MAX as UI_NOTE_MAX, errorOf, sendOutcome } from "@/components/app/LineNotes";
@@ -180,11 +180,14 @@ describe("rule 2490: only a pending draft-type item, for a role that may edit", 
 });
 
 describe("rule 2492: one draft's price, charged before the call and refunded on any failure", () => {
-  it("the price is draftCredits(type, 1) at the model's tier, and none for a type that is not a draft type", async () => {
+  it("the price is draftCredits(type, 1) at the model's tier, at least the type's draft minimum, and none for a type that is not a draft type", async () => {
     const u = await owner("ln-price");
     const p = revisePrice(u, brand, "social");
     expect(p).toBeGreaterThan(0);
-    expect(p).toBe(creditsFor(draftCredits("social", 1), "claude-sonnet-5-5", "generate", "social"));
+    // Sonnet 5.5 on social is x0.5, so 1 credit by the tier alone; social's draft minimum makes it 2 (rule 4032).
+    expect(creditsFor(draftCredits("social", 1), "claude-sonnet-5-5", "generate", "social")).toBe(1);
+    expect(p).toBe(Math.max(DRAFT_MIN_CREDITS.social!, creditsFor(draftCredits("social", 1), "claude-sonnet-5-5", "generate", "social")));
+    expect(p).toBe(2);
     expect(revisePrice(u, brand, "article")).toBeNull();
   });
 

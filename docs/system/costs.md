@@ -201,13 +201,15 @@ and transfer are extra, billed by Vercel and not metered per render or per tenan
 
 Written 2026-10-08 (rules 744, 745). X bills its API per read: $0.010 for a user and $0.005 for a post, X's list prices
 on 2026-10-08 (`X_READ_USD` in `src/lib/connectors/x.ts`). A refresh is never scheduled: it runs only when someone in the
-workspace clicks "Refresh X" (`sync_x`), and the account pays one credit for it, charged before X is asked.
+workspace clicks "Refresh X" (`sync_x`), and the account pays two credits for it (one until 2026-10-24, section 4.3),
+charged before X is asked.
 
 | Read | Requests | Our cost at most | Credits | $ per credit |
 |---|---|---|---|---|
-| One X refresh (`refreshX`) | 2: the user, then one page of at most 10 posts (`X_MAX_POSTS`) | $0.010 + 10 × $0.005 = $0.060 | 1 (`X_READ_CREDITS`) | 0.060 |
+| One X refresh (`refreshX`) | 2: the user, then one page of at most 10 posts (`X_MAX_POSTS`) | $0.010 + 10 × $0.005 = $0.060 | 2 (`X_READ_CREDITS`) | 0.030 |
 
-- $0.060 is under the ceiling of section 4, $0.07104 a credit, and under the VAT-inclusive $0.0618; the floor test
+- $0.060 was under one credit's ceiling until yearly billing (section 4.3) lowered it to $0.0592 ($0.0515 VAT-inclusive);
+  at 2 credits a refresh is $0.030 a credit, under both. The floor test
   (`tests/pricing-floor.test.ts`, rule 745) checks both and keeps `X_MAX_POSTS` between 5 and 10.
 - At most one paid read per workspace per UTC day: a click on a day already read returns the stored read free, and two
   clicks at once debit one credit. X deduplicates the same reads within a UTC day and bills only responses that return
@@ -229,7 +231,9 @@ Rewritten on 2026-09-30 for pricing phase 1. Revenue per credit comes from `PLAN
 | agency | the deal's price | the deal's credits | at least Business's **$0.1776**: `dealRespectsFloor` refuses a deal under 999 SAR, under 1,500 credits, or cheaper per credit than Business (integer check: price × 1,500 ≥ credits × 999). An Agency account without a valid deal is granted and counted as Business |
 
 **The ceiling.** `MARGIN_FLOOR` is 0.6: at least 60% of the cheapest self-serve credit is margin, so what one credit
-may cost us is at most 40% of $0.1776, **$0.07104** (`maxCostPerCreditUsd`). `tests/pricing-floor.test.ts` (rule 241)
+may cost us is at most 40% of $0.1776, **$0.07104** (`maxCostPerCreditUsd`). Since 2026-10-24 the cheapest credit is
+Business yearly at 2 months free, **$0.148**, and the ceiling **$0.0592** (section 4.3); the figures below that name
+$0.07104 are the monthly-only history. `tests/pricing-floor.test.ts` (rule 241)
 holds every task type (section 3), every chat draft but the named exemption, the added-brand onboarding and every media
 model (section 3.1) under it. A price cut or a larger allowance lowers the ceiling: Business at 899 SAR, or at 1,700
 credits, puts `article` over and fails the build. If the accountant says prices must include VAT (`PRICES_INCLUDE_VAT`
@@ -269,7 +273,7 @@ Agency gets Business's 1,300 unless the founder sets an override (`User.chatAllo
 - **Not measured, not evaluated.** The spec made the switch wait for the golden eval and a Gulf-dialect chat check; the founder moved chat on 2026-10-02 without them. Quality is watched through the thumbs and the console's chat column; the Opus figures above are the way back (`CHAT_MODEL` and `CHAT_TURN_MAX_USD` together, never one without the other).
 - **Where it shows.** The founder console's per-account margin column (users tab, `marginPct`: the price against this month's model cost, chat included; red under 50%), and since 2026-10-01 the Chat column, whose tooltip gives the account's chat cost this month and per message (`usdPerMsg`, `chatUsdPerMessage` in `src/lib/admin-stats.ts`: the cost over every message sent, the raw count `ChatStatus.counted` plus the messages continued on credits, so an allowance lowered mid-month does not inflate it), and the credits the messages on credits were billed (`chatCredits`). A trial's cost per message reads low when the trial spans two months: the cost is this month's, the count the trial's.
 - **The spec's numbers now hold.** Spec section 5's margins counted chat at about $0.032 a message ($8.00 / $20.80 / $41.60 for full allowances), the fourth column above. On Opus at $0.08 the same allowances cost $20.00 / $52.00 / $104.00.
-- **Messages continued on credits keep the floor.** The hold and the ceiling are per model (`chatHoldFor(model)` and `chatTurnMaxUsd(model)`, section 4.2): 2 credits and $0.14 on the default chat model Sonnet 5.5, 4 credits and $0.28 on Opus 5.5 (the billing page's card names the 4 in its own line, `chatPremiumHold()`, rule 907; the other account-level cards show the default's 2); the figures below are Sonnet 5.5's. Nothing is taken before such a message: the gate only checks the balance is at least the model's hold (`chatOverflowHold()`, 2 credits since 2026-10-02; 5 under the old $0.35 Opus ceiling), so the message's own tools (a batch it asks for) can spend the whole balance. After the reply it is billed its metered cost at $0.07104 a credit, so it keeps at least 60% margin on Business's credit (73% on Starter's, 63% on Pro's). The bill is at most the hold, 2 credits ($0.142 at that rate; 4 credits, $0.284, on Opus 5.5), which covers the model's ceiling, so no message's model cost goes beyond what it can be billed; the remainder under one credit waits on the account (`User.chatCarryMicro`) for the next one. The one leak: a message whose tools emptied the balance is billed only what is left, and the rest of its cost (at most its model's ceiling) is not billed; the next message is then refused until the balance holds the hold again. A failed message is not billed.
+- **Messages continued on credits keep the floor.** Since 2026-10-24 (section 4.3) the hold is 3 credits on Sonnet 5.5 and 5 on Opus 5.5, and a message is billed at $0.0592 a credit; the figures in this bullet are the monthly-only ones. The hold and the ceiling are per model (`chatHoldFor(model)` and `chatTurnMaxUsd(model)`, section 4.2): 2 credits and $0.14 on the default chat model Sonnet 5.5, 4 credits and $0.28 on Opus 5.5 (the billing page's card names the 4 in its own line, `chatPremiumHold()`, rule 907; the other account-level cards show the default's 2); the figures below are Sonnet 5.5's. Nothing is taken before such a message: the gate only checks the balance is at least the model's hold (`chatOverflowHold()`, 2 credits since 2026-10-02; 5 under the old $0.35 Opus ceiling), so the message's own tools (a batch it asks for) can spend the whole balance. After the reply it is billed its metered cost at $0.07104 a credit, so it keeps at least 60% margin on Business's credit (73% on Starter's, 63% on Pro's). The bill is at most the hold, 2 credits ($0.142 at that rate; 4 credits, $0.284, on Opus 5.5), which covers the model's ceiling, so no message's model cost goes beyond what it can be billed; the remainder under one credit waits on the account (`User.chatCarryMicro`) for the next one. The one leak: a message whose tools emptied the balance is billed only what is left, and the rest of its cost (at most its model's ceiling) is not billed; the next message is then refused until the balance holds the hold again. A failed message is not billed.
 
 ## 4.2 Credits by model tier (2026-10-08)
 
@@ -314,7 +318,8 @@ allow-list in `src/lib/models/catalog.ts`, never a lower floor. The test covers 
 (`model_not_offered`) before anything is charged or counted, and chat also refuses one without tools (`model_not_chat`).
 
 Chat drafts (`draft_items`, 1-3 items) on a model other than the type's writer keep the floor cold at every size (the
-dearest, a one-item Sonnet draft of `social` or `ads` at 1 credit, about $0.0598); on the writer, the figures are
+dearest at 1 credit was a one-item Sonnet draft of `social` or `ads`, about $0.0598, over the yearly ceiling: since
+2026-10-24 those drafts cost at least 2 credits, section 4.3); on the writer, the figures are
 section 3's. The judge runs on Haiku 5.5 only for a customer's Sonnet 5.5 pick on a type Opus 5.5 writes (`judgeAlternative`, spec
 section 5); an Automatic batch of a Sonnet-written type keeps the Sonnet 5.5 judge (rule 903, founder decision
 2026-10-10), which is what the estimate prices.
@@ -324,8 +329,8 @@ the overflow hold is the ceiling at the floor rate, rounded up:
 
 | Chat model | Ceiling per message | Overflow hold |
 |---|---|---|
-| Sonnet 5.5 (x1) | $0.14 | 2 credits |
-| Opus 5.5 (x2) | $0.28 | 4 credits |
+| Sonnet 5.5 (x1) | $0.14 | 3 credits (2 until 2026-10-24) |
+| Opus 5.5 (x2) | $0.28 | 5 credits (4 until 2026-10-24) |
 | an economy model (x0.6; Haiku 5.5 is not pickable) | $0.084 | 2 credits |
 
 **How a message on a dearer model counts against the allowance (coordinator ruling 2026-10-08, option a).** A message
@@ -344,11 +349,35 @@ and $364.00 (137% of $266.40); the "rule 313 by tier" block of `tests/pricing-fl
 percentages. The units are computed once per turn in `reserveChatTurn` and carried on the gate (`units`), so the reserve,
 the give-back of a failed turn and the overflow counter all move by the same number; a message whose units would pass
 what is left of the allowance is refused before any model call (or, with "continue on credits" on, goes wholly on
-credits, needing that model's hold: 4 credits on Opus 5.5). A multiplier that is not a finite number above 0 throws
+credits, needing that model's hold: 5 credits on Opus 5.5, 4 until 2026-10-24). A multiplier that is not a finite number above 0 throws
 `chat_allowance_unpriced` before anything is counted. What the owner and the founder console read as "messages" (used,
 left, the console's cost per message) are these units from then on; the copy that explains that an Opus message counts
 2 belongs to the model picker's interface (plan Task 7). Since plan Task 6 a conversation's pick reaches the reserve
 (`chatRouteFor`), so a message on Opus 5.5 counts 2; with no pick every message still counts 1.
+
+## 4.3 Yearly billing at 2 months free (2026-10-24)
+
+Founder decision 2026-10-24 (rules 4030-4039, `docs/system/tests/4030-yearly-floor.md`): every self-serve plan is
+offered yearly at 2 months free (`PLAN_YEARLY_MONTHS_FREE` in `src/lib/pricing.ts`), 2,990 / 4,990 / 9,990 SAR a year
+before VAT. `cheapestCreditUsd` counts the yearly credit, so the cheapest credit is Business yearly, 9,990 / 12 / 3.75 /
+1,500 = **$0.148**, and the ceiling **$0.0592** ($0.0515 VAT-inclusive). The 60% floor and the monthly prices and
+credits did not move; what broke the new ceiling was repriced instead:
+
+| What | Our cost | Credits before | Credits now | $ per credit now |
+|---|---|---|---|---|
+| One-item `social` or `ads` chat draft on Opus 5.5 (the writer) | $0.0605 | 1 | 2 (`DRAFT_MIN_CREDITS`) | $0.0302 |
+| One-item `social` or `ads` draft on Sonnet 5.5 (x0.5) | $0.0598 cold | 1 | 2 | $0.0299 |
+| Two-item `social` or `ads` draft on Sonnet 5.5 | $0.0664 cold | 1 | 2 | $0.0332 |
+| X refresh (section 3.2) | $0.060 | 1 | 2 (`X_READ_CREDITS`) | $0.030 |
+| Chat overflow hold, Sonnet 5.5 ($0.14 ceiling) | at most $0.14 | 2 | 3 (`chatHoldFor`, computed) | at most $0.0592 |
+| Chat overflow hold, Opus 5.5 ($0.28 ceiling) | at most $0.28 | 4 | 5 (computed) | at most $0.0592 |
+
+`draftCharge` in `src/lib/task-costs.ts` is the one price of a chat draft: the pro rata `draftCredits` at the model's
+tier, at least the type's minimum. `generateBatch` (the chat's `draft_items`), the ask-first card, a revision
+(`revisePrice`) and an instructions test charge and show it. A message continued on credits is still billed its
+metered cost, now at $0.0592 a credit instead of $0.07104, so the same message costs about 20% more credits, never
+more than the hold. Every other type, every media model and onboarding kept their price and stay under $0.0592; the
+closest are the cold `unit_economics` and `decision_memo` at 87% of it.
 
 ## 5. What bounds the spend today
 
@@ -370,7 +399,7 @@ left, the console's cost per message) are these units from then on; the copy tha
     1,300 a month), counted per account with INCRBY before the turn (`reserveChatTurn`, `src/lib/chat-allowance.ts`) and
     given back when the turn fails or costs nothing; when it is used up chat pauses (402 `chat_allowance`) until the 1st
     (UTC), unless the owner of a paid plan turned "continue on credits" on, and then each message is paid for (section
-    4.1: it needs at least its model's hold in the balance, 2 credits on Sonnet 5.5 and 4 on Opus 5.5, nothing is taken
+    4.1: it needs at least its model's hold in the balance, 3 credits on Sonnet 5.5 and 5 on Opus 5.5 (2 and 4 until 2026-10-24, section 4.3), nothing is taken
     before it, and after the reply it is billed its metered cost at the floor rate, at most that hold; 402
     `chat_credits` below it);
   - the per-message ceiling: the turn's chat model calls never cost more than $0.14 (`CHAT_TURN_MAX_USD`, $0.35 on Opus until 2026-10-02), because

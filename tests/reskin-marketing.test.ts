@@ -56,12 +56,14 @@ vi.mock("next/navigation", async (orig) => ({
 const LANGS: readonly Lang[] = ["ar", "en"];
 const html = <P extends object>(c: FunctionComponent<P>, props: P) => renderToStaticMarkup(createElement(c, props));
 const count = (h: string, s: string) => h.split(s).length - 1;
+/** The markup without the hidden yearly panel: since yearly billing (rule 4035) it draws the plan cards a second time; tests/yearly-pricing-on.test.ts covers it. */
+const monthlyOnly = (h: string) => h.replace(/<div id="[^"]*" hidden="" data-interval-panel="year">[\s\S]*?<\/ul><\/div><\/div>/, "");
 const TITLE_SCRIBBLE = (tag: string) => new RegExp(`<${tag}[^>]*>(?:(?!</${tag}>)[\\s\\S])*<svg[^>]*class="scribble`);
 
 describe("the marketing pages are hand-drawn D (rule 518)", () => {
   for (const lang of LANGS) {
     it(`pricing · ${lang}: a scribbled card and a pill per plan, an underlined title`, () => {
-      const h = html(Pricing, { t: dict[lang], lang, headingLevel: 1 });
+      const h = monthlyOnly(html(Pricing, { t: dict[lang], lang, headingLevel: 1 }));
       expect(count(h, 'class="s-card')).toBe(PUBLIC_TIERS.length);
       expect(count(h, 'class="s-btn')).toBe(PUBLIC_TIERS.length);
       expect(count(h, "s-btn--ghost")).toBe(PUBLIC_TIERS.length - dict[lang].pricing.plans.filter((p) => p.highlight).length);
@@ -99,7 +101,7 @@ describe("the marketing pages are hand-drawn D (rule 518)", () => {
 
     it(`a sector page · ${lang}: an underlined title, a scribbled card per workflow, a pill to sign up`, async () => {
       const p = INDUSTRY_PAGES[lang][0];
-      const h = renderToStaticMarkup(await IndustryPage({ params: Promise.resolve({ lang, industry: p.slug }) }));
+      const h = monthlyOnly(renderToStaticMarkup(await IndustryPage({ params: Promise.resolve({ lang, industry: p.slug }) })));
       expect(h).toMatch(TITLE_SCRIBBLE("h1"));
       expect(count(h, 'class="s-card')).toBe(p.workflows.length + PUBLIC_TIERS.length);
       expect(h).toMatch(new RegExp(`<a[^>]*class="s-btn[^"]*"[^>]*href="/${lang}/app/signup"|<a[^>]*href="/${lang}/app/signup"[^>]*class="s-btn`));

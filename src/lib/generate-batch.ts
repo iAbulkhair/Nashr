@@ -26,6 +26,7 @@ import { missingData } from "./cart-recovery";
 import { modelState } from "./model";
 import { modelAllowsTask, modelById } from "./models/catalog";
 import { creditsFor } from "./models/credits";
+import { draftCharge } from "./task-costs";
 import { type Rejected } from "./models/route";
 import { generateRouteFor } from "./models/overrides";
 import { noteRejectedPick, usageWho } from "./usage";
@@ -366,9 +367,10 @@ async function runBatch(user: User, scope: string, opts: BatchOpts, late: Promis
     } else late.push(check);
   }
   const base = opts.count ? countCost(type, opts.count) : TASK_COST[type];
-  // The batch's price at its model's tier relative to the type's own writer (rule 902), computed once. It is what is charged: `charge`, or `chargeOnce`, which reuses a
+  // The batch's price at its model's tier relative to the type's own writer (rule 902), computed once; a chat draft never
+  // below its type's minimum (`draftCharge`, rules 4030-4034). It is what is charged: `charge`, or `chargeOnce`, which reuses a
   // claim's hold only when it holds exactly this price and otherwise swaps it for this price in one save.
-  const cost = creditsFor(base, model, "generate", type);
+  const cost = opts.count ? draftCharge(type, opts.count, model) : creditsFor(base, model, "generate", type);
   // The agent that owns the type, computed in code: never taken from the request or the model.
   const agent = agentForTask(type).id;
   // A paid account's monthly credits arrive before its first charge of the month, whichever job runs first (rule 332).

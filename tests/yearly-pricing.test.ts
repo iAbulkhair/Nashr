@@ -15,9 +15,10 @@ import Pricing from "@/components/Pricing";
 import * as checkout from "@/app/api/billing/checkout/route";
 
 /**
- * Yearly billing with no yearly price set (rules 3530-3532, 3537-3538, docs/system/tests/3530-yearly-pricing.md). Today the
- * founder has set no yearly amount, so the site, checkout and billing must behave exactly as before: no switch, no yearly
- * path. tests/yearly-pricing-on.test.ts injects a test-only price to prove the rest.
+ * Yearly billing at the founder's price (rules 3530-3532, 3537-3538, 4035; docs/system/tests/3530-yearly-pricing.md and
+ * 4030-yearly-floor.md). On 2026-10-24 the founder set 2 months free on every self-serve plan: 2,990 / 4,990 / 9,990 SAR
+ * a year before VAT. This file pins those values; tests/yearly-pricing-on.test.ts proves the switch, totals and renewals
+ * with its own test-only table.
  */
 
 vi.mock("next/navigation", async (orig) => ({
@@ -49,16 +50,17 @@ async function owner() {
   return (await getUser(u.email))!;
 }
 
-describe("the tripwire: no yearly price is set (rule 3530)", () => {
-  it("every yearly entry in pricing.ts is null, so yearly is offered for no plan", () => {
-    // Setting a yearly price is the founder's decision: update this test in the same commit (pricing.ts FOUNDER note).
+describe("the tripwire: the founder's yearly price, 2 months free on every plan (rules 3530, 4035)", () => {
+  it("every plan gives 2 months free and no set price, so yearly is offered for all three at 10 months' price", () => {
+    // Changing a yearly price is the founder's decision: update this test in the same commit (pricing.ts FOUNDER note).
     expect(PLAN_YEARLY_PRICE_SAR).toEqual({ starter: null, pro: null, business: null });
-    expect(PLAN_YEARLY_MONTHS_FREE).toEqual({ starter: null, pro: null, business: null });
+    expect(PLAN_YEARLY_MONTHS_FREE).toEqual({ starter: 2, pro: 2, business: 2 });
+    expect(SELF_SERVE_PLANS.map((p) => yearlyPriceSar(p))).toEqual([2990, 4990, 9990]);
     for (const p of SELF_SERVE_PLANS) {
-      expect(yearlyPriceSar(p)).toBeNull();
-      expect(yearlyOffered(p)).toBe(false);
+      expect(yearlyPriceSar(p)).toBe(PLAN_PRICE_SAR[p] * 10);
+      expect(yearlyOffered(p)).toBe(true);
     }
-    expect(anyYearlyOffered()).toBe(false);
+    expect(anyYearlyOffered()).toBe(true);
   });
 
   it("the plan list is the monthly one it always was, in both languages", () => {
@@ -77,39 +79,28 @@ describe("the tripwire: no yearly price is set (rule 3530)", () => {
     ]);
   });
 
-  it("the pricing section draws no monthly/yearly switch and no yearly note", () => {
+  it("the pricing section draws the monthly/yearly switch, monthly shown first, the yearly prices in its hidden panel", () => {
     for (const lang of ["ar", "en"] as const) {
       const html = renderToStaticMarkup(h(Pricing, { t: dict[lang], lang, headingLevel: 1 }));
-      expect(html).not.toContain("data-interval-switch");
-      expect(html).not.toContain("data-yearly-note");
-      expect(html).not.toContain("data-interval-panel");
+      expect(html).toContain("data-interval-switch");
+      expect(html).toMatch(/hidden=""[^>]*data-interval-panel="year"/);
+      const yearly = html.split('data-interval-panel="year"')[1];
+      for (const price of ["2,990", "4,990", "9,990"]) expect(yearly, lang).toContain(price);
     }
   });
 });
 
-describe("checkout refuses a yearly period (rules 3531-3532)", () => {
-  it("priceFor prices nothing yearly; the monthly price is unchanged", () => {
+describe("checkout prices a year at the founder's price (rules 3531-3532, 4035)", () => {
+  it("priceFor prices a year at 10 months plus VAT; the monthly price is unchanged", () => {
     for (const p of SELF_SERVE_PLANS) {
-      expect(priceFor("plan", { plan: p, interval: "year" })).toBeNull();
-      expect(priceFor("renewal", { plan: p, interval: "year" })).toBeNull();
+      const year = PLAN_PRICE_SAR[p] * 10 * 100;
+      expect(priceFor("plan", { plan: p, interval: "year" })).toEqual({ baseHalalas: year, vatHalalas: Math.round(year * 0.15), amountCents: year + Math.round(year * 0.15) });
       const base = PLAN_PRICE_SAR[p] * 100;
       expect(priceFor("plan", { plan: p })).toEqual({ baseHalalas: base, vatHalalas: Math.round(base * 0.15), amountCents: base + Math.round(base * 0.15) });
       expect(priceFor("plan", { plan: p, interval: "month" })).toEqual(priceFor("plan", { plan: p }));
     }
     expect(priceFor("plan", { plan: "starter", interval: "week" })).toBeNull();
     expect(priceFor("topup", { credits: 100, interval: "year" })).toBeNull();
-  });
-
-  it("POST interval year is 409 yearly_not_offered: no intent stored, nothing sent to Paymob", async () => {
-    const u = await owner();
-    for (const plan of SELF_SERVE_PLANS) {
-      const r = await pay({ kind: "plan", plan, interval: "year" });
-      expect(r.status).toBe(409);
-      expect(await r.json()).toMatchObject({ ok: false, error: "yearly_not_offered" });
-    }
-    expect(fetched).toBe(0);
-    expect(await db.get(lastCheckoutKey(u.email))).toBeNull();
-    expect((await getUser(u.email))!.plan).toBe("trial");
   });
 
   it("an interval that is neither month nor year, or any interval on a pack, is 400 bad_interval", async () => {
@@ -136,12 +127,15 @@ describe("old records and the money floor are unchanged (rules 3533, 3537-3538)"
     expect(billingInterval(undefined)).toBe("month");
   });
 
-  it("MRR counts the monthly price, even for a record that says year while no yearly price is set", () => {
+  it("MRR counts a yearly record at its yearly price per month, a monthly record at the monthly price", () => {
     expect(priceOf({ plan: "pro" })).toBe(499);
-    expect(priceOf({ plan: "pro", billing: { interval: "year" } })).toBe(499);
+    expect(priceOf({ plan: "pro", billing: { interval: "year" } })).toBe(415.83);
+    expect(priceOf({ plan: "business", billing: { interval: "year" } })).toBe(832.5);
   });
 
-  it("the margin floor is the same as with no yearly prices at all", () => {
-    expect(cheapestCreditUsd()).toBe(cheapestCreditUsd(PLAN_PRICE_SAR, PLAN_CREDITS, PRICES_INCLUDE_VAT, { starter: null, pro: null, business: null }));
+  it("the margin floor now counts Business yearly, the cheapest credit: $0.148, down from $0.1776 monthly", () => {
+    const monthlyOnly = cheapestCreditUsd(PLAN_PRICE_SAR, PLAN_CREDITS, PRICES_INCLUDE_VAT, { starter: null, pro: null, business: null });
+    expect(monthlyOnly).toBeCloseTo(0.1776, 6);
+    expect(cheapestCreditUsd()).toBeCloseTo(0.148, 6);
   });
 });
