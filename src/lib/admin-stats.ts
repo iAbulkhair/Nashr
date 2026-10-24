@@ -123,7 +123,8 @@ export async function overview(): Promise<Overview> {
   // 7-day retention: users who signed up 7-30 days ago and were active this week
   const cohort = users.filter((u) => ageDays(u.createdAt) >= 7 && ageDays(u.createdAt) <= 30);
   const weekSet = new Set(await db.smembers(`active:w:${isoWeek()}`));
-  const retained = cohort.filter((u) => weekSet.has(u.email)).length;
+  // The active sets hold account ids, as `track` writes them (rule 3821).
+  const retained = cohort.filter((u) => weekSet.has(acct(u))).length;
 
   // funnel over the last 30 days
   const recentUsers = users.filter((u) => ageDays(u.createdAt) <= 30);

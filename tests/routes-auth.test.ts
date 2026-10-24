@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { json, newUser, signIn, signOut } from "./helpers/session";
-import { currentUser, getUser, saveUser, verifyPassword } from "@/lib/auth";
+import { acct, currentUser, getLogin, getUser, saveUser, verifyPassword } from "@/lib/auth";
 import { allUsers } from "@/lib/schedule";
 import { userFromBearer } from "@/lib/mcp";
 import { db } from "@/lib/db";
@@ -15,6 +15,8 @@ import * as reset from "@/app/api/auth/reset/route";
 // Each test gets its own client IP so one test's throttle window never leaks into the next.
 let ipN = 0;
 const ip = () => ({ "x-forwarded-for": `203.0.113.${++ipN}` });
+/** The credentials of the person who signs in at this address (a `p_` person holds them on `person:{pid}`, not on the account). */
+const credentialsOf = async (email: string) => (await getLogin(email))!.person;
 const tokenFrom = (text: string) => text.match(/\/app\/reset#t=([a-f0-9]{64})/)![1];
 
 beforeEach(() => { sent.length = 0; signOut(); vi.stubEnv("RESEND_API_KEY", "test-key"); vi.stubEnv("MAIL_FROM", "Noor <noor@mail.nashr.test>"); });
@@ -49,21 +51,19 @@ describe("password reset (rule 9)", () => {
     expect(sent.map((m) => m.to)).toEqual([u.email]);
   });
   it("stores only a hash of the token, accepts it once, then never again", async () => {
-    // Pins the legacy shape (multi-org M1): the checks read the hash on the legacy `user:{email}` record.
-    const u = await newUser("reset", { legacy: true });
+    const u = await newUser("reset");
     await forgot.POST(json("/api/auth/forgot", "POST", { email: u.email }, ip()));
     const token = tokenFrom(sent[0].text);
     expect(await db.get(`pwreset:${token}`)).toBeNull(); // the raw token is not a key
     expect((await reset.POST(json("/api/auth/reset", "POST", { token, password: "weak" }, ip()))).status).toBe(400);
     expect((await reset.POST(json("/api/auth/reset", "POST", { token, password: "newpass123" }, ip()))).status).toBe(200);
-    expect(await verifyPassword((await getUser(u.email))!, "newpass123")).toBe(true);
+    expect(await verifyPassword(await credentialsOf(u.email), "newpass123")).toBe(true);
     expect((await currentUser())!.email).toBe(u.email); // signed in
     expect((await reset.POST(json("/api/auth/reset", "POST", { token, password: "another123" }, ip()))).status).toBe(400);
-    expect(await verifyPassword((await getUser(u.email))!, "newpass123")).toBe(true);
+    expect(await verifyPassword(await credentialsOf(u.email), "newpass123")).toBe(true);
   });
   it("refuses the token after one hour", async () => {
-    // Pins the legacy shape (multi-org M1): the checks read the hash on the legacy `user:{email}` record.
-    const u = await newUser("reset", { legacy: true });
+    const u = await newUser("reset");
     await forgot.POST(json("/api/auth/forgot", "POST", { email: u.email }, ip()));
     const token = tokenFrom(sent[0].text);
     vi.useFakeTimers({ now: Date.now(), toFake: ["Date"] });
@@ -71,7 +71,7 @@ describe("password reset (rule 9)", () => {
     const res = await reset.POST(json("/api/auth/reset", "POST", { token, password: "newpass123" }, ip()));
     vi.useRealTimers();
     expect(res.status).toBe(400);
-    expect(await verifyPassword((await getUser(u.email))!, "abc12345")).toBe(true);
+    expect(await verifyPassword(await credentialsOf(u.email), "abc12345")).toBe(true);
   });
   it("sends at most three links per account per window and creates no token when mail is not configured", async () => {
     const u = await newUser("reset");
@@ -103,16 +103,16 @@ describe("suspended accounts (rule 11)", () => {
   it("are blocked in the app, in MCP, in cron and at login", async () => {
     const u = await newUser("susp");
     await signIn(u.email);
-    await db.set("mcptoken:nashr_testtoken123", u.email);
+    await db.set("mcptoken:nashr_testtoken123", acct(u));
     const bearer = new Request("https://nashr.test/api/mcp", { headers: { authorization: "Bearer nashr_testtoken123" } });
     expect((await currentUser())!.email).toBe(u.email);
-    expect((await userFromBearer(bearer))!.email).toBe(u.email);
-    expect((await allUsers()).some((x) => x.email === u.email)).toBe(true);
+    expect(acct((await userFromBearer(bearer))!)).toBe(acct(u));
+    expect((await allUsers()).some((x) => acct(x) === acct(u))).toBe(true);
 
-    await saveUser({ ...(await getUser(u.email))!, suspended: true });
+    await saveUser({ ...(await getUser(acct(u)))!, suspended: true });
     expect(await currentUser()).toBeNull(); // the session cookie is still there
     expect(await userFromBearer(bearer)).toBeNull();
-    expect((await allUsers()).some((x) => x.email === u.email)).toBe(false);
+    expect((await allUsers()).some((x) => acct(x) === acct(u))).toBe(false);
     expect((await login.POST(json("/api/auth/login", "POST", { email: u.email, password: "abc12345" }, ip()))).status).toBe(403);
   });
 });

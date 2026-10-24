@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { createElement } from "react";
 import { renderToReadableStream } from "react-dom/server.edge";
 import { json, newMember, newUser, signIn, signOut } from "./helpers/session";
-import { getUser, saveUser, sc, type User } from "@/lib/auth";
+import { getUser, saveUser, sc, type User, acct } from "@/lib/auth";
 import { db } from "@/lib/db";
 import type { Brand } from "@/lib/brand";
 import { appDict } from "@/lib/app-i18n";
@@ -57,9 +57,9 @@ const html = async (lang: "ar" | "en" = "ar") => new Response(await renderToRead
 async function account(prefix: string, plan: User["plan"], credits = 100): Promise<User> {
   const u = await newUser(prefix);
   await saveUser({ ...u, plan, credits });
-  await db.set(`brand:${u.email}`, brand);
+  await db.set(`brand:${acct(u)}`, brand);
   await signIn(u.email);
-  return (await getUser(u.email))!;
+  return (await getUser(acct(u)))!;
 }
 const by = { kind: "owner" as const, email: "owner@test.example" };
 const put = async (u: User, items: Draft[], base?: number) => {
@@ -172,10 +172,10 @@ describe("rule 957: the page's props", () => {
     const u = await account("p957e", "pro");
     const items = Array.from({ length: 12 }, (_, i) => item(`Rule number ${i}`));
     await live(u, [...items, item("Only for Noor", { agents: ["noor"] })]);
-    await saveUser({ ...(await getUser(u.email))!, plan: "starter" });
+    await saveUser({ ...(await getUser(acct(u)))!, plan: "starter" });
     const p = await propsOf();
     const layer = await getLayer(sc(u));
-    const starter = entitlements((await getUser(u.email))!).instructions;
+    const starter = entitlements((await getUser(acct(u)))!).instructions;
     expect(p.skipped).toBe(skippedCount(layer.active, starter));
     // 13 on, starter keeps 10 of the "all" items: the per-agent one and two more are out.
     expect(p.skipped).toBe(3);
@@ -255,18 +255,18 @@ describe("rule 957: the price on the Test button is the price the route charges"
     const options = p.testOptions as { agent: string; type: string; price: number }[];
     expect(options.length).toBe(DRAFT_TYPES.length);
     for (const o of options) {
-      const before = (await getUser(u.email))!.credits;
+      const before = (await getUser(acct(u)))!.credits;
       const res = await testRoute.POST(json("/api/instructions/test", "POST", { agent: o.agent, type: o.type, brief: "", confirm: true, nonce: newNonce() }));
       expect(res.status, o.type).toBe(200);
       const body = (await res.json()) as { spent: number };
       expect(body.spent).toBe(o.price);
-      expect(before - (await getUser(u.email))!.credits).toBe(o.price);
+      expect(before - (await getUser(acct(u)))!.credits).toBe(o.price);
     }
   });
 
   it("no brand file or no right to test: no options", async () => {
     const u = await account("p957m", "pro");
-    await db.del(`brand:${u.email}`);
+    await db.del(`brand:${acct(u)}`);
     expect(((await propsOf()).testOptions as unknown[]).length).toBe(0);
   });
 
@@ -507,8 +507,8 @@ describe("rule 957: fix round 1 (stale base, downgrade fixes, compare race, no n
     const items = Array.from({ length: 12 }, (_, i) => item(`Rule number ${i}`));
     await live(u, [...items, item("Only for Noor", { agents: ["noor"] })]);
     const first = (await getLayer(sc(u))).active.items;
-    await saveUser({ ...(await getUser(u.email))!, plan: "starter" });
-    const limits = entitlements((await getUser(u.email))!).instructions;
+    await saveUser({ ...(await getUser(acct(u)))!, plan: "starter" });
+    const limits = entitlements((await getUser(acct(u)))!).instructions;
     // A restore of the live version is refused by the plan today; a smaller set goes live and restore of it answers its count.
     await put(u, first.slice(0, 3).map((i) => ({ id: i.id, text: i.text, agents: "all" as const, on: true })));
     const act = await activateRoute.POST();

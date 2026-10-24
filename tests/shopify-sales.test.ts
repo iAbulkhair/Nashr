@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { json, newUser, signIn } from "./helpers/session";
+import { acct } from "@/lib/auth";
 import { API_VERSION, importShopify, publishShopifyArticle, shopifyGql, shopifySales } from "@/lib/connectors/shopify";
 import { getConnection, saveConnection, type Connection } from "@/lib/connectors/store";
 import { readFile, memoryBlock } from "@/lib/files";
@@ -49,10 +50,10 @@ describe("Shopify goes through the Admin GraphQL API on the connected shop (rule
   it("posts every call to the shop's GraphQL endpoint at a supported version", async () => {
     fakeShopify({ products: [{ title: "عود ملكي", handle: "oud", description: "عطر  فاخر", onlineStoreUrl: null, priceRangeV2: { minVariantPrice: { amount: "120.0", currencyCode: "SAR" } } }] });
     const u = await newUser("shopimport");
-    expect(await importShopify(u.email, conn())).toBe(1);
+    expect(await importShopify(acct(u), conn())).toBe(1);
     expect(API_VERSION).toBe("2026-07");
     expect(sent.every((s) => s.url.href === `https://${SHOP}/admin/api/2026-07/graphql.json`)).toBe(true);
-    const md = (await readFile(u.email, "products.md"))!.content;
+    const md = (await readFile(acct(u), "products.md"))!.content;
     expect(md).toContain("**عود ملكي** — 120.0 SAR\n  عطر فاخر\n  https://ward.myshopify.com/products/oud");
   });
 
@@ -123,36 +124,36 @@ describe("Shopify orders and abandoned checkouts, as totals only (rule 73)", () 
   it("syncs through the connect route, writes store-sales.md with no customer detail, and Noor reads it", async () => {
     fakeShopify({ orders: [[order("300.00", {}, [{ title: "عود ملكي", quantity: 2 }])]], checkouts: [[checkout("90.00", [{ title: "مسك أبيض", quantity: 1 }], { email: "salman@example.com", abandonedCheckoutUrl: "https://ward.example/checkouts/secret", customer: { firstName: "سلمان" } })]], orderCount: 1 });
     const u = await newUser("shopsales");
-    await saveConnection(u.email, conn());
+    await saveConnection(acct(u), conn());
     await signIn(u.email);
     const res = await connectRoute.POST(json("/api/connect/shopify", "POST", { action: "sync_sales" }), { params: Promise.resolve({ provider: "shopify" }) });
     expect((await res.json()).ok).toBe(true);
-    const md = (await readFile(u.email, "store-sales.md"))!.content;
+    const md = (await readFile(acct(u), "store-sales.md"))!.content;
     expect(md).toContain(`# Store sales (Shopify ${SHOP}, last 30 days`);
     expect(md).toContain("Revenue (excluding 0 canceled or refunded): 300 SAR");
     expect(md).toContain("Value left in them: 90 SAR");
-    const snap = JSON.stringify(await getSalesSnapshot(u.email));
+    const snap = JSON.stringify(await getSalesSnapshot(acct(u)));
     for (const pii of ["salman@example.com", "سلمان", "checkouts/secret"]) {
       expect(md).not.toContain(pii);
       expect(snap).not.toContain(pii);
     }
-    expect(await memoryBlock(u.email)).toContain("--- store-sales.md ---");
+    expect(await memoryBlock(acct(u))).toContain("--- store-sales.md ---");
   });
 
   it("reports missing order access without asking for a reconnect, and a dead token with one", async () => {
     const u = await newUser("shop403");
-    await saveConnection(u.email, conn());
+    await saveConnection(acct(u), conn());
     await signIn(u.email);
     const call = () => connectRoute.POST(json("/api/connect/shopify", "POST", { action: "sync_sales" }), { params: Promise.resolve({ provider: "shopify" }) });
 
     for (const denied of [{ status: 403 }, { errors: [{ message: "Access denied for orders field.", extensions: { code: "ACCESS_DENIED" } }] }]) {
       fakeShopify(denied);
       expect((await (await call()).json()).error).toBe("orders_access_denied");
-      expect((await getConnection(u.email, "shopify"))?.needsReconnect).toBeFalsy();
+      expect((await getConnection(acct(u), "shopify"))?.needsReconnect).toBeFalsy();
     }
 
     fakeShopify({ status: 401 });
     expect((await (await call()).json()).error).toBe("reconnect_required");
-    expect((await getConnection(u.email, "shopify"))?.needsReconnect).toBeTruthy();
+    expect((await getConnection(acct(u), "shopify"))?.needsReconnect).toBeTruthy();
   });
 });

@@ -3,7 +3,7 @@ import { createHash, generateKeyPairSync, randomBytes, sign } from "crypto";
 import { readFileSync } from "fs";
 import { jar, json, newMember, newUser, signIn, signOut } from "./helpers/session";
 import { codeAt } from "./helpers/staff";
-import { currentUser, getUser, saveUser } from "@/lib/auth";
+import { acct, currentUser, getLogin, getUser, saveUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { CALLBACK_PATH, GOOGLE_AUTH_URL, GOOGLE_CERTS_URL, GOOGLE_TOKEN_URL, GSI_COOKIE, linkKey, subKey, verifyIdToken } from "@/lib/google-signin";
 import { MIN_ROLE, IMPERSONATION_BLOCKED } from "@/lib/roles";
@@ -212,14 +212,14 @@ describe("rule 1950: signup creates an owner whose address is already proved; lo
     const email = `gnew-${randomBytes(4).toString("hex")}@test.example`;
     const { loc } = await roundTrip("mode=login", email);
     expect(loc).toContain("/ar/app/login?google=google_no_account");
-    expect(await getUser(email)).toBeNull();
+    expect(await getLogin(email)).toBeNull();
   });
 
   it("signup mode creates the owner, proved, linked and signed in", async () => {
     const email = `gnew-${randomBytes(4).toString("hex")}@test.example`;
     const { loc, claims } = await roundTrip("mode=signup&lang=en", email);
     expect(loc).toMatch(/\/en\/app\/b\/default\/start$/);
-    const u = (await getUser(email))!;
+    const u = (await getUser((await getLogin(email))!.acct!))!;
     expect(u.emailVerifiedAt).toBeTruthy();
     expect(await db.get(linkKey(String(claims.sub)))).toBe(email);
     expect((await currentUser())?.email).toBe(email);
@@ -251,7 +251,7 @@ describe("rule 1951: Google goes through the same refusals and two-step challeng
 
   it("a suspended owner is refused", async () => {
     const u = await newUser("gsi");
-    await saveUser({ ...(await getUser(u.email))!, suspended: true });
+    await saveUser({ ...(await getUser(acct(u)))!, suspended: true });
     const { loc } = await roundTrip("mode=login", u.email);
     expect(loc).toContain("google=suspended");
     expect(await currentUser()).toBeNull();

@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { acct } from "@/lib/account-id";
 import { readFileSync } from "node:fs";
 import { json, newMember, newUser, params, signIn } from "./helpers/session";
 import { vjson } from "./helpers/version";
@@ -50,8 +51,8 @@ const person = () => ({ status: "approved" as const, decidedAt: new Date().toISO
 /** A signed-in owner with the brand file and a Telegram connection, resolved the way a request resolves them. */
 async function owner(prefix: string): Promise<User> {
   const u = await newUser(prefix);
-  await saveBrand(u.email, { ...BRAND });
-  await saveConnection(u.email, { provider: "telegram", data: { token: "t", chat: "c" }, connectedAt: new Date().toISOString() });
+  await saveBrand(acct(u), { ...BRAND });
+  await saveConnection(acct(u), { provider: "telegram", data: { token: "t", chat: "c" }, connectedAt: new Date().toISOString() });
   await signIn(u.email);
   return (await currentUser())!;
 }
@@ -137,12 +138,12 @@ describe("unfilled placeholders hold an item (rule 213)", () => {
 
   it("the approve route refuses it, and the publish route refuses a slot the approval allowed", async () => {
     const u = await owner("ph");
-    await saveTask(u.email, item("p1", "خصم [رقم]% هذا الأسبوع"), true);
+    await saveTask(acct(u), item("p1", "خصم [رقم]% هذا الأسبوع"), true);
     const res = await patch("p1", { status: "approved" });
     expect(res.status).toBe(409);
     expect((await res.json()).violations[0]).toMatchObject({ kind: "placeholder", term: "[رقم]" });
-    expect((await getTask(u.email, "p1"))!.status).toBe("pending");
-    await saveTask(u.email, item("w1", "مرحبا {{1}}، قهوتك جاهزة", { type: "whatsapp", channel: "whatsapp" }), true);
+    expect((await getTask(acct(u), "p1"))!.status).toBe("pending");
+    await saveTask(acct(u), item("w1", "مرحبا {{1}}، قهوتك جاهزة", { type: "whatsapp", channel: "whatsapp" }), true);
     expect((await patch("w1", { status: "approved" })).status).toBe(200);
     const pub = await publish("w1");
     expect(pub.status).toBe(409);
@@ -160,34 +161,34 @@ describe("unfilled placeholders hold an item (rule 213)", () => {
 describe("chat publishes only what a person approved, and never over MCP (rule 214)", () => {
   it("refuses an item only auto-approval passed, and publishes one the owner approved", async () => {
     const u = await owner("pub214");
-    await saveTask(u.email, item("auto1", "قهوة طازجة كل صباح", { status: "approved" }), true);
+    await saveTask(acct(u), item("auto1", "قهوة طازجة كل صباح", { status: "approved" }), true);
     expect(await runTool(u, "publish_item", { task_id: "auto1", provider: "telegram" }, [])).toMatch(/approved automatically/);
     expect(h.posts).toEqual([]);
-    await saveTask(u.email, item("mine1", "قهوة طازجة كل صباح", person()), true);
+    await saveTask(acct(u), item("mine1", "قهوة طازجة كل صباح", person()), true);
     expect(await runTool(u, "publish_item", { task_id: "mine1", provider: "telegram" }, [])).toMatch(/^Published to telegram/);
     expect(h.posts).toEqual(["mine1:telegram"]);
   });
 
   it("an owner who rewrites an auto-approved item has decided it", async () => {
     const u = await owner("rewrite");
-    await saveTask(u.email, item("rw", "قهوة طازجة كل صباح", { status: "approved" }), true);
+    await saveTask(acct(u), item("rw", "قهوة طازجة كل صباح", { status: "approved" }), true);
     expect((await patch("rw", { editedBody: "قهوة طازجة من المحمصة كل صباح" })).status).toBe(200);
-    expect((await getTask(u.email, "rw"))!.decidedAt).toBeTruthy();
+    expect((await getTask(acct(u), "rw"))!.decidedAt).toBeTruthy();
     expect(await runTool(u, "publish_item", { task_id: "rw", provider: "telegram" }, [])).toMatch(/^Published to telegram/);
   });
 
   it("an item the owner already published from the inbox counts as reviewed", async () => {
     const u = await owner("pub214p");
-    await saveConnection(u.email, { provider: "x", data: { access_token: "t" }, connectedAt: new Date().toISOString() });
+    await saveConnection(acct(u), { provider: "x", data: { access_token: "t" }, connectedAt: new Date().toISOString() });
     const at = new Date().toISOString();
-    await saveTask(u.email, item("xp", "قهوة طازجة كل صباح", { channel: "x", status: "approved", published: [{ provider: "telegram", url: "https://t.me/c/9", status: "published", at }] }), true);
+    await saveTask(acct(u), item("xp", "قهوة طازجة كل صباح", { channel: "x", status: "approved", published: [{ provider: "telegram", url: "https://t.me/c/9", status: "published", at }] }), true);
     expect(await runTool(u, "publish_item", { task_id: "xp", provider: "x" }, [])).toMatch(/^Published to x/);
     expect(h.posts).toEqual(["xp:x"]);
   });
 
   it("over MCP it publishes nothing, even an item the owner approved", async () => {
     const u = await owner("pub214m");
-    await saveTask(u.email, item("mine2", "قهوة طازجة كل صباح", person()), true);
+    await saveTask(acct(u), item("mine2", "قهوة طازجة كل صباح", person()), true);
     expect(await runTool(u, "publish_item", { task_id: "mine2", provider: "telegram" }, [], [], undefined, { via: "mcp" })).toMatch(/never over MCP/);
     expect(h.posts).toEqual([]);
     // ask_noor is the only way MCP reaches the chat tools, and it runs as "mcp".
@@ -202,14 +203,14 @@ describe("banned words, offers and removals wait for the owner's Save (rules 215
     const proposed: BrandProposal[] = [];
     expect(await runTool(u, "update_brand", { field: "banned", value: "أرخص" }, actions, [], undefined, { proposed })).toMatch(/Not saved yet: adding "أرخص"/);
     expect(proposed.map((p) => [p.field, p.from, p.to, p.added])).toEqual([["banned", "مضمون، رخيص", "مضمون، رخيص, أرخص", ["أرخص"]]]);
-    expect((await getBrand(u.email))!.banned).toBe(BRAND.banned);
+    expect((await getBrand(acct(u)))!.banned).toBe(BRAND.banned);
     expect(actions).toEqual(["brandprop:banned"]);
     expect(await (await decide(proposed[0].id, "apply")).json()).toMatchObject({ ok: true, applied: true });
-    expect((await getBrand(u.email))!.banned).toBe("مضمون، رخيص, أرخص");
+    expect((await getBrand(acct(u)))!.banned).toBe("مضمون، رخيص, أرخص");
     expect(await runTool(u, "update_brand", { field: "banned", value: "رخيص" }, [])).toMatch(/already on the banned list/);
     expect(await runTool(u, "update_brand", { field: "banned_remove", value: "غالي" }, [])).toMatch(/none of those words/);
     expect(await runTool(u, "update_brand", { field: "banned", value: " , " }, [])).toMatch(/send the words to add/);
-    expect((await getBrand(u.email))!.banned).toBe("مضمون، رخيص, أرخص");
+    expect((await getBrand(acct(u)))!.banned).toBe("مضمون، رخيص, أرخص");
   });
 
   it("turns a removal and an offers change into proposals, and changes nothing", async () => {
@@ -221,7 +222,7 @@ describe("banned words, offers and removals wait for the owner's Save (rules 215
     expect(proposed.map((p) => [p.field, p.from, p.to, p.via])).toEqual([["banned", "مضمون، رخيص", "مضمون", "chat"], ["offers", "خصم 10% على أول طلب", "خصم 50% على كل شيء", "chat"]]);
     expect(proposed[0].dropped).toEqual(["رخيص"]);
     expect(actions).toEqual(["brandprop:banned", "brandprop:offers"]);
-    expect(await getBrand(u.email)).toMatchObject({ banned: BRAND.banned, offers: BRAND.offers });
+    expect(await getBrand(acct(u))).toMatchObject({ banned: BRAND.banned, offers: BRAND.offers });
     expect(await runTool(u, "update_brand", { field: "offers", value: BRAND.offers }, [])).toMatch(/No change/);
   });
 
@@ -238,24 +239,24 @@ describe("banned words, offers and removals wait for the owner's Save (rules 215
     expect((await decide(first.id, "apply")).status).toBe(403);
     const other = await owner("other");
     expect((await decide(first.id, "apply")).status).toBe(404);
-    expect((await getBrand(other.email))!.offers).toBe(BRAND.offers);
+    expect((await getBrand(acct(other)))!.offers).toBe(BRAND.offers);
     await signIn(u.email);
-    expect((await getBrand(u.email))!.offers).toBe(BRAND.offers);
+    expect((await getBrand(acct(u)))!.offers).toBe(BRAND.offers);
     const ok = await decide(first.id, "apply");
     expect(ok.status).toBe(200);
     expect(await ok.json()).toMatchObject({ ok: true, applied: true });
-    expect((await getBrand(u.email))!.offers).toBe("خصم 20% في اليوم الوطني");
+    expect((await getBrand(acct(u)))!.offers).toBe("خصم 20% في اليوم الوطني");
     expect((await decide(first.id, "apply")).status).toBe(404);
     // The second was made against the old value, which the first has since replaced.
     const stale = await decide(second.id, "apply");
     expect(stale.status).toBe(409);
     expect((await stale.json()).error).toBe("stale");
-    expect((await getBrand(u.email))!.offers).toBe("خصم 20% في اليوم الوطني");
+    expect((await getBrand(acct(u)))!.offers).toBe("خصم 20% في اليوم الوطني");
     const third: BrandProposal[] = [];
     await runTool(u, "update_brand", { field: "offers", value: "لا عروض حالياً" }, [], [], undefined, { proposed: third });
     expect(await (await decide(third[0].id, "dismiss")).json()).toMatchObject({ ok: true, applied: false });
     expect((await decide(third[0].id, "apply")).status).toBe(404);
-    expect((await getBrand(u.email))!.offers).toBe("خصم 20% في اليوم الوطني");
+    expect((await getBrand(acct(u)))!.offers).toBe("خصم 20% في اليوم الوطني");
   });
 
   it("a removal applies to the list as it is now, so a word added since stays", async () => {
@@ -265,7 +266,7 @@ describe("banned words, offers and removals wait for the owner's Save (rules 215
     expect(await runTool(u, "update_brand", { field: "banned", value: "أرخص" }, [], [], undefined, { proposed })).toMatch(/Not saved yet: adding/);
     expect(await (await decide(proposed[1].id, "apply")).json()).toMatchObject({ ok: true, applied: true });
     expect(await (await decide(proposed[0].id, "apply")).json()).toMatchObject({ ok: true, applied: true });
-    expect((await getBrand(u.email))!.banned).toBe("مضمون, أرخص");
+    expect((await getBrand(acct(u)))!.banned).toBe("مضمون, أرخص");
   });
 
   it("a reloaded thread shows each card as decided or still open", async () => {
@@ -273,21 +274,21 @@ describe("banned words, offers and removals wait for the owner's Save (rules 215
     const proposed: BrandProposal[] = [];
     await runTool(u, "update_brand", { field: "offers", value: "خصم 15%" }, [], [], undefined, { proposed });
     await runTool(u, "update_brand", { field: "banned_remove", value: "مضمون" }, [], [], undefined, { proposed });
-    await push(u.email, { role: "assistant", content: "ok", at: new Date().toISOString(), proposals: proposed });
+    await push(acct(u), { role: "assistant", content: "ok", at: new Date().toISOString(), proposals: proposed });
     await decide(proposed[0].id, "apply");
-    const last = (await history(u.email)).at(-1)!;
+    const last = (await history(acct(u))).at(-1)!;
     expect(last.proposals!.map((p) => p.state)).toEqual(["applied", "open"]);
     await decide(proposed[1].id, "dismiss");
-    expect((await history(u.email)).at(-1)!.proposals!.map((p) => p.state)).toEqual(["applied", "dismissed"]);
+    expect((await history(acct(u))).at(-1)!.proposals!.map((p) => p.state)).toEqual(["applied", "dismissed"]);
   });
 
   it("a proposal that could not be applied (no brand file) can be applied on the next press", async () => {
     const u = await owner("retry");
     const proposed: BrandProposal[] = [];
     await runTool(u, "update_brand", { field: "offers", value: "خصم 15%" }, [], [], undefined, { proposed });
-    await db.del(`brand:${u.email}`);
+    await db.del(`brand:${acct(u)}`);
     expect((await decide(proposed[0].id, "apply")).status).toBe(409);
-    await saveBrand(u.email, { ...BRAND });
+    await saveBrand(acct(u), { ...BRAND });
     expect((await decide(proposed[0].id, "apply")).status).toBe(200);
   });
 });
@@ -295,10 +296,10 @@ describe("banned words, offers and removals wait for the owner's Save (rules 215
 describe("a deleted account leaves no brand proposal behind (rule 240)", () => {
   it("wipeAccount deletes every proposal, its outcome, claim and index, and the brand lock, for every brand", async () => {
     const u = await owner("prop-wipe");
-    await saveUser({ ...(await getUser(u.email))!, plan: "agency" });
-    const second = await addBrand((await getUser(u.email))!, "Second");
+    await saveUser({ ...(await getUser(acct(u)))!, plan: "agency" });
+    const second = await addBrand((await getUser(acct(u)))!, "Second");
     if ("error" in second) throw new Error(second.error);
-    const scopes = [u.email, scopeFor(u.email, second.id)];
+    const scopes = [acct(u), scopeFor(acct(u), second.id)];
     for (const s of scopes) {
       await saveBrand(s, { ...BRAND });
       // One still open (it holds the old and the new offers), one dismissed, and an answer whose claim was never released.
@@ -309,10 +310,10 @@ describe("a deleted account leaves no brand proposal behind (rule 240)", () => {
       expect(await db.lock(`brandlock:${s}`, 10)).toBe(true);
     }
     const mem = (globalThis as unknown as { __nashrMem: { kv: Map<string, unknown>; sets: Map<string, Set<string>> } }).__nashrMem;
-    const left = () => [...mem.kv.keys(), ...mem.sets.keys()].filter((k) => /^brand(prop|props|prop-done|prop-claim|lock):/.test(k) && k.includes(u.email));
+    const left = () => [...mem.kv.keys(), ...mem.sets.keys()].filter((k) => /^brand(prop|props|prop-done|prop-claim|lock):/.test(k) && k.includes(acct(u)));
     // Per brand: the open proposal, the dismissed one's outcome, the claim, the index and the lock.
     expect(left()).toHaveLength(scopes.length * 5);
-    await wipeAccount(u.email);
+    await wipeAccount(acct(u));
     expect(left()).toEqual([]);
   });
 });
@@ -320,7 +321,7 @@ describe("a deleted account leaves no brand proposal behind (rule 240)", () => {
 describe("one publish per item and platform (rule 216)", () => {
   it("refuses a second publish until the owner says again", async () => {
     const u = await owner("once");
-    await saveTask(u.email, item("o1", "قهوة طازجة كل صباح", person()), true);
+    await saveTask(acct(u), item("o1", "قهوة طازجة كل صباح", person()), true);
     expect((await publish("o1")).status).toBe(200);
     const twice = await publish("o1");
     expect(twice.status).toBe(409);
@@ -328,12 +329,12 @@ describe("one publish per item and platform (rule 216)", () => {
     expect(await runTool(u, "publish_item", { task_id: "o1", provider: "telegram" }, [])).toMatch(/already went to telegram/);
     expect((await publish("o1", { provider: "telegram", again: true })).status).toBe(200);
     expect(h.posts).toEqual(["o1:telegram", "o1:telegram"]);
-    expect((await getTask(u.email, "o1"))!.published).toHaveLength(2);
+    expect((await getTask(acct(u), "o1"))!.published).toHaveLength(2);
   });
 
   it("two presses at once post once", async () => {
     const u = await owner("race");
-    await saveTask(u.email, item("r1", "قهوة طازجة كل صباح", person()), true);
+    await saveTask(acct(u), item("r1", "قهوة طازجة كل صباح", person()), true);
     h.slow = 60;
     const both = await Promise.all([publish("r1"), publish("r1")]);
     expect(both.map((r) => r.status).sort()).toEqual([200, 409]);
@@ -342,46 +343,46 @@ describe("one publish per item and platform (rule 216)", () => {
 
   it("a publish with no answer blocks the next one until the owner has checked; a refusal does not", async () => {
     const u = await owner("unknown");
-    await saveTask(u.email, item("u1", "قهوة طازجة كل صباح", person()), true);
+    await saveTask(acct(u), item("u1", "قهوة طازجة كل صباح", person()), true);
     h.fail = new Error("fetch failed");
     // The first answer already says the result is unknown, never "failed".
     const first = await publish("u1");
     expect(first.status).toBe(409);
     expect((await first.json()).error).toBe("publish_unknown");
-    expect(await db.get(attemptKey(u.email, "u1", "telegram"))).toBeTruthy();
+    expect(await db.get(attemptKey(acct(u), "u1", "telegram"))).toBeTruthy();
     h.fail = null;
     const blocked = await publish("u1");
     expect(blocked.status).toBe(409);
     expect((await blocked.json()).error).toBe("publish_unknown");
     expect(h.posts).toEqual([]);
     expect((await publish("u1", { provider: "telegram", again: true })).status).toBe(200);
-    expect(await db.get(attemptKey(u.email, "u1", "telegram"))).toBeNull();
-    await saveTask(u.email, item("u2", "قهوة طازجة كل صباح", person()), true);
+    expect(await db.get(attemptKey(acct(u), "u1", "telegram"))).toBeNull();
+    await saveTask(acct(u), item("u2", "قهوة طازجة كل صباح", person()), true);
     h.fail = new Error("x 403: Forbidden");
     expect((await publish("u2")).status).toBe(502);
-    expect(await db.get(attemptKey(u.email, "u2", "telegram"))).toBeNull();
+    expect(await db.get(attemptKey(acct(u), "u2", "telegram"))).toBeNull();
     h.fail = null;
     expect((await publish("u2")).status).toBe(200);
     // X refusing a repeated text: nothing went out, and it is told as such, not as a broken connection.
-    await saveTask(u.email, item("u3", "قهوة طازجة كل صباح", person()), true);
+    await saveTask(acct(u), item("u3", "قهوة طازجة كل صباح", person()), true);
     h.fail = new Error("x_duplicate");
     const dup = await publish("u3");
     expect(dup.status).toBe(409);
     expect((await dup.json()).error).toBe("duplicate_post");
-    expect(await db.get(attemptKey(u.email, "u3", "telegram"))).toBeNull();
+    expect(await db.get(attemptKey(acct(u), "u3", "telegram"))).toBeNull();
   });
 
   it("an 'already posted' answer after an unknown attempt records that attempt as live", async () => {
     const u = await owner("earlier");
-    await saveTask(u.email, item("e1", "قهوة طازجة كل صباح", person()), true);
+    await saveTask(acct(u), item("e1", "قهوة طازجة كل صباح", person()), true);
     h.fail = new Error("fetch failed");
     expect((await publish("e1")).status).toBe(409);
     h.fail = new Error("x_duplicate");
     const res = await publish("e1", { provider: "telegram", again: true });
     expect(res.status).toBe(409);
     expect((await res.json()).error).toBe("earlier_live");
-    expect((await getTask(u.email, "e1"))!.published).toMatchObject([{ provider: "telegram", status: "published" }]);
-    expect(await db.get(attemptKey(u.email, "e1", "telegram"))).toBeNull();
+    expect((await getTask(acct(u), "e1"))!.published).toMatchObject([{ provider: "telegram", status: "published" }]);
+    expect(await db.get(attemptKey(acct(u), "e1", "telegram"))).toBeNull();
     h.fail = null;
     expect((await (await publish("e1")).json()).error).toBe("already_published");
     // The publish route's own lock is just above its 60 s limit, so a killed publish does not read as "busy" for minutes.
@@ -390,11 +391,11 @@ describe("one publish per item and platform (rule 216)", () => {
 
   it("runs the caller's check on the copy it sends, and sends nothing when it refuses", async () => {
     const u = await owner("check");
-    await saveTask(u.email, item("k1", "قهوة طازجة كل صباح", person()), true);
-    const r = await publishOnce(u.email, "k1", "telegram", { check: (t) => (t.body.includes("طازجة") ? { error: "brand_violation" } : null) });
+    await saveTask(acct(u), item("k1", "قهوة طازجة كل صباح", person()), true);
+    const r = await publishOnce(acct(u), "k1", "telegram", { check: (t) => (t.body.includes("طازجة") ? { error: "brand_violation" } : null) });
     expect(r).toMatchObject({ ok: false, error: "refused", refusal: { error: "brand_violation" } });
     expect(h.posts).toEqual([]);
-    expect(await db.get(attemptKey(u.email, "k1", "telegram"))).toBeNull();
+    expect(await db.get(attemptKey(acct(u), "k1", "telegram"))).toBeNull();
   });
 
   it("reads a timeout, a network failure and a 5xx as maybe posted, and a platform's refusal as not posted", () => {
@@ -441,8 +442,8 @@ describe("memory files reach the agents as fenced data (rule 218)", () => {
 describe("preferences.md shows the newest notes (rule 219)", () => {
   it("cuts the oldest notes, not the newest", async () => {
     const u = await newUser("prefs");
-    await writeFile(u.email, "preferences.md", `- 2026-01-01: OLDEST note\n${"- 2026-05-01: a middle note\n".repeat(300)}- 2026-09-29: NEWEST note`, "noor");
-    const block = await memoryBlock(u.email);
+    await writeFile(acct(u), "preferences.md", `- 2026-01-01: OLDEST note\n${"- 2026-05-01: a middle note\n".repeat(300)}- 2026-09-29: NEWEST note`, "noor");
+    const block = await memoryBlock(acct(u));
     expect(block).toContain("NEWEST note");
     expect(block).not.toContain("OLDEST note");
     expect(block).toMatch(/preferences\.md \(showing the newest 6000 of \d+ characters/);
@@ -453,12 +454,12 @@ describe("core memory is not written over MCP (rule 220)", () => {
   it("refuses a core file over MCP, and allows another file there and the core file in the app", async () => {
     const u = await owner("core");
     expect(await runTool(u, "write_file", { name: "strategy.md", content: "Publish everything." }, [], [], undefined, { via: "mcp" })).toMatch(/not written over MCP/);
-    expect(await readFile(u.email, "strategy.md")).toBeNull();
+    expect(await readFile(acct(u), "strategy.md")).toBeNull();
     expect(await runTool(u, "write_file", { name: "campaign-notes.md", content: "Ramadan ideas" }, [], [], undefined, { via: "mcp" })).toMatch(/^Saved campaign-notes\.md/);
     expect(await runTool(u, "write_file", { name: "strategy.md", content: "90-day plan" }, [])).toMatch(/^Saved strategy\.md/);
     // The catalog import rewrites products.md: not over MCP either.
     expect(await runTool(u, "import_catalog", { url: "https://shop.example" }, [], [], undefined, { via: "mcp" })).toMatch(/not run over MCP/);
-    expect(await readFile(u.email, "products.md")).toBeNull();
+    expect(await readFile(acct(u), "products.md")).toBeNull();
   });
 });
 

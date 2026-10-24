@@ -18,6 +18,7 @@ import {
 import { hijriMonthStart, nextOccurrence, workCalendar, type SecCalendar } from "@/lib/secretary-calendar";
 import { hijriDate } from "@/lib/seasons";
 
+import { acct } from "@/lib/auth";
 const z = "Asia/Riyadh";
 const at = (day: string, hm = "12:00") => Date.parse(`${day}T${hm}:00+03:00`);
 const day = (iso: string) => iso.slice(0, 10);
@@ -403,7 +404,7 @@ describe("rule 494: a repeat needs a due date, from every caller", () => {
     const moved = await patch(ok.id, { action: "reschedule", dueAt: inDays(12, 11) });
     expect(moved.status).toBe(400);
     expect(await moved.json()).toMatchObject({ ok: false, error: "repeat_until_before_due" });
-    expect(await getItem(u.email, ok.id)).toMatchObject({ rev: 1, dueAt: ok.dueAt });
+    expect(await getItem(acct(u), ok.id)).toMatchObject({ rev: 1, dueAt: ok.dueAt });
   });
   it("update with dueAt null, reschedule to null and todo_update clear_due all answer repeat_needs_due (400, field dueAt)", async () => {
     const u = await login();
@@ -418,7 +419,7 @@ describe("rule 494: a repeat needs a due date, from every caller", () => {
     expect(t.isError).toBe(true);
     expect(t.text).toContain("needs a due date");
     expect(t.text).toContain("(field: dueAt)");
-    expect(await getItem(u.email, it1.id)).toMatchObject({ rev: 1, dueAt: it1.dueAt });
+    expect(await getItem(acct(u), it1.id)).toMatchObject({ rev: 1, dueAt: it1.dueAt });
   });
 
   it("setting repeat on an undated item gives it the first occurrence, all-day, and mints the series (R42)", async () => {
@@ -443,7 +444,7 @@ describe("rule 494: a repeat needs a due date, from every caller", () => {
     expect(localDay(born.dueAt!)).toBe(today);
     expect(born.series!.id).toMatch(SERIES_ID);
     // the rule is stored in the owner's scope only
-    expect(await getItem(u.email, born.id)).toMatchObject({ repeat: { every: "day", interval: 2 } });
+    expect(await getItem(acct(u), born.id)).toMatchObject({ repeat: { every: "day", interval: 2 } });
   });
 
   it("a weekly rule on an undated item opens on the first matching day, not on today", async () => {
@@ -483,7 +484,7 @@ describe("rule 494: a repeat needs a due date, from every caller", () => {
     const one = await add({ title: "One-off", dueAt: inDays(2, 10) });
     r = await patch(one.id, { remindAt: inDays(2, 9) });
     expect(((await r.json()).item as SecItem).repeat).toBeUndefined();
-    expect(await getItem(u.email, far.id)).toMatchObject({ rev: 2 });
+    expect(await getItem(acct(u), far.id)).toMatchObject({ rev: 2 });
   });
 
   it("parseRepeat refuses interval 0 or 100, hyear above 10, a past until, count 0 or 1000, weekdays of 8 (repeat_invalid)", () => {
@@ -537,7 +538,7 @@ describe("rule 494: a repeat needs a due date, from every caller", () => {
     cur = (await r.json()).item as SecItem;
     expect(cur.allDay).toBe(true);
     expect(cur.repeat!.time).toBeUndefined();
-    expect((await getItem(u.email, it1.id))!.repeat).toMatchObject({ every: "day" });
+    expect((await getItem(acct(u), it1.id))!.repeat).toMatchObject({ every: "day" });
   });
 
   it("resending the same dueAt after a one-off reschedule keeps the rule's time; a real time change updates it (R53)", async () => {
@@ -581,7 +582,7 @@ describe("rule 495: skip, stop and ending a series are owner-only", () => {
     await signIn(member.email);
     const r = await patch(it1.id, { action: "skip" });
     expect(r.status).toBe(403);
-    expect(await getItem(o.email, it1.id)).toMatchObject({ completedAt: null, rev: 1 });
+    expect(await getItem(acct(o), it1.id)).toMatchObject({ completedAt: null, rev: 1 });
     await signIn(o.email);
     expect((await patch(it1.id, { action: "skip" })).status).toBe(200);
   });
@@ -599,18 +600,18 @@ describe("rule 495: skip, stop and ending a series are owner-only", () => {
     expect(cur.completedAt).toBeTruthy();
     expect(SKIP_RESULT).toBe("skipped");
     // The skipped copy is the series' closed copy (rule 496).
-    expect(await db.zrangeWithScores(SEC_KEYS.series(o.email, cur.series!.id))).toEqual([{ member: it1.id, score: Date.parse(cur.completedAt!) }]);
+    expect(await db.zrangeWithScores(SEC_KEYS.series(acct(o), cur.series!.id))).toEqual([{ member: it1.id, score: Date.parse(cur.completedAt!) }]);
     // The skip opened the next copy of that series (rule 497).
-    const skipNext = (await getItem(o.email, cur.nextId!))!;
+    const skipNext = (await getItem(acct(o), cur.nextId!))!;
     expect(skipNext).toMatchObject({ series: { id: cur.series!.id, n: 2 }, completedAt: null, deletedAt: null });
     // delete: the copy goes, nothing else opens, and it never joins the series' closed copies
     const d = await add({ title: "Delete me", dueAt: inDays(1, 9), repeat: { every: "day" } });
     const deleted = (await (await patch(d.id, { action: "delete" })).json()).item as SecItem;
     expect(deleted.nextId).toBeUndefined();
-    expect(await db.get(SEC_KEYS.spawn(o.email, d.id))).toBeNull();
-    expect(await db.zrangeWithScores(SEC_KEYS.series(o.email, d.series!.id))).toEqual([]);
-    expect(await db.smembers(SEC_KEYS.seriesList(o.email))).toEqual([cur.series!.id]);
-    const open = await listOpenItems(o.email);
+    expect(await db.get(SEC_KEYS.spawn(acct(o), d.id))).toBeNull();
+    expect(await db.zrangeWithScores(SEC_KEYS.series(acct(o), d.series!.id))).toEqual([]);
+    expect(await db.smembers(SEC_KEYS.seriesList(acct(o)))).toEqual([cur.series!.id]);
+    const open = await listOpenItems(acct(o));
     expect(open.map((x) => x.id).sort()).toEqual([plain.id, skipNext.id].sort());
     expect(open.filter((x) => x.series?.id === d.series!.id)).toEqual([]);
   });
@@ -623,10 +624,10 @@ describe("rule 495: skip, stop and ending a series are owner-only", () => {
     const r2 = await patch(a.id, { action: "reopen" });
     expect("closedBy" in ((await r2.json()).item as SecItem)).toBe(false);
     const b = await add({ title: "B", dueAt: inDays(1) });
-    await changeItem(o.email, b.id, { action: "propose_done", evidence: "it is done" }, chat);
+    await changeItem(acct(o), b.id, { action: "propose_done", evidence: "it is done" }, chat);
     const r3 = await patch(b.id, { action: "confirm_done" });
     expect(((await r3.json()).item as SecItem).closedBy).toMatchObject({ actor: "owner" });
-    const log = (await db.lrange(SEC_KEYS.audit(o.email), 0, -1)).map((x) => JSON.parse(x));
+    const log = (await db.lrange(SEC_KEYS.audit(acct(o)), 0, -1)).map((x) => JSON.parse(x));
     expect(log.find((l) => l.id === a.id && l.action === "complete").diff).toContain("closedBy=");
     expect(log.find((l) => l.id === a.id && l.action === "create").diff).toContain("title=");
   });
@@ -653,19 +654,19 @@ describe("rule 495: skip, stop and ending a series are owner-only", () => {
     const it1 = await add({ title: "Weekly", dueAt: inDays(2, 9), repeat: { every: "day" } });
     const cal = defaultCal(z);
     const expectOwner = async (c: Parameters<typeof changeItem>[2]) => {
-      const r = await changeItem(o.email, it1.id, c, chat, undefined, z, cal);
+      const r = await changeItem(acct(o), it1.id, c, chat, undefined, z, cal);
       expect(r, JSON.stringify(c)).toMatchObject({ ok: false, error: "owner_only", status: 403, field: "repeat" });
     };
     await expectOwner({ action: "stop_repeat" });
     await expectOwner({ action: "update", fields: { repeat: null } });
     await expectOwner({ action: "update", fields: { repeat: { every: "day", interval: 1, count: 1 } } });
     await expectOwner({ action: "update", fields: { repeat: { every: "day", interval: 1, until: zoneDay(Date.now(), z) } } });
-    expect(await getItem(o.email, it1.id)).toMatchObject({ rev: 1, repeat: { every: "day" } });
+    expect(await getItem(acct(o), it1.id)).toMatchObject({ rev: 1, repeat: { every: "day" } });
     // a count or until that still leaves the next copy is fine, and so is another cadence
-    const ok = await changeItem(o.email, it1.id, { action: "update", fields: { repeat: { every: "day", interval: 1, count: 5, until: zoneDay(Date.now() + 30 * 864e5, z) } } }, chat, undefined, z, cal);
+    const ok = await changeItem(acct(o), it1.id, { action: "update", fields: { repeat: { every: "day", interval: 1, count: 5, until: zoneDay(Date.now() + 30 * 864e5, z) } } }, chat, undefined, z, cal);
     expect(ok).toMatchObject({ ok: true });
     expect(ok.ok && ok.item.series!.id).toBe(it1.series!.id);
-    const wk = await changeItem(o.email, it1.id, { action: "update", fields: { repeat: { every: "week", interval: 2 } } }, { actor: "mcp", via: "mcp" }, undefined, z, cal);
+    const wk = await changeItem(acct(o), it1.id, { action: "update", fields: { repeat: { every: "week", interval: 2 } } }, { actor: "mcp", via: "mcp" }, undefined, z, cal);
     expect(wk).toMatchObject({ ok: true });
     // the owner in the app may do all of it
     const mine = mutateItem(structuredClone(it1), { action: "update", fields: { repeat: { every: "day", interval: 1, count: 1 } } }, web, Date.now(), z, cal);
@@ -675,7 +676,7 @@ describe("rule 495: skip, stop and ending a series are owner-only", () => {
   it("repeat null from chat on an item with no repeat is a harmless no-op (R39)", async () => {
     const o = await login();
     const plain = await add({ title: "One-off", dueAt: inDays(2, 9) });
-    const r = await changeItem(o.email, plain.id, { action: "update", fields: { repeat: null, priority: 1 } }, chat, undefined, z, defaultCal(z));
+    const r = await changeItem(acct(o), plain.id, { action: "update", fields: { repeat: null, priority: 1 } }, chat, undefined, z, defaultCal(z));
     expect(r).toMatchObject({ ok: true });
     expect(r.ok && r.item.repeat).toBeNull();
   });
@@ -691,7 +692,7 @@ describe("rule 495: skip, stop and ending a series are owner-only", () => {
     // an explicit value in the input wins
     r = await patch(it1.id, { repeat: { every: "week", remindBefore: 15 } });
     expect(((await r.json()).item as SecItem).repeat!.remindBefore).toBe(15);
-    expect(await getItem(o.email, it1.id)).toMatchObject({ repeat: { remindBefore: 15 } });
+    expect(await getItem(acct(o), it1.id)).toMatchObject({ repeat: { remindBefore: 15 } });
   });
 
   it("the word for a skipped result is translated wherever a result is shown", async () => {
@@ -722,7 +723,7 @@ describe("rule 495: skip, stop and ending a series are owner-only", () => {
       const e = appDict[lang].todo.errors;
       for (const k of ["repeat_invalid", "repeat_needs_due", "repeat_until_before_due", "keep_limit", "owner_only"]) expect(e[k], `${lang} ${k}`).toBeTruthy();
     }
-    const stop = await changeItem(o.email, it1.id, { action: "stop_repeat" }, chat);
+    const stop = await changeItem(acct(o), it1.id, { action: "stop_repeat" }, chat);
     expect(stop.ok).toBe(false);
     if (!stop.ok) {
       const { toolError } = await import("@/lib/secretary");
@@ -765,26 +766,26 @@ describe("rule 497: exactly one next copy", () => {
     const o = await login();
     const a = await daily();
     const orphan = record();
-    await Promise.all([db.set(SEC_KEYS.item(o.email, ORPHAN), orphan), db.setNx(SEC_KEYS.spawn(o.email, a.id), ORPHAN, 172800)]);
+    await Promise.all([db.set(SEC_KEYS.item(acct(o), ORPHAN), orphan), db.setNx(SEC_KEYS.spawn(acct(o), a.id), ORPHAN, 172800)]);
     const closed = await done(a.id);
     expect(closed.nextId).toBe(ORPHAN);
-    expect(await getItem(o.email, ORPHAN)).toEqual(orphan);
-    expect(await db.get(SEC_KEYS.spawn(o.email, a.id))).toBe(ORPHAN);
-    expect(await openOf(o.email)).toEqual([ORPHAN]);
+    expect(await getItem(acct(o), ORPHAN)).toEqual(orphan);
+    expect(await db.get(SEC_KEYS.spawn(acct(o), a.id))).toBe(ORPHAN);
+    expect(await openOf(acct(o))).toEqual([ORPHAN]);
   });
 
   it("a pre-seeded claim naming a soft-deleted record is stale: a new id is minted and the claim overwritten", async () => {
     const o = await login();
     const a = await daily();
     const dead = record({ deletedAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 30 * 864e5).toISOString() });
-    await Promise.all([db.set(SEC_KEYS.item(o.email, ORPHAN), dead), db.setNx(SEC_KEYS.spawn(o.email, a.id), ORPHAN, 172800)]);
+    await Promise.all([db.set(SEC_KEYS.item(acct(o), ORPHAN), dead), db.setNx(SEC_KEYS.spawn(acct(o), a.id), ORPHAN, 172800)]);
     const closed = await done(a.id);
     expect(closed.nextId).toMatch(/^s[a-f0-9]{16}$/);
     expect(closed.nextId).not.toBe(ORPHAN);
-    expect(await db.get(SEC_KEYS.spawn(o.email, a.id))).toBe(closed.nextId);
-    expect(await getItem(o.email, ORPHAN)).toEqual(dead);
-    expect(await getItem(o.email, closed.nextId!)).toMatchObject({ completedAt: null, deletedAt: null, series: { id: a.series!.id, n: 2 } });
-    expect(await openOf(o.email)).toEqual([closed.nextId]);
+    expect(await db.get(SEC_KEYS.spawn(acct(o), a.id))).toBe(closed.nextId);
+    expect(await getItem(acct(o), ORPHAN)).toEqual(dead);
+    expect(await getItem(acct(o), closed.nextId!)).toMatchObject({ completedAt: null, deletedAt: null, series: { id: a.series!.id, n: 2 } });
+    expect(await openOf(acct(o))).toEqual([closed.nextId]);
   });
 
   it("a failure after round 1 (nextId set, no new copy) and a retry give one copy at the claimed id", async () => {
@@ -793,29 +794,29 @@ describe("rule 497: exactly one next copy", () => {
     const set = db.set.bind(db);
     let failed = 0;
     const spy = vi.spyOn(db, "set").mockImplementation(async (key: string, value: unknown, ttl?: number) => {
-      if (key.startsWith(`sec:item:${o.email}:`) && key !== SEC_KEYS.item(o.email, a.id) && !failed++) throw new Error("killed");
+      if (key.startsWith(`sec:item:${acct(o)}:`) && key !== SEC_KEYS.item(acct(o), a.id) && !failed++) throw new Error("killed");
       return set(key, value, ttl);
     });
-    const close = () => changeItem(o.email, a.id, { action: "complete", result: "ok" }, owner(o.email), undefined, z, defaultCal(z));
+    const close = () => changeItem(acct(o), a.id, { action: "complete", result: "ok" }, owner(o.email), undefined, z, defaultCal(z));
     await expect(close()).rejects.toThrow("killed");
     spy.mockRestore();
     // Round 1 landed: the closed copy names the claimed id, whose record does not exist. Nothing shows twice.
-    const half = (await getItem(o.email, a.id))!;
-    const claimed = await db.get<string>(SEC_KEYS.spawn(o.email, a.id));
+    const half = (await getItem(acct(o), a.id))!;
+    const claimed = await db.get<string>(SEC_KEYS.spawn(acct(o), a.id));
     expect(half.completedAt).toBeTruthy();
     expect(half.nextId).toBe(claimed);
-    expect(await getItem(o.email, claimed!)).toBeNull();
-    expect(await openOf(o.email)).toEqual([]);
+    expect(await getItem(acct(o), claimed!)).toBeNull();
+    expect(await openOf(acct(o))).toEqual([]);
     // The retry opens the copy at that id.
     const r = await close();
     expect(r).toMatchObject({ ok: true });
     expect(r.ok && r.item.nextId).toBe(claimed);
-    expect(await getItem(o.email, claimed!)).toMatchObject({ completedAt: null, series: { id: a.series!.id, n: 2 }, rev: 1 });
-    expect(await openOf(o.email)).toEqual([claimed]);
+    expect(await getItem(acct(o), claimed!)).toMatchObject({ completedAt: null, series: { id: a.series!.id, n: 2 }, rev: 1 });
+    expect(await openOf(acct(o))).toEqual([claimed]);
     // Once the next copy is alive, a further close is the usual 409 and opens nothing.
     expect(await close()).toMatchObject({ ok: false, error: "completed", status: 409 });
-    expect(await openOf(o.email)).toEqual([claimed]);
-    expect(await getItem(o.email, a.id)).toMatchObject({ result: "ok", nextId: claimed });
+    expect(await openOf(acct(o))).toEqual([claimed]);
+    expect(await getItem(acct(o), a.id)).toMatchObject({ result: "ok", nextId: claimed });
   });
 
   it("reopen then re-close within 2 days opens a new id, and sec:deleted holds no open item", async () => {
@@ -824,16 +825,16 @@ describe("rule 497: exactly one next copy", () => {
     const b = (await done(a.id)).nextId!;
     const re = await reopen(a.id);
     expect(re.nextId).toBeUndefined();
-    expect(await db.get(SEC_KEYS.spawn(o.email, a.id))).toBeNull();
+    expect(await db.get(SEC_KEYS.spawn(acct(o), a.id))).toBeNull();
     const c = (await done(a.id)).nextId!;
     expect(c).toMatch(/^s[a-f0-9]{16}$/);
     expect(c).not.toBe(b);
-    expect(await openOf(o.email)).toEqual([c]);
-    const del = (await db.zrangeWithScores(SEC_KEYS.deleted(o.email))).map((m) => m.member);
+    expect(await openOf(acct(o))).toEqual([c]);
+    const del = (await db.zrangeWithScores(SEC_KEYS.deleted(acct(o)))).map((m) => m.member);
     expect(del).toEqual([b]);
-    const rows = await Promise.all(del.map((id) => getItem(o.email, id)));
+    const rows = await Promise.all(del.map((id) => getItem(acct(o), id)));
     expect(rows.every((x) => !!x?.deletedAt && !x.completedAt)).toBe(true);
-    expect(await getItem(o.email, c)).toMatchObject({ deletedAt: null, completedAt: null, series: { n: 2 } });
+    expect(await getItem(acct(o), c)).toMatchObject({ deletedAt: null, completedAt: null, series: { n: 2 } });
   });
 
   it("a re-close while the next copy is alive opens nothing", async () => {
@@ -845,24 +846,24 @@ describe("rule 497: exactly one next copy", () => {
     expect((await reopen(a.id)).nextId).toBe(b);
     const again = await done(a.id);
     expect(again.nextId).toBe(b);
-    expect(await openOf(o.email)).toEqual([c]);
-    expect(await db.smembers(SEC_KEYS.all(o.email))).toHaveLength(3);
+    expect(await openOf(acct(o))).toEqual([c]);
+    expect(await db.smembers(SEC_KEYS.all(acct(o)))).toHaveLength(3);
   });
 
   it("nextId naming a missing record spawns again", async () => {
     const o = await login();
     const MISSING = "s00000000000000ff";
     const a = await daily();
-    await db.set(SEC_KEYS.item(o.email, a.id), { ...(await getItem(o.email, a.id))!, nextId: MISSING });
+    await db.set(SEC_KEYS.item(acct(o), a.id), { ...(await getItem(acct(o), a.id))!, nextId: MISSING });
     const closed = await done(a.id);
     expect(closed.nextId).toMatch(/^s[a-f0-9]{16}$/);
-    expect(await getItem(o.email, closed.nextId!)).toMatchObject({ completedAt: null, title: "Daily", series: { id: a.series!.id, n: 2 } });
-    expect(await openOf(o.email)).toEqual([closed.nextId]);
+    expect(await getItem(acct(o), closed.nextId!)).toMatchObject({ completedAt: null, title: "Daily", series: { id: a.series!.id, n: 2 } });
+    expect(await openOf(acct(o))).toEqual([closed.nextId]);
     // With a claim naming that missing record, the claimed id is the one used.
     const a2 = await daily("Second");
-    await Promise.all([db.set(SEC_KEYS.item(o.email, a2.id), { ...(await getItem(o.email, a2.id))!, nextId: MISSING }), db.setNx(SEC_KEYS.spawn(o.email, a2.id), MISSING, 172800)]);
+    await Promise.all([db.set(SEC_KEYS.item(acct(o), a2.id), { ...(await getItem(acct(o), a2.id))!, nextId: MISSING }), db.setNx(SEC_KEYS.spawn(acct(o), a2.id), MISSING, 172800)]);
     expect((await done(a2.id)).nextId).toBe(MISSING);
-    expect(await getItem(o.email, MISSING)).toMatchObject({ title: "Second", completedAt: null, series: { id: a2.series!.id, n: 2 } });
+    expect(await getItem(acct(o), MISSING)).toMatchObject({ title: "Second", completedAt: null, series: { id: a2.series!.id, n: 2 } });
   });
 
   it("two concurrent complete calls: one wins, the other answers completed 409, and there is one next copy", async () => {
@@ -872,10 +873,10 @@ describe("rule 497: exactly one next copy", () => {
     expect(rs.map((r) => r.status).sort()).toEqual([200, 409]);
     const bodies = await Promise.all(rs.map((r) => r.json()));
     expect(bodies.find((b) => !b.ok)).toMatchObject({ error: "completed" });
-    const open = await listOpenItems(o.email);
+    const open = await listOpenItems(acct(o));
     expect(open).toHaveLength(1);
     expect(open[0].series).toEqual({ id: a.series!.id, n: 2 });
-    expect((await auditOf(o.email)).filter((l) => l.action === "spawn")).toHaveLength(1);
+    expect((await auditOf(acct(o))).filter((l) => l.action === "spawn")).toHaveLength(1);
   });
 
   it("a soft-deleted next copy: the owner's re-close of the done copy opens a new one; while the next copy is alive it is 409", async () => {
@@ -886,49 +887,49 @@ describe("rule 497: exactly one next copy", () => {
     const alive = await patch(a.id, { action: "complete", result: "again" });
     expect(alive.status).toBe(409);
     expect(await alive.json()).toMatchObject({ error: "completed" });
-    expect(await openOf(o.email)).toEqual([b]);
+    expect(await openOf(acct(o))).toEqual([b]);
     // The owner deletes the next copy; the re-close finishes the spawn at a new id and answers 200.
     expect((await patch(b, { action: "delete" })).status).toBe(200);
-    expect(await openOf(o.email)).toEqual([]);
+    expect(await openOf(acct(o))).toEqual([]);
     const again = await done(a.id);
     const c = again.nextId!;
     expect(c).toMatch(/^s[a-f0-9]{16}$/);
     expect(c).not.toBe(b);
     expect(again.result).toBe("ok");
-    expect(await db.get(SEC_KEYS.spawn(o.email, a.id))).toBe(c);
-    expect(await getItem(o.email, c)).toMatchObject({ completedAt: null, deletedAt: null, series: { id: a.series!.id, n: 2 } });
-    expect((await getItem(o.email, b))!.deletedAt).toBeTruthy();
-    expect(await getItem(o.email, a.id)).toMatchObject({ nextId: c });
-    expect(await openOf(o.email)).toEqual([c]);
+    expect(await db.get(SEC_KEYS.spawn(acct(o), a.id))).toBe(c);
+    expect(await getItem(acct(o), c)).toMatchObject({ completedAt: null, deletedAt: null, series: { id: a.series!.id, n: 2 } });
+    expect((await getItem(acct(o), b))!.deletedAt).toBeTruthy();
+    expect(await getItem(acct(o), a.id)).toMatchObject({ nextId: c });
+    expect(await openOf(acct(o))).toEqual([c]);
     // With the new copy alive, a further re-close is 409 again and opens nothing.
     expect((await patch(a.id, { action: "complete", result: "third" })).status).toBe(409);
-    expect(await openOf(o.email)).toEqual([c]);
+    expect(await openOf(acct(o))).toEqual([c]);
   });
 
   it("closing the last copy of a count series opens nothing", async () => {
     const o = await login();
     const a = await add({ title: "Twice", dueAt: inDays(1, 9), repeat: { every: "day", count: 2 } });
     const b = (await done(a.id)).nextId!;
-    expect(await getItem(o.email, b)).toMatchObject({ completedAt: null, series: { id: a.series!.id, n: 2 } });
+    expect(await getItem(acct(o), b)).toMatchObject({ completedAt: null, series: { id: a.series!.id, n: 2 } });
     const last = await done(b);
     expect(last.nextId).toBeUndefined();
-    expect(await db.get(SEC_KEYS.spawn(o.email, b))).toBeNull();
-    expect(await openOf(o.email)).toEqual([]);
-    expect(await db.smembers(SEC_KEYS.all(o.email))).toHaveLength(2);
-    expect((await auditOf(o.email)).filter((l) => l.action === "spawn")).toHaveLength(1);
+    expect(await db.get(SEC_KEYS.spawn(acct(o), b))).toBeNull();
+    expect(await openOf(acct(o))).toEqual([]);
+    expect(await db.smembers(SEC_KEYS.all(acct(o)))).toHaveLength(2);
+    expect((await auditOf(acct(o))).filter((l) => l.action === "spawn")).toHaveLength(1);
   });
 
   it("a spawn checks neither the open-items cap nor the create allowance (R40)", async () => {
     const o = await login();
     const a = await daily();
     const fill = Array.from({ length: SEC_OPEN_MAX - 1 }, (_, i) => `x${i}`);
-    await Promise.all(fill.map((m, i) => db.zadd(SEC_KEYS.open(o.email), Date.now() + i, m)));
-    expect(await db.zcard(SEC_KEYS.open(o.email))).toBe(SEC_OPEN_MAX);
+    await Promise.all(fill.map((m, i) => db.zadd(SEC_KEYS.open(acct(o)), Date.now() + i, m)));
+    expect(await db.zcard(SEC_KEYS.open(acct(o)))).toBe(SEC_OPEN_MAX);
     const rate = `rate:sec:create:${o.email}`;
     const before = await db.get(rate);
     const b = (await done(a.id)).nextId!;
-    expect(await getItem(o.email, b)).toMatchObject({ completedAt: null, deletedAt: null, series: { id: a.series!.id, n: 2 } });
-    expect(await db.zcard(SEC_KEYS.open(o.email))).toBe(SEC_OPEN_MAX);
+    expect(await getItem(acct(o), b)).toMatchObject({ completedAt: null, deletedAt: null, series: { id: a.series!.id, n: 2 } });
+    expect(await db.zcard(SEC_KEYS.open(acct(o)))).toBe(SEC_OPEN_MAX);
     expect(await db.get(rate)).toEqual(before);
   });
 });
@@ -937,17 +938,17 @@ describe("rule 498: what the next copy carries", () => {
   it("links, notes, result, proposedDone and closedBy are not copied; expectBy is null; the date and time come from the rule", async () => {
     const o = await login();
     const a = await add({ title: "Call the team", description: "Weekly numbers", kind: "follow_up", dueAt: inDays(1, 9), priority: 2, critical: true, repeat: { every: "day" } });
-    const stored = (await getItem(o.email, a.id))!;
-    await db.set(SEC_KEYS.item(o.email, a.id), {
+    const stored = (await getItem(acct(o), a.id))!;
+    await db.set(SEC_KEYS.item(acct(o), a.id), {
       ...stored, links: { taskId: "abcdef0123456789" }, notes: [{ at: stored.createdAt, by: "owner", text: "a note", private: false }],
       snoozeUntil: new Date(Date.now() + HOUR).toISOString(), lastChasedAt: stored.createdAt, handoffFrom: "sami", expectBy: new Date(Date.now() + 864e5).toISOString(),
       proposedDone: { at: stored.createdAt, by: "reem", evidence: "it was done" },
     });
-    const closed = await changeItem(o.email, a.id, { action: "confirm_done", result: "called" }, owner(o.email), undefined, z, defaultCal(z));
+    const closed = await changeItem(acct(o), a.id, { action: "confirm_done", result: "called" }, owner(o.email), undefined, z, defaultCal(z));
     expect(closed.ok).toBe(true);
     if (!closed.ok) return;
     expect(closed.item).toMatchObject({ result: "called", closedBy: { actor: "owner", login: o.email } });
-    const n = (await getItem(o.email, closed.item.nextId!))!;
+    const n = (await getItem(acct(o), closed.item.nextId!))!;
     expect(n).toMatchObject({
       title: "Call the team", description: "Weekly numbers", kind: "follow_up", direction: "i_owe", owedBy: "owner", priority: 2, critical: true, source: "owner", rev: 1,
       result: null, links: {}, notes: [], proposedDone: null, snoozeUntil: null, lastChasedAt: null, expectBy: null, completedAt: null, deletedAt: null, expiresAt: null, remindAt: null,
@@ -957,22 +958,22 @@ describe("rule 498: what the next copy carries", () => {
     expect(localDay(n.dueAt!)).toBe(zoneDay(Date.now() + 2 * 864e5, z));
     expect(new Date(Date.parse(n.dueAt!) + 3 * HOUR).toISOString().slice(11, 16)).toBe("09:00");
     expect(Math.abs(Date.parse(n.createdAt) - Date.now())).toBeLessThan(60_000);
-    expect((await auditOf(o.email)).find((l) => l.action === "spawn")).toMatchObject({ actor: "rule", id: n.id });
+    expect((await auditOf(acct(o))).find((l) => l.action === "spawn")).toMatchObject({ actor: "rule", id: n.id });
   });
 
   it("closeLinked opens the next copy too, and the copy carries no link, so it does not close again", async () => {
     const o = await login();
     const task: Task = { id: "abababababab0001", type: "social", channel: "instagram", title: "Post", body: "b", status: "pending", createdAt: new Date().toISOString(), lang: "ar" };
-    await saveTask(o.email, task, true);
+    await saveTask(acct(o), task, true);
     const a = await add({ title: "Wait for the post", dueAt: inDays(1, 9), taskId: task.id, repeat: { every: "day" } });
-    await updateTask(o.email, task.id, (t) => ({ ...t, status: "approved" }));
-    expect((await agendaFor(o.email)).closed).toBe(1);
-    const closed = (await getItem(o.email, a.id))!;
+    await updateTask(acct(o), task.id, (t) => ({ ...t, status: "approved" }));
+    expect((await agendaFor(acct(o))).closed).toBe(1);
+    const closed = (await getItem(acct(o), a.id))!;
     expect(closed).toMatchObject({ result: AUTO_CLOSE_RESULT, closedBy: { actor: "rule" } });
-    const n = (await getItem(o.email, closed.nextId!))!;
+    const n = (await getItem(acct(o), closed.nextId!))!;
     expect(n).toMatchObject({ links: {}, completedAt: null, series: { id: a.series!.id, n: 2 } });
-    expect((await agendaFor(o.email)).closed).toBe(0);
-    expect(await openOf(o.email)).toEqual([n.id]);
+    expect((await agendaFor(acct(o))).closed).toBe(0);
+    expect(await openOf(acct(o))).toEqual([n.id]);
   });
 
   it("a reminder fires, then complete: the next copy has a reminder at remindBefore", async () => {
@@ -980,12 +981,12 @@ describe("rule 498: what the next copy carries", () => {
     const a = await add({ title: "Standup", dueAt: inDays(1, 10), repeat: { every: "day" } });
     const withRem = (await (await patch(a.id, { remindAt: inDays(1, 9) })).json()).item as SecItem;
     expect(withRem.repeat!.remindBefore).toBe(60);
-    expect(await fireReminder(o.email, a.id, Date.parse(withRem.remindAt!), null, async () => {})).toMatchObject({ remindAt: withRem.remindAt });
-    expect(await getItem(o.email, a.id)).toMatchObject({ remindAt: null, repeat: { remindBefore: 60 } });
-    const n = (await getItem(o.email, (await done(a.id)).nextId!))!;
+    expect(await fireReminder(acct(o), a.id, Date.parse(withRem.remindAt!), null, async () => {})).toMatchObject({ remindAt: withRem.remindAt });
+    expect(await getItem(acct(o), a.id)).toMatchObject({ remindAt: null, repeat: { remindBefore: 60 } });
+    const n = (await getItem(acct(o), (await done(a.id)).nextId!))!;
     expect(n.repeat!.remindBefore).toBe(60);
     expect(Date.parse(n.dueAt!) - Date.parse(n.remindAt!)).toBe(60 * 60_000);
-    expect(await db.zrangeWithScores(SEC_KEYS.due(o.email))).toEqual([{ member: n.id, score: Date.parse(n.remindAt!) }]);
+    expect(await db.zrangeWithScores(SEC_KEYS.due(acct(o)))).toEqual([{ member: n.id, score: Date.parse(n.remindAt!) }]);
   });
 
   it("clear_remind, then complete: the next copy has none", async () => {
@@ -994,10 +995,10 @@ describe("rule 498: what the next copy carries", () => {
     await patch(a.id, { remindAt: inDays(1, 9) });
     const t = await runSecretaryTool(o, "todo_update", { id: a.id, clear_remind: true }, { who: chat, lang: "en" });
     expect(t.isError).toBe(false);
-    expect("remindBefore" in (await getItem(o.email, a.id))!.repeat!).toBe(false);
-    const n = (await getItem(o.email, (await done(a.id)).nextId!))!;
+    expect("remindBefore" in (await getItem(acct(o), a.id))!.repeat!).toBe(false);
+    const n = (await getItem(acct(o), (await done(a.id)).nextId!))!;
     expect(n.remindAt).toBeNull();
-    expect(await db.zrangeWithScores(SEC_KEYS.due(o.email))).toEqual([]);
+    expect(await db.zrangeWithScores(SEC_KEYS.due(acct(o)))).toEqual([]);
   });
 
   it("closing a weekly copy 3 weeks late opens one copy at the next date", async () => {
@@ -1005,7 +1006,7 @@ describe("rule 498: what the next copy carries", () => {
     const start = zoneDay(Date.now() - 21 * 864e5, z);
     const a = await add({ title: "Weekly", dueAt: `${start}T09:00`, repeat: { every: "week" } });
     const closed = await done(a.id);
-    const open = await listOpenItems(o.email);
+    const open = await listOpenItems(acct(o));
     expect(open).toHaveLength(1);
     expect(open[0].id).toBe(closed.nextId);
     let k = 1;
@@ -1023,23 +1024,23 @@ describe("rule 499: reopen and the next copy", () => {
     const re = await reopen(a.id);
     expect(re.nextId).toBeUndefined();
     expect(twoOpen(re)).toEqual([]);
-    expect(await db.get(SEC_KEYS.spawn(o.email, a.id))).toBeNull();
-    expect((await getItem(o.email, b))!.deletedAt).toBeTruthy();
-    expect(await openOf(o.email)).toEqual([a.id]);
-    expect((await auditOf(o.email)).find((l) => l.action === "series_reopen")).toMatchObject({ actor: "rule", id: b });
+    expect(await db.get(SEC_KEYS.spawn(acct(o), a.id))).toBeNull();
+    expect((await getItem(acct(o), b))!.deletedAt).toBeTruthy();
+    expect(await openOf(acct(o))).toEqual([a.id]);
+    expect((await auditOf(acct(o))).find((l) => l.action === "series_reopen")).toMatchObject({ actor: "rule", id: b });
   });
 
   it("a next copy whose reminder already fired is still untouched (R35)", async () => {
     const o = await login();
     const a = await add({ title: "Standup", dueAt: inDays(1, 10), repeat: { every: "day" } });
     await patch(a.id, { remindAt: inDays(1, 9) });
-    const b = (await getItem(o.email, (await done(a.id)).nextId!))!;
+    const b = (await getItem(acct(o), (await done(a.id)).nextId!))!;
     expect(b.remindAt).toBeTruthy();
-    await fireReminder(o.email, b.id, Date.parse(b.remindAt!), null, async () => {});
-    expect(await getItem(o.email, b.id)).toMatchObject({ rev: 2, remindAt: null });
+    await fireReminder(acct(o), b.id, Date.parse(b.remindAt!), null, async () => {});
+    expect(await getItem(acct(o), b.id)).toMatchObject({ rev: 2, remindAt: null });
     await reopen(a.id);
-    expect((await getItem(o.email, b.id))!.deletedAt).toBeTruthy();
-    expect(await openOf(o.email)).toEqual([a.id]);
+    expect((await getItem(acct(o), b.id))!.deletedAt).toBeTruthy();
+    expect(await openOf(acct(o))).toEqual([a.id]);
   });
 
   it("an edited next copy stays: two open copies, the two_open note, nextId and the claim kept (R34)", async () => {
@@ -1049,12 +1050,12 @@ describe("rule 499: reopen and the next copy", () => {
     expect((await patch(b, { title: "Daily, moved" })).status).toBe(200);
     const re = await reopen(a.id);
     expect(re.nextId).toBe(b);
-    expect(await db.get(SEC_KEYS.spawn(o.email, a.id))).toBe(b);
+    expect(await db.get(SEC_KEYS.spawn(acct(o), a.id))).toBe(b);
     expect(twoOpen(re)).toHaveLength(1);
     expect(noteText(twoOpen(re)[0], "ar")).toContain("نسختان");
-    expect(await openOf(o.email)).toEqual([a.id, b].sort());
-    expect(await getItem(o.email, b)).toMatchObject({ rev: 2, title: "Daily, moved", deletedAt: null });
-    expect((await auditOf(o.email)).some((l) => l.action === "series_reopen")).toBe(false);
+    expect(await openOf(acct(o))).toEqual([a.id, b].sort());
+    expect(await getItem(acct(o), b)).toMatchObject({ rev: 2, title: "Daily, moved", deletedAt: null });
+    expect((await auditOf(acct(o))).some((l) => l.action === "series_reopen")).toBe(false);
   });
 
   it("closing the reopened copy again then opens nothing", async () => {
@@ -1063,10 +1064,10 @@ describe("rule 499: reopen and the next copy", () => {
     const b = (await done(a.id)).nextId!;
     await patch(b, { title: "Daily, moved" });
     await reopen(a.id);
-    expect(await openOf(o.email)).toEqual([a.id, b].sort());
+    expect(await openOf(acct(o))).toEqual([a.id, b].sort());
     expect((await done(a.id)).nextId).toBe(b);
-    expect(await openOf(o.email)).toEqual([b]);
-    expect(await db.smembers(SEC_KEYS.all(o.email))).toHaveLength(2);
+    expect(await openOf(acct(o))).toEqual([b]);
+    expect(await db.smembers(SEC_KEYS.all(acct(o)))).toHaveLength(2);
   });
 
   it("A → B (done) → C (open): reopening A leaves A and C open and writes the two_open note (R49)", async () => {
@@ -1077,19 +1078,19 @@ describe("rule 499: reopen and the next copy", () => {
     const re = await reopen(a.id);
     expect(re.nextId).toBe(b);
     expect(twoOpen(re)).toHaveLength(1);
-    expect(await openOf(o.email)).toEqual([a.id, c].sort());
-    expect(await getItem(o.email, b)).toMatchObject({ deletedAt: null, nextId: c });
+    expect(await openOf(acct(o))).toEqual([a.id, c].sort());
+    expect(await getItem(acct(o), b)).toMatchObject({ deletedAt: null, nextId: c });
   });
 
   it("a lock timeout on the next copy answers 503, writes nothing, and keeps nextId and the claim (R48)", async () => {
     const o = await login();
     const a = await daily();
     const b = (await done(a.id)).nextId!;
-    const before = (await getItem(o.email, a.id))!;
+    const before = (await getItem(acct(o), a.id))!;
     vi.useFakeTimers();
     vi.setSystemTime(Date.now());
     try {
-      expect(await db.lock(SEC_KEYS.lock(o.email, b), 30)).toBe(true);
+      expect(await db.lock(SEC_KEYS.lock(acct(o), b), 30)).toBe(true);
       const p = patch(a.id, { action: "reopen" });
       await vi.advanceTimersByTimeAsync(4000);
       const r = await p;
@@ -1098,21 +1099,21 @@ describe("rule 499: reopen and the next copy", () => {
     } finally {
       vi.useRealTimers();
     }
-    await db.unlock(SEC_KEYS.lock(o.email, b));
-    expect(await getItem(o.email, a.id)).toEqual(before);
-    expect(await db.get(SEC_KEYS.spawn(o.email, a.id))).toBe(b);
-    expect(await getItem(o.email, b)).toMatchObject({ rev: 1, deletedAt: null });
+    await db.unlock(SEC_KEYS.lock(acct(o), b));
+    expect(await getItem(acct(o), a.id)).toEqual(before);
+    expect(await db.get(SEC_KEYS.spawn(acct(o), a.id))).toBe(b);
+    expect(await getItem(acct(o), b)).toMatchObject({ rev: 1, deletedAt: null });
     // A failed read of the next copy fails closed the same way.
     const get = db.get.bind(db);
     const spy = vi.spyOn(db, "get").mockImplementation((async (key: string) => {
-      if (key === SEC_KEYS.item(o.email, b)) throw new Error("down");
+      if (key === SEC_KEYS.item(acct(o), b)) throw new Error("down");
       return get(key);
     }) as typeof db.get);
     const r2 = await patch(a.id, { action: "reopen" });
     spy.mockRestore();
     expect(r2.status).toBe(503);
-    expect(await getItem(o.email, a.id)).toEqual(before);
-    expect(await getItem(o.email, b)).toMatchObject({ rev: 1, deletedAt: null });
+    expect(await getItem(acct(o), a.id)).toEqual(before);
+    expect(await getItem(acct(o), b)).toMatchObject({ rev: 1, deletedAt: null });
   });
 
   it("at the open-items cap, reopening A with an untouched open B succeeds (R52)", async () => {
@@ -1123,18 +1124,18 @@ describe("rule 499: reopen and the next copy", () => {
     const b2 = (await done(a2.id)).nextId!;
     await patch(b2, { title: "Edited next, moved" });
     const fill = Array.from({ length: SEC_OPEN_MAX - 2 }, (_, i) => `x${i}`);
-    await Promise.all(fill.map((m, i) => db.zadd(SEC_KEYS.open(o.email), Date.now() + i, m)));
-    expect(await db.zcard(SEC_KEYS.open(o.email))).toBe(SEC_OPEN_MAX);
+    await Promise.all(fill.map((m, i) => db.zadd(SEC_KEYS.open(acct(o)), Date.now() + i, m)));
+    expect(await db.zcard(SEC_KEYS.open(acct(o)))).toBe(SEC_OPEN_MAX);
     // An edited next copy stays, so that reopen would add an open item: the cap refuses it and nothing changes.
     const refused = await patch(a2.id, { action: "reopen" });
     expect(refused.status).toBe(409);
     expect(await refused.json()).toMatchObject({ error: "open_limit" });
-    expect(await getItem(o.email, a2.id)).toMatchObject({ nextId: b2 });
-    expect((await getItem(o.email, a2.id))!.completedAt).toBeTruthy();
+    expect(await getItem(acct(o), a2.id)).toMatchObject({ nextId: b2 });
+    expect((await getItem(acct(o), a2.id))!.completedAt).toBeTruthy();
     // An untouched one is deleted: the open count does not change.
     await reopen(a.id);
-    expect((await getItem(o.email, b))!.deletedAt).toBeTruthy();
-    expect(await db.zcard(SEC_KEYS.open(o.email))).toBe(SEC_OPEN_MAX);
+    expect((await getItem(acct(o), b))!.deletedAt).toBeTruthy();
+    expect(await db.zcard(SEC_KEYS.open(acct(o)))).toBe(SEC_OPEN_MAX);
   });
 });
 
@@ -1148,18 +1149,18 @@ describe("rule 500: who may set a repeat through chat and MCP", () => {
     const r = await runSecretaryTool(u, "todo_create", { title: "Weekly", due: inDays(1, 9), repeat: { every: "week" } }, { who: noor, lang: "en", agent: "noor" });
     expect(r.isError).toBe(true);
     expect(r.text).toBe("Not done: only the owner or Reem sets a repeat. Nothing was saved.");
-    expect(await listOpenItems(u.email)).toHaveLength(0);
-    expect(await db.get(bucket(u.email))).toBeNull();
+    expect(await listOpenItems(acct(u))).toHaveLength(0);
+    expect(await db.get(bucket(acct(u)))).toBeNull();
     const ar = await runSecretaryTool(u, "todo_update", { id: "s0123456789abcdef", repeat: null }, { who: noor, lang: "ar", agent: "noor" });
     expect(ar.text).toContain("لم يتم: التكرار يضبطه المالك أو ريم");
-    expect(await db.get(bucket(u.email))).toBeNull();
+    expect(await db.get(bucket(acct(u)))).toBeNull();
   });
 
   it("an agent that is not named is refused too, and a plain call without repeat still works for Noor", async () => {
     const u = await login();
     const none = await runSecretaryTool(u, "todo_create", { title: "x", due: inDays(1), repeat: { every: "day" } }, { who: { actor: "reem", via: "chat" }, lang: "en" });
     expect(none.isError).toBe(true);
-    expect(await db.get(bucket(u.email))).toBeNull();
+    expect(await db.get(bucket(acct(u)))).toBeNull();
     const ok = await runSecretaryTool(u, "todo_create", { title: "Plain", due: inDays(1) }, { who: noor, lang: "en", agent: "noor" });
     expect(ok.isError).toBe(false);
   });
@@ -1168,8 +1169,8 @@ describe("rule 500: who may set a repeat through chat and MCP", () => {
     const u = await login();
     const out = await runTool(u, "todo_create", { title: "Weekly", due: inDays(1, 9), repeat: { every: "week" } }, [], [], undefined, { agent: "noor", via: "mcp", lang: "en" });
     expect(out).toContain("only the owner or Reem sets a repeat");
-    expect(await listOpenItems(u.email)).toHaveLength(0);
-    expect(await db.get(bucket(u.email))).toBeNull();
+    expect(await listOpenItems(acct(u))).toHaveLength(0);
+    expect(await db.get(bucket(acct(u)))).toBeNull();
   });
 
   it("Reem in chat sets a repeat and the answer says the rule", async () => {
@@ -1177,7 +1178,7 @@ describe("rule 500: who may set a repeat through chat and MCP", () => {
     const actions: string[] = [];
     const out = await runTool(u, "todo_create", { title: "Report", due: inDays(1, 9), repeat: { every: "week", interval: 2, weekdays: [0, 2], month_day: 5, remind_before: 60 } }, actions, [], undefined, { agent: "reem", lang: "en" });
     expect(out).toContain("Repeats: Repeats every 2 weeks on Sunday and Tuesday at 09:00");
-    const [it1] = await listOpenItems(u.email);
+    const [it1] = await listOpenItems(acct(u));
     expect(it1.repeat).toMatchObject({ every: "week", interval: 2, weekdays: [0, 2], time: "09:00", remindBefore: 60 });
     expect(it1.repeat).not.toHaveProperty("monthDay");
     expect(it1.repeat).not.toHaveProperty("month_day");
@@ -1197,7 +1198,7 @@ describe("rule 500: who may set a repeat through chat and MCP", () => {
     const bad = await runSecretaryTool(u, "todo_update", { id, repeat: { every: "day", interval: 500 } }, { who: mcp, lang: "en" });
     expect(bad.isError).toBe(true);
     expect(bad.text).toContain("repeat rule is not valid");
-    expect((await getItem(u.email, id))!.repeat).toMatchObject({ every: "day", interval: 3 });
+    expect((await getItem(acct(u), id))!.repeat).toMatchObject({ every: "day", interval: 3 });
   });
 
   it("a Hijri yearly rule is worded with its Hijri date in the item line", async () => {
@@ -1220,10 +1221,10 @@ describe("rule 500: who may set a repeat through chat and MCP", () => {
     }
     const r2 = await runSecretaryTool(u, "todo_update", { id: it1.id, repeat: null }, { who: mcp, lang: "en" });
     expect(r2.isError).toBe(true);
-    expect(await getItem(u.email, it1.id)).toMatchObject({ rev: 1, title: "Daily", repeat: { every: "day" } });
+    expect(await getItem(acct(u), it1.id)).toMatchObject({ rev: 1, title: "Daily", repeat: { every: "day" } });
     const r3 = await runSecretaryTool(u, "todo_create", { title: "x", stop_repeat: true }, { who: mcp, lang: "en" });
     expect(r3.isError).toBe(true);
-    expect(await listOpenItems(u.email)).toHaveLength(1);
+    expect(await listOpenItems(acct(u))).toHaveLength(1);
   });
 
   it("a filler stop_repeat:false (or null) is no stop attempt: the other fields apply and a plain create works", async () => {
@@ -1232,9 +1233,9 @@ describe("rule 500: who may set a repeat through chat and MCP", () => {
     for (const filler of [false, null]) {
       const r = await runSecretaryTool(u, "todo_update", { id: it1.id, stop_repeat: filler, title: `Renamed ${String(filler)}` }, { who: chat, lang: "en", agent: "reem" });
       expect(r.isError, r.text).toBe(false);
-      expect((await getItem(u.email, it1.id))!.title).toBe(`Renamed ${String(filler)}`);
+      expect((await getItem(acct(u), it1.id))!.title).toBe(`Renamed ${String(filler)}`);
     }
-    expect((await getItem(u.email, it1.id))!.repeat).toMatchObject({ every: "day" });
+    expect((await getItem(acct(u), it1.id))!.repeat).toMatchObject({ every: "day" });
     const c = await runSecretaryTool(u, "todo_create", { title: "Plain", stop_repeat: false }, { who: mcp, lang: "en" });
     expect(c.isError, c.text).toBe(false);
   });
@@ -1256,14 +1257,14 @@ describe("rule 500: who may set a repeat through chat and MCP", () => {
     const u1 = await call({ every: "day", until: zoneDay(Date.now() + 3 * 864e5, z) });
     expect(u1.isError).toBe(true);
     expect(u1.text).toContain("(field: repeat)");
-    expect((await getItem(u.email, id))!.repeat).toEqual(expect.not.objectContaining({ count: 1 }));
-    expect((await getItem(u.email, id))!.repeat?.until).toBeUndefined();
+    expect((await getItem(acct(u), id))!.repeat).toEqual(expect.not.objectContaining({ count: 1 }));
+    expect((await getItem(acct(u), id))!.repeat?.until).toBeUndefined();
     const c2 = await call({ every: "day", count: 5 });
     expect(c2.isError, c2.text).toBe(false);
-    expect((await getItem(u.email, id))!.repeat).toMatchObject({ every: "day", count: 5 });
+    expect((await getItem(acct(u), id))!.repeat).toMatchObject({ every: "day", count: 5 });
     const u2 = await call({ every: "day", until: zoneDay(Date.now() + 20 * 864e5, z) });
     expect(u2.isError, u2.text).toBe(false);
-    expect((await getItem(u.email, id))!.repeat?.until).toBe(zoneDay(Date.now() + 20 * 864e5, z));
+    expect((await getItem(acct(u), id))!.repeat?.until).toBe(zoneDay(Date.now() + 20 * 864e5, z));
   });
 
   it("an out-of-range remind_before through the tool is repeat_invalid and writes nothing", async () => {
@@ -1271,19 +1272,19 @@ describe("rule 500: who may set a repeat through chat and MCP", () => {
     const r = await runSecretaryTool(u, "todo_create", { title: "x", due: inDays(1, 9), repeat: { every: "day", remind_before: 20000 } }, { who: chat, lang: "en", agent: "reem" });
     expect(r.isError).toBe(true);
     expect(r.text).toContain("repeat rule is not valid");
-    expect(await listOpenItems(u.email)).toHaveLength(0);
+    expect(await listOpenItems(acct(u))).toHaveLength(0);
     const it1 = await add({ title: "Daily", dueAt: inDays(1, 9), repeat: { every: "day" } });
     const up = await runSecretaryTool(u, "todo_update", { id: it1.id, repeat: { every: "day", remind_before: 20000 } }, { who: chat, lang: "en", agent: "reem" });
     expect(up.isError).toBe(true);
     expect(up.text).toContain("repeat rule is not valid");
-    expect(await getItem(u.email, it1.id)).toMatchObject({ rev: 1, repeat: { every: "day" } });
+    expect(await getItem(acct(u), it1.id)).toMatchObject({ rev: 1, repeat: { every: "day" } });
   });
 
   it("a handoff note never carries repeat", async () => {
     const u = await login();
     const r = await runHandoffNote(u, { to: "owner", kind: "blocked", body: "I cannot publish the weekly post without the owner's approval of the offer", repeat: { every: "day" }, stop_repeat: true }, { agent: "noor", lang: "en" });
     expect(r.isError, r.text).toBe(false);
-    const open = await listOpenItems(u.email);
+    const open = await listOpenItems(acct(u));
     expect(open).toHaveLength(1);
     expect(open[0].repeat).toBeFalsy();
     expect(open[0].series).toBeUndefined();

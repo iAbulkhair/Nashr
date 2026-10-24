@@ -103,7 +103,7 @@ const logRows = async (u: User, what: string) => (await db.lrange("admin:log", 0
 async function owner(prefix = "gd"): Promise<User> {
   const u = await newUser(prefix);
   await signIn(u.email);
-  return (await getUser(u.email))!;
+  return (await getUser(acct(u)))!;
 }
 /** A checkout through the route; answers the session Geidea saw. */
 async function started(body: Record<string, unknown> = { kind: "plan", plan: "starter" }) {
@@ -119,7 +119,7 @@ async function subscribed(extra: Record<string, string> = {}) {
   const st = await started();
   const ord = order({ ref: st.ref, amount: st.amount, agreementId: st.agreementId });
   expect(await result(await hook(envelope(ord)))).toBe("paid");
-  return { u: (await getUser(u.email))!, st, ord };
+  return { u: (await getUser(acct(u)))!, st, ord };
 }
 
 describe("rule 3900: the gate, the live guard and the choice of provider", () => {
@@ -131,7 +131,7 @@ describe("rule 3900: the gate, the live guard and the choice of provider", () =>
     expect((await pay({ kind: "plan", plan: "starter" })).status).toBe(404);
     expect((await hook(envelope(order({ ref: randomUUID(), amount: 1 })))).status).toBe(404);
     expect(fake.paths).toHaveLength(0);
-    expect((await getUser(u.email))!.plan).toBe("trial");
+    expect((await getUser(acct(u)))!.plan).toBe("trial");
   });
   it("GEIDEA_LIVE=1 is honoured only on the production deploy, never on staging; refused, the gate closes", () => {
     const err = vi.spyOn(console, "error").mockImplementation(() => {});
@@ -239,7 +239,7 @@ describe("rule 3903: the callback signature is checked first, in constant time",
     const st = await started();
     const r = await hook(envelope(order({ ref: st.ref, amount: st.amount, agreementId: st.agreementId }), "wrong-password-123"));
     expect(r.status).toBe(401);
-    expect((await getUser(u.email))!.plan).toBe("trial");
+    expect((await getUser(acct(u)))!.plan).toBe("trial");
   });
   it("the comparison is sameSecret, never ===", () => {
     const src = readFileSync("src/lib/geidea.ts", "utf8");
@@ -325,7 +325,7 @@ describe("rule 3907: what does not match our intent is never applied", () => {
       const u = await owner();
       const st = await started();
       expect(await result(await hook(envelope(make(st))))).toBe("mismatch");
-      expect((await getUser(u.email))!.plan).toBe("trial");
+      expect((await getUser(acct(u)))!.plan).toBe("trial");
       expect(await db.get<PayIntent>(globalKey.payIntent(st.ref))).toMatchObject({ status: "mismatch" });
       expect(await logRows(u, "geidea_mismatch")).not.toHaveLength(0);
     });
@@ -348,13 +348,13 @@ describe("rule 3908: a credit pack", () => {
   it("adds its credits once and saves no card", async () => {
     const { u } = await subscribed();
     await signIn(u.email);
-    const before = (await getUser(u.email))!;
+    const before = (await getUser(acct(u)))!;
     const st = await started({ kind: "topup", credits: 300 });
     expect(st.agreementId).toBeUndefined();
     const ord = order({ ref: st.ref, amount: st.amount, tokenId: null });
     expect(await result(await hook(envelope(ord)))).toBe("paid");
     expect(await result(await hook(envelope(ord)))).toBe("already");
-    const after = (await getUser(u.email))!;
+    const after = (await getUser(acct(u)))!;
     expect(await payments(after)).toHaveLength(2);
     expect(after.plan).toBe(before.plan);
   });
@@ -370,7 +370,7 @@ describe("rule 3909: open checkouts are asked of Geidea (the callback has no pub
     fake.orders.set(st.ref, order({ ref: st.ref, amount: st.amount, agreementId: st.agreementId }));
     const r = await reconcileOpenCheckouts();
     expect(r.checked).toBeGreaterThan(0);
-    expect((await getUser(u.email))!.plan).toBe("starter");
+    expect((await getUser(acct(u)))!.plan).toBe("starter");
     const left = await db.zrangeByScore(globalKey.payOpen(), Date.now() + 1000, 1000);
     expect(left.map((x) => x.member)).not.toContain(st.ref);
   });
@@ -399,7 +399,7 @@ describe("rule 3909: open checkouts are asked of Geidea (the callback has no pub
 });
 
 describe("rule 3910: saved-card renewals (MIT) only with GEIDEA_MIT=1, only on the card Geidea saved", () => {
-  const due = async (u: User) => saveUser({ ...(await getUser(u.email))!, billing: { ...(await getUser(u.email))!.billing!, paidThrough: today() } });
+  const due = async (u: User) => saveUser({ ...(await getUser(acct(u)))!, billing: { ...(await getUser(acct(u)))!.billing!, paidThrough: today() } });
   it("renews through a Merchant session and pay/token, under the saved agreement", async () => {
     const { u, ord } = await subscribed({ GEIDEA_MIT: "1" });
     await due(u);
@@ -407,19 +407,19 @@ describe("rule 3910: saved-card renewals (MIT) only with GEIDEA_MIT=1, only on t
     expect(await renewPaymob(acct(u))).toBe("geidea_renewed");
     const s = fake.sessions.at(-1)!;
     expect(s.body).toMatchObject({ initiatedBy: "Merchant", cardOnFile: true, tokenId: ord.tokenId, agreementId: ord.agreementId });
-    expect((await getUser(u.email))!.billing).toMatchObject({ status: "active" });
+    expect((await getUser(acct(u)))!.billing).toMatchObject({ status: "active" });
     expect(await payments(u)).toHaveLength(2);
   });
   it("a renewal with paid extra seats settles them and charges plan + seats × 25 + VAT (rule 3376)", async () => {
     const { u, ord } = await subscribed({ GEIDEA_MIT: "1" });
     await newMember(u, "member");
-    await saveUser({ ...(await getUser(u.email))!, extraSeats: 2 });
+    await saveUser({ ...(await getUser(acct(u)))!, extraSeats: 2 });
     await due(u);
     fake.pay = (s) => ({ status: 200, body: { responseCode: "000", order: order({ ref: String(s.body.merchantReferenceId), amount: s.body.amount, agreementId: String(ord.agreementId) }) } });
     // Two seats were paid, one is still used: the settle trims to one, the amount is (29900 + 2500) × 1.15.
     expect(await renewPaymob(acct(u))).toBe("geidea_renewed");
     expect(fake.sessions.at(-1)!.body.amount).toBe(Number(toRiyals(37260)));
-    expect((await getUser(u.email))!).toMatchObject({ extraSeats: 1, billing: { status: "active" } });
+    expect((await getUser(acct(u)))!).toMatchObject({ extraSeats: 1, billing: { status: "active" } });
   });
   it("yearly through Geidea: one session for the yearly amount, a year paid through, and a yearly renewal with twelve months of a seat (rules 3540, 3372)", async () => {
     on({ GEIDEA_MIT: "1" });
@@ -430,26 +430,26 @@ describe("rule 3910: saved-card renewals (MIT) only with GEIDEA_MIT=1, only on t
     expect(st.s.body).not.toHaveProperty("interval");
     const ord = order({ ref: st.ref, amount: st.amount, agreementId: st.agreementId });
     expect(await result(await hook(envelope(ord)))).toBe("paid");
-    expect((await getUser(u.email))!.billing).toMatchObject({ provider: "geidea", interval: "year", paidThrough: addMonths(today(), 12) });
+    expect((await getUser(acct(u)))!.billing).toMatchObject({ provider: "geidea", interval: "year", paidThrough: addMonths(today(), 12) });
     await newMember(u, "member");
-    await saveUser({ ...(await getUser(u.email))!, extraSeats: 1 });
+    await saveUser({ ...(await getUser(acct(u)))!, extraSeats: 1 });
     await due(u);
     fake.pay = (s) => ({ status: 200, body: { responseCode: "000", order: order({ ref: String(s.body.merchantReferenceId), amount: s.body.amount, agreementId: String(ord.agreementId) }) } });
     expect(await renewPaymob(acct(u))).toBe("geidea_renewed");
     // (2,990 + 12 × 25) × 1.15: the free months are the plan's, a seat is charged for each month of the year.
     expect(fake.sessions.at(-1)!.body.amount).toBe(Number(toRiyals(378350)));
-    expect((await getUser(u.email))!.billing).toMatchObject({ interval: "year", paidThrough: addMonths(today(), 12) });
+    expect((await getUser(acct(u)))!.billing).toMatchObject({ interval: "year", paidThrough: addMonths(today(), 12) });
   });
   it("without GEIDEA_MIT the due month goes past due for the owner to pay; nothing is charged", async () => {
     const { u } = await subscribed();
     await due(u);
     expect(await renewPaymob(acct(u))).toBe("geidea_due");
     expect(fake.paths).not.toContain("/pgw/api/v2/direct/pay/token");
-    expect((await getUser(u.email))!.billing).toMatchObject({ status: "past_due" });
+    expect((await getUser(acct(u)))!.billing).toMatchObject({ status: "past_due" });
   });
   it("a Paymob subscription is never charged by Geidea", async () => {
     const { u } = await subscribed({ GEIDEA_MIT: "1" });
-    await saveUser({ ...(await getUser(u.email))!, billing: { ...(await getUser(u.email))!.billing!, provider: "paymob", paidThrough: today() } });
+    await saveUser({ ...(await getUser(acct(u)))!, billing: { ...(await getUser(acct(u)))!.billing!, provider: "paymob", paidThrough: today() } });
     expect(await renewPaymob(acct(u))).toBe("geidea_due");
     expect(fake.paths).not.toContain("/pgw/api/v2/direct/pay/token");
   });
@@ -458,12 +458,12 @@ describe("rule 3910: saved-card renewals (MIT) only with GEIDEA_MIT=1, only on t
 describe("rule 3911: declines", () => {
   it("750.005 (agreement mismatch) is a decline: the card goes and renewal turns off", async () => {
     const { u } = await subscribed({ GEIDEA_MIT: "1" });
-    await saveUser({ ...(await getUser(u.email))!, billing: { ...(await getUser(u.email))!.billing!, paidThrough: today() } });
+    await saveUser({ ...(await getUser(acct(u)))!, billing: { ...(await getUser(acct(u)))!.billing!, paidThrough: today() } });
     fake.pay = () => ({ status: 400, body: { responseCode: "999", detailedResponseCode: "750.005" } });
     const err = vi.spyOn(console, "error").mockImplementation(() => {});
     expect(await renewPaymob(acct(u))).toBe("geidea_declined");
     err.mockRestore();
-    const after = (await getUser(u.email))!;
+    const after = (await getUser(acct(u)))!;
     expect(after.billing).toMatchObject({ status: "past_due", autoRenew: false });
     expect(after.billing!.card).toBeUndefined();
     expect(await db.get(`pay:card:${acct(u)}`)).toBeNull();
@@ -477,7 +477,7 @@ describe("rule 3911: declines", () => {
     expect(await db.get<PayIntent>(globalKey.payIntent(st.ref))).toMatchObject({ status: "failed" });
     expect(await db.get(globalKey.payDone("geidea", orderId))).toBeNull();
     expect(await result(await hook(envelope(order({ ref: st.ref, amount: st.amount, agreementId: st.agreementId, orderId }))))).toBe("paid");
-    expect((await getUser(u.email))!.plan).toBe("starter");
+    expect((await getUser(acct(u)))!.plan).toBe("starter");
   });
 });
 
@@ -500,7 +500,7 @@ describe("rule 3912: the founder's refund", () => {
     const err = vi.spyOn(console, "error").mockImplementation(() => {});
     expect(await refundPaymobPayment(acct(u), paymentIdFor(ord.orderId, "geidea"), "founder@thakeen.test", "")).toEqual({ ok: false, error: "paymob_refund_failed" });
     err.mockRestore();
-    expect((await getUser(u.email))!.plan).toBe("starter");
+    expect((await getUser(acct(u)))!.plan).toBe("starter");
   });
 });
 
@@ -509,7 +509,7 @@ describe("rule 3913: a refund made in Geidea's dashboard", () => {
     const { u, ord } = await subscribed();
     expect(await result(await hook(envelope({ ...ord, detailedStatus: "Refunded", totalRefundedAmount: ord.amount })))).toBe("ignored");
     expect(await logRows(u, "geidea_external_refund")).not.toHaveLength(0);
-    expect((await getUser(u.email))!.plan).toBe("starter");
+    expect((await getUser(acct(u)))!.plan).toBe("starter");
   });
 });
 
@@ -518,7 +518,7 @@ describe("rule 3914: the Geidea card goes with the account and with remove_card"
     const { u } = await subscribed();
     expect(await setRenewal(acct(u), "remove_card")).toMatchObject({ ok: true });
     expect(await db.get(`pay:card:${acct(u)}`)).toBeNull();
-    expect((await getUser(u.email))!.billing).toMatchObject({ autoRenew: false });
+    expect((await getUser(acct(u)))!.billing).toMatchObject({ autoRenew: false });
   });
   it("deleting the account deletes the card and the latest checkout pointer", async () => {
     const { u } = await subscribed();

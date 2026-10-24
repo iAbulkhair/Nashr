@@ -4,7 +4,7 @@ import { db } from "@/lib/db";
 import { writeFile } from "@/lib/files";
 import { AGENTS } from "@/lib/agents";
 import { GOLDEN_BRANDS, summarize, type GoldenResult, type GoldenRun } from "@/lib/golden";
-import { getUser, saveUser } from "@/lib/auth";
+import { acct, getUser, saveUser } from "@/lib/auth";
 import { listTasks, type Brand, type Task } from "@/lib/brand";
 import { INSTRUCTION_PLAN } from "@/lib/instructions-safety";
 import type { Instruction, InstructionSet } from "@/lib/instructions-store";
@@ -184,15 +184,15 @@ describe("generateBatch reads the layers (rules 946-947)", () => {
 
   it("rule 946: a workspace instruction with an attached file reaches system block 2, the platform text reaches block 1, and the task is stamped", async () => {
     const u0 = await newUser("ip-batch");
-    await db.set(`brand:${u0.email}`, brand);
-    await saveUser({ ...(await getUser(u0.email))!, plan: "starter", credits: 500 });
-    const u = (await getUser(u0.email))!;
-    await writeFile(u.email, "style-guide.md", "REFERENCE FACT: sign off every caption with the shop hours.", "user");
-    await db.set(`skills:${u.email}`, { active: set([item("Keep every caption under twenty words.", { refs: ["style-guide.md"] })]), draft: null, at: "x", by: null });
+    await db.set(`brand:${acct(u0)}`, brand);
+    await saveUser({ ...(await getUser(acct(u0)))!, plan: "starter", credits: 500 });
+    const u = (await getUser(acct(u0)))!;
+    await writeFile(acct(u), "style-guide.md", "REFERENCE FACT: sign off every caption with the shop hours.", "user");
+    await db.set(`skills:${acct(u)}`, { active: set([item("Keep every caption under twenty words.", { refs: ["style-guide.md"] })]), draft: null, at: "x", by: null });
     await db.set("skills:platform", { active: set([item("Never use exclamation marks.")]), draft: null, at: "x", by: null });
 
     const { generateBatch, systems } = await load();
-    const r = await generateBatch(u, u.email, { type: "social", source: "manual", via: "app" });
+    const r = await generateBatch(u, acct(u), { type: "social", source: "manual", via: "app" });
     expect(r.ok).toBe(true);
     const gen = systems.find((s) => s.length === 3);
     expect(gen, "the generation call sent the three-block system prompt").toBeTruthy();
@@ -204,7 +204,7 @@ describe("generateBatch reads the layers (rules 946-947)", () => {
     expect(b2).not.toContain("Never use exclamation marks.");
     expect(b2).toContain(LINE);
 
-    const tasks = await listTasks(u.email);
+    const tasks = await listTasks(acct(u));
     expect(tasks.length).toBeGreaterThan(0);
     for (const t of tasks) {
       expect(t.pb?.plat).toMatch(/^[0-9a-f]{12}$/);
@@ -214,27 +214,27 @@ describe("generateBatch reads the layers (rules 946-947)", () => {
 
   it("rule 947: an account with no instructions gets the unchanged prompt and a stamp that says none, explicitly", async () => {
     const u0 = await newUser("ip-batch-none");
-    await db.set(`brand:${u0.email}`, brand);
-    await saveUser({ ...(await getUser(u0.email))!, plan: "starter", credits: 500 });
-    const u = (await getUser(u0.email))!;
+    await db.set(`brand:${acct(u0)}`, brand);
+    await saveUser({ ...(await getUser(acct(u0)))!, plan: "starter", credits: 500 });
+    const u = (await getUser(acct(u0)))!;
     const { generateBatch, systems } = await load();
-    const r = await generateBatch(u, u.email, { type: "social", source: "manual", via: "app" });
+    const r = await generateBatch(u, acct(u), { type: "social", source: "manual", via: "app" });
     expect(r.ok).toBe(true);
     const gen = systems.find((s) => s.length === 3)!;
     expect(gen[0].text).toBe(`${fixedPrompt(AGENTS.find((a) => a.id === "noor")!)}\n\n${AGENT_SCOPE_PARAGRAPH}`);
     expect(gen[1].text).not.toContain("OWNER INSTRUCTIONS");
-    for (const t of await listTasks(u.email)) expect([t.pb?.plat, t.pb?.ins]).toEqual(["none", "none"]);
+    for (const t of await listTasks(acct(u))) expect([t.pb?.plat, t.pb?.ins]).toEqual(["none", "none"]);
   });
 
   it("rule 948: the same layers reach the reviewer and the judge of the batch (generateBatch hands them over)", async () => {
     const u0 = await newUser("ip-batch-judge");
-    await db.set(`brand:${u0.email}`, brand);
-    await saveUser({ ...(await getUser(u0.email))!, plan: "starter", credits: 500 });
-    const u = (await getUser(u0.email))!;
-    await db.set(`skills:${u.email}`, { active: set([item("Keep every caption under twenty words.")]), draft: null, at: "x", by: null });
+    await db.set(`brand:${acct(u0)}`, brand);
+    await saveUser({ ...(await getUser(acct(u0)))!, plan: "starter", credits: 500 });
+    const u = (await getUser(acct(u0)))!;
+    await db.set(`skills:${acct(u)}`, { active: set([item("Keep every caption under twenty words.")]), draft: null, at: "x", by: null });
     await db.set("skills:platform", { active: set([item("Judge standard", { agents: ["judge"] }), item("Reviewer standard", { agents: ["reviewer"] })]), draft: null, at: "x", by: null });
     const { generateBatch, creates } = await load();
-    expect((await generateBatch(u, u.email, { type: "social", source: "manual", via: "app" })).ok).toBe(true);
+    expect((await generateBatch(u, acct(u), { type: "social", source: "manual", via: "app" })).ok).toBe(true);
     const { settle } = await import("./helpers/session");
     await settle();
     const reviewer = creates.find((c) => c.system.includes("quality reviewer"))!;
@@ -250,13 +250,13 @@ describe("generateBatch reads the layers (rules 946-947)", () => {
 
   it("rule 948: a workspace item that names the reviewer or the judge, written straight to Redis, reaches no prompt of the batch", async () => {
     const u0 = await newUser("ip-batch-raw");
-    await db.set(`brand:${u0.email}`, brand);
-    await saveUser({ ...(await getUser(u0.email))!, plan: "pro", credits: 500 });
-    const u = (await getUser(u0.email))!;
+    await db.set(`brand:${acct(u0)}`, brand);
+    await saveUser({ ...(await getUser(acct(u0)))!, plan: "pro", credits: 500 });
+    const u = (await getUser(acct(u0)))!;
     // Under the workspace layer's own key, with no validation on the way: the render must drop what the store would have refused.
-    await db.set(`skills:${u.email}`, { active: set([item("RAW-REVIEWER secret rule", { agents: ["reviewer"] }), item("RAW-JUDGE secret rule", { agents: ["judge"] }), item("RAW-CONTROL keep captions short.", { agents: ["noor"] })]), draft: null, at: "x", by: null });
+    await db.set(`skills:${acct(u)}`, { active: set([item("RAW-REVIEWER secret rule", { agents: ["reviewer"] }), item("RAW-JUDGE secret rule", { agents: ["judge"] }), item("RAW-CONTROL keep captions short.", { agents: ["noor"] })]), draft: null, at: "x", by: null });
     const { generateBatch, systems, creates } = await load();
-    expect((await generateBatch(u, u.email, { type: "social", source: "manual", via: "app" })).ok).toBe(true);
+    expect((await generateBatch(u, acct(u), { type: "social", source: "manual", via: "app" })).ok).toBe(true);
     const { settle } = await import("./helpers/session");
     await settle();
     const prompts = [...systems.flat().map((b) => b.text), ...creates.flatMap((c) => [c.system, c.user])].join("\n");
@@ -535,10 +535,10 @@ describe("the render start loads the layers (rule 948)", () => {
     }));
     vi.doMock("@/lib/media/config", async (orig) => ({ ...(await orig<typeof import("@/lib/media/config")>()), modelAvailable: () => true }));
     const u0 = await newUser("ip-media");
-    await saveUser({ ...(await getUser(u0.email))!, plan: "pro", credits: 500 });
-    const u = (await getUser(u0.email))!;
-    await writeFile(u.email, "look.md", "REFERENCE FACT: warm light.", "user");
-    await db.set(`skills:${u.email}`, { active: set([item("Keep the light warm.", { agents: ["media"], refs: ["look.md"] }), item("Never touch Razan.", { agents: ["razan"] })]), draft: null, at: "x", by: null });
+    await saveUser({ ...(await getUser(acct(u0)))!, plan: "pro", credits: 500 });
+    const u = (await getUser(acct(u0)))!;
+    await writeFile(acct(u), "look.md", "REFERENCE FACT: warm light.", "user");
+    await db.set(`skills:${acct(u)}`, { active: set([item("Keep the light warm.", { agents: ["media"], refs: ["look.md"] }), item("Never touch Razan.", { agents: ["razan"] })]), draft: null, at: "x", by: null });
     await db.set("skills:platform", { active: set([item("Media standard", { agents: ["media"] })]), draft: null, at: "x", by: null });
     const { renderImage, renderVideo } = await import("@/lib/media/start");
     const t = { id: "t2", type: "social", channel: "instagram", title: "t", body: "b", status: "pending", createdAt: "2026-10-10T00:00:00.000Z", lang: "ar" } as Task;

@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { newUser, signIn } from "./helpers/session";
-import { getUser, sc, type User } from "@/lib/auth";
+import { acct, currentUser, getUser, sc, type User } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { readFile, writeFile } from "@/lib/files";
 import { INSTRUCTION_PLAN } from "@/lib/instructions-safety";
@@ -175,7 +175,7 @@ describe("rule 2526: read_file is the on-demand load, free and fenced", () => {
   async function owner(prefix: string): Promise<User> {
     const u = await newUser(prefix);
     await signIn(u.email);
-    return (await getUser(u.email))!;
+    return (await currentUser())!; // the session's user, with its scope, as a chat turn gets it
   }
   const ctx = (u: User) => ({ agent: "noor" as const, by: byOf(u), via: "app" as const, proposed: [], awayProposed: [], instructionProposed: [], spendProposed: [], ownerMsg: "ما سعر اللاتيه؟", lang: "ar" as const });
 
@@ -203,12 +203,12 @@ describe("rule 2526: read_file is the on-demand load, free and fenced", () => {
     expect(Object.hasOwn(TOOL_ACTION, "read_file")).toBe(false);
     const u = await owner("prov-free");
     await writeFile(sc(u), "notes.md", "facts", "user");
-    const before = (await getUser(u.email))!.credits;
+    const before = (await getUser(acct(u)))!.credits;
     const set = vi.spyOn(db, "set");
     await runTool(u, "read_file", { name: "notes.md" }, [], [], undefined, ctx(u));
     expect(set).not.toHaveBeenCalled();
     set.mockRestore();
-    expect((await getUser(u.email))!.credits).toBe(before);
+    expect((await getUser(acct(u)))!.credits).toBe(before);
     const src = readFileSync(join(process.cwd(), "src/lib/chat-run-tool.ts"), "utf8");
     const body = src.slice(src.indexOf('case "read_file": {'), src.indexOf('case "write_file": {')).replace(/\/\/.*$/gm, "");
     expect(body).not.toMatch(/charge|spend|track\(|recordActivity|debit|refund|generate/i);

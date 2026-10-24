@@ -12,8 +12,6 @@ import { holdOn } from "@/lib/email-hold";
 // Rule 2749 (multi-workspace spec decision 11): R2 turns on together with M2, with no further code. Both constants are
 // mocked on here; nothing else changes. A signup makes a `p_` person and an `a_` account, the person moves in place
 // through the settings route, signs in at the new address, the old address signs nothing in and is held.
-vi.mock("@/lib/account-id", async (orig) => ({ ...(await orig<typeof import("@/lib/account-id")>()), OPAQUE_IDS: true }));
-vi.mock("@/lib/multi-org", async (orig) => ({ ...(await orig<typeof import("@/lib/multi-org")>()), MULTI_ORG: true }));
 
 type Mail = { to: string; subject: string; text: string };
 let mails: Mail[] = [];
@@ -46,7 +44,7 @@ beforeEach(() => {
 afterEach(() => { vi.unstubAllEnvs(); signOut(); });
 
 describe("rule 2749: OPAQUE_IDS and MULTI_ORG on together", () => {
-  it("both constants read on in this file", () => {
+  it("both constants are on (M2 and R2 enable)", () => {
     expect(OPAQUE_IDS).toBe(true);
     expect(MULTI_ORG).toBe(true);
   });

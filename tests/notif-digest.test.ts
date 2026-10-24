@@ -109,8 +109,9 @@ describe("rule 2353: the digest choice", () => {
 
 describe("rule 2354: the tick sends one email per window, only with what is new and unread", () => {
   it("starts a window, waits, then sends the unread entries of that window once", async () => {
-    const a = acct(await newUser("dg")); // a real account: the tick reads it again (rule 2507)
-    await saveDigest(a, "4h", a, "en");
+    const owner = await newUser("dg"); // a real account: the tick reads it again (rule 2507)
+    const a = acct(owner);
+    await saveDigest(a, "4h", owner.email, "en");
     const start = Date.parse((await db.get<string>(accountKey.digestLast(a)))!);
     expect(await digestFor(a, start + H)).toBe("wait");
     await db.set(accountKey.notifications(a), [
@@ -120,7 +121,7 @@ describe("rule 2354: the tick sends one email per window, only with what is new 
     ]);
     expect(await digestFor(a, start + 4 * H)).toBe("sent");
     expect(sent).toHaveLength(1);
-    expect(sent[0].to).toBe(a);
+    expect(sent[0].to).toBe(owner.email);
     expect(sent[0].text).toContain("Fresh (×3)");
     expect(sent[0].text).not.toContain("Seen");
     expect(sent[0].text).not.toContain("Old");
@@ -183,7 +184,7 @@ describe("rule 2355: PUT /api/notifications/digest", () => {
     const res = await put({ every: "4h", to: "victim@test.example", account: "victim@test.example" });
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ ok: true, every: "4h" });
-    expect(await db.get(accountKey.digest(owner.email))).toEqual(expect.objectContaining({ v: 1, every: "4h", to: owner.email }));
+    expect(await db.get(accountKey.digest(acct(owner)))).toEqual(expect.objectContaining({ v: 1, every: "4h", to: owner.email }));
     expect(await db.get(accountKey.digest("victim@test.example"))).toBeNull();
   });
 });

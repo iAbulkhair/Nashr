@@ -4,7 +4,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { json, newMember, newUser, signIn } from "./helpers/session";
 import { fakeComposio, ok, type Answer } from "./helpers/composio-fake";
 import { db } from "@/lib/db";
-import { currentUser, getUser, saveUser, sc } from "@/lib/auth";
+import { acct, currentUser, getUser, saveUser, sc } from "@/lib/auth";
 import { wipeAccount } from "@/lib/account";
 import * as credits from "@/lib/credits";
 import { agentSpendFor } from "@/lib/credits";
@@ -73,16 +73,18 @@ const xConn = (meta: Record<string, string> = {}): Connection => ({ provider: "x
 const ctx = (provider: string) => ({ params: Promise.resolve({ provider }) });
 const post = (body: Record<string, unknown>, provider = "x") => connRoute.POST(json(`/api/connect/${provider}`, "POST", body), ctx(provider));
 const sync = () => post({ action: "sync_x" });
-const balance = async (email: string) => (await getUser(email))!.credits;
+const balance = async (id: string) => (await getUser(id))!.credits;
 
 /** An owner with START credits, signed in, with a direct X record unless `conn` is null. */
 async function workspace(conn: Connection | null = xConn(), start = START) {
   const owner = await newUser("xo");
-  await saveUser({ ...(await getUser(owner.email))!, credits: start });
-  const scope = sc((await getUser(owner.email))!);
+  const id = acct(owner);
+  await saveUser({ ...(await getUser(id))!, credits: start });
+  const scope = sc((await getUser(id))!);
   if (conn) await saveConnection(scope, conn);
   await signIn(owner.email);
-  return { owner, scope, email: owner.email };
+  // `id` is the account (the ledger and the record are keyed by it); `email` only signs in.
+  return { owner, scope, id, email: owner.email };
 }
 
 describe("the X refresh, paid by the account (rules 744, 745)", () => {
@@ -117,10 +119,10 @@ describe("the X refresh, paid by the account (rules 744, 745)", () => {
   });
 
   it("charges X_READ_CREDITS (2) before the read with Dana's cap; a second click the same UTC day is free (744)", async () => {
-    const { scope, email } = await workspace();
+    const { scope, id, email } = await workspace();
     let atRead: number | null = null;
     answer = async (url) => {
-      if (isMe(url)) atRead = await balance(email);
+      if (isMe(url)) atRead = await balance(id);
       return xAnswers()(url);
     };
     const r = await sync();
@@ -132,8 +134,8 @@ describe("the X refresh, paid by the account (rules 744, 745)", () => {
     expect((await getXStats(scope))!.accountId).toBe(USER_ID);
     // The debit was saved before X was asked, and counts against Dana's month.
     expect(atRead).toBe(START - X_READ_CREDITS);
-    expect(await balance(email)).toBe(START - X_READ_CREDITS);
-    expect(agentSpendFor((await getUser(email))!, scope).dana).toBe(X_READ_CREDITS);
+    expect(await balance(id)).toBe(START - X_READ_CREDITS);
+    expect(agentSpendFor((await getUser(id))!, scope).dana).toBe(X_READ_CREDITS);
     // Later the same UTC day: the stored read, no charge, no call to X.
     vi.setSystemTime(new Date("2026-10-08T21:00:00Z"));
     await signIn(email);
@@ -143,7 +145,7 @@ describe("the X refresh, paid by the account (rules 744, 745)", () => {
     expect(stored).toMatchObject({ ok: true, charged: false, x: { at: NOW.toISOString() } });
     expect(stored.x).not.toHaveProperty("accountId");
     expect(fetched).toHaveLength(2);
-    expect(await balance(email)).toBe(START - X_READ_CREDITS);
+    expect(await balance(id)).toBe(START - X_READ_CREDITS);
   });
 
   it("two concurrent sync_x calls debit one charge (Review Focus 1)", async () => {
@@ -151,15 +153,15 @@ describe("the X refresh, paid by the account (rules 744, 745)", () => {
     const a = await workspace();
     const both = await Promise.all([sync(), sync()]);
     expect(both.map((r) => r.status)).toEqual([200, 200]);
-    expect(await balance(a.email)).toBe(START - X_READ_CREDITS);
-    expect(agentSpendFor((await getUser(a.email))!, a.scope).dana).toBe(X_READ_CREDITS);
+    expect(await balance(a.id)).toBe(START - X_READ_CREDITS);
+    expect(agentSpendFor((await getUser(a.id))!, a.scope).dana).toBe(X_READ_CREDITS);
 
     // A member's click is charged to the account record, like the owner's.
     const b = await workspace();
     const member = await newMember(b.owner);
     await signIn(member.email);
     expect((await sync()).status).toBe(200);
-    expect(await balance(b.email)).toBe(START - X_READ_CREDITS);
+    expect(await balance(b.id)).toBe(START - X_READ_CREDITS);
 
     // The owner and a member at the same moment (the test's one cookie jar cannot hold two sessions in flight, so both
     // run refreshX with the user record currentUser resolved for each login).
@@ -174,7 +176,7 @@ describe("the X refresh, paid by the account (rules 744, 745)", () => {
     const out = await Promise.all([refreshX(asOwner, conn), refreshX(asMember, conn)]);
     expect(out.every((r) => r.ok)).toBe(true);
     expect(out.filter((r) => r.ok && r.charged)).toHaveLength(1);
-    expect(await balance(c.email)).toBe(START - X_READ_CREDITS);
+    expect(await balance(c.id)).toBe(START - X_READ_CREDITS);
   });
 
   it("the free re-read ends at the UTC day boundary (Review Focus 4)", async () => {
@@ -187,7 +189,7 @@ describe("the X refresh, paid by the account (rules 744, 745)", () => {
     const late = await workspace();
     await clickAt(late.email, "2026-10-08T23:59:00Z");
     await clickAt(late.email, "2026-10-09T00:01:00Z");
-    expect(await balance(late.email)).toBe(START - 2 * X_READ_CREDITS);
+    expect(await balance(late.id)).toBe(START - 2 * X_READ_CREDITS);
     expect(fetched).toHaveLength(4);
 
     fetched.length = 0;
@@ -195,16 +197,16 @@ describe("the X refresh, paid by the account (rules 744, 745)", () => {
     const day = await workspace();
     await clickAt(day.email, "2026-10-08T10:00:00Z");
     await clickAt(day.email, "2026-10-08T22:00:00Z");
-    expect(await balance(day.email)).toBe(START - X_READ_CREDITS);
+    expect(await balance(day.id)).toBe(START - X_READ_CREDITS);
     expect(fetched).toHaveLength(2);
   });
 
   it("a zero-post read keeps the charge and saves followers (744)", async () => {
-    const { scope, email } = await workspace();
+    const { scope, id } = await workspace();
     answer = xAnswers([]);
     const r = await sync();
     expect(r.status).toBe(200);
-    expect(await balance(email)).toBe(START - X_READ_CREDITS);
+    expect(await balance(id)).toBe(START - X_READ_CREDITS);
     expect(await getXStats(scope)).toMatchObject({ followers: 1500, posts: [] });
   });
 
@@ -237,7 +239,7 @@ describe("the X refresh, paid by the account (rules 744, 745)", () => {
       { status: 429, on: "me", wait: "900" },
     ];
     for (const k of cases) {
-      const { scope, email } = await workspace();
+      const { scope, id } = await workspace();
       answer = (url) => ((k.on === "me" ? isMe(url) : isTweets(url)) ? res(k.status, { title: "Forbidden 401 403" }, k.headers) : xAnswers()(url));
       const r = await sync();
       const body = await r.json();
@@ -246,8 +248,8 @@ describe("the X refresh, paid by the account (rules 744, 745)", () => {
         expect(r.status).toBe(429);
         expect(r.headers.get("Retry-After")).toBe(k.wait);
       } else expect(r.status).toBe(502);
-      expect(await balance(email)).toBe(START);
-      expect(agentSpendFor((await getUser(email))!, scope).dana ?? 0).toBe(0);
+      expect(await balance(id)).toBe(START);
+      expect(agentSpendFor((await getUser(id))!, scope).dana ?? 0).toBe(0);
       expect((await getConnection(scope, "x"))?.needsReconnect).toBeUndefined();
       expect(await getXStats(scope)).toBeNull();
     }
@@ -255,12 +257,12 @@ describe("the X refresh, paid by the account (rules 744, 745)", () => {
 
   it("a 401 refunds and asks the owner to reconnect (744)", async () => {
     for (const on of ["me", "tweets"] as const) {
-      const { scope, email } = await workspace();
+      const { scope, id } = await workspace();
       answer = (url) => ((on === "me" ? isMe(url) : isTweets(url)) ? res(401, { title: "Unauthorized" }) : xAnswers()(url));
       const r = await sync();
       expect(r.status).toBe(502);
-      expect(await balance(email)).toBe(START);
-      expect((await getUser(email))!.paidOnce?.[`xread:${scope}:2026-10-08`]).toBeUndefined();
+      expect(await balance(id)).toBe(START);
+      expect((await getUser(id))!.paidOnce?.[`xread:${scope}:2026-10-08`]).toBeUndefined();
       expect((await getConnection(scope, "x"))?.needsReconnect).toBeTruthy();
     }
   });
@@ -277,13 +279,13 @@ describe("the X refresh, paid by the account (rules 744, 745)", () => {
     for (const [name, fail] of failures) {
       back.mockClear();
       fetched.length = 0;
-      const { scope, email } = await workspace();
+      const { scope, id } = await workspace();
       answer = fail;
       const r = await sync();
       expect(r.status, name).toBe(502);
       expect(back, name).toHaveBeenCalledTimes(1);
-      expect(await balance(email), name).toBe(START);
-      expect((await getUser(email))!.paidOnce?.[`xread:${scope}:2026-10-08`], name).toBeUndefined();
+      expect(await balance(id), name).toBe(START);
+      expect((await getUser(id))!.paidOnce?.[`xread:${scope}:2026-10-08`], name).toBeUndefined();
       expect((await getConnection(scope, "x"))?.needsReconnect, name).toBeUndefined();
       // A malformed id is never put in a path: the read stops after the account.
       if (name === "malformed id") expect(fetched).toEqual([ME_URL]);
@@ -291,7 +293,7 @@ describe("the X refresh, paid by the account (rules 744, 745)", () => {
   });
 
   it("a failure after another click's read landed the same day keeps the charge", async () => {
-    const { scope, email } = await workspace();
+    const { scope, id } = await workspace();
     let lists = 0;
     answer = async (url) => {
       if (!isTweets(url)) return xAnswers()(url);
@@ -302,13 +304,13 @@ describe("the X refresh, paid by the account (rules 744, 745)", () => {
     };
     const out = await Promise.all([sync(), sync()]);
     expect(out.map((r) => r.status).sort()).toEqual([200, 502]);
-    expect(await balance(email)).toBe(START - X_READ_CREDITS);
+    expect(await balance(id)).toBe(START - X_READ_CREDITS);
     expect((await getXStats(scope))?.followers).toBe(1500);
   });
 
   it("the charging click failing first refunds; the click on its hold takes the charge again when its read lands (744)", async () => {
-    const { scope, email } = await workspace();
-    const u = (await getUser(email))!;
+    const { scope, id } = await workspace();
+    const u = (await getUser(id))!;
     const claim = `xread:${scope}:2026-10-08`;
     const back = vi.spyOn(credits, "refundOnce");
     const as = (token: string): Connection => ({ ...xConn(), data: { access_token: token } });
@@ -326,7 +328,7 @@ describe("the X refresh, paid by the account (rules 744, 745)", () => {
       if (isMe(url)) { bAsked(); return xAnswers()(url); }
       // A fails; B's list answers only once A has given its charge back.
       if (who(init) === "Bearer a") return res(503, {});
-      for (let i = 0; i < 400 && (await getUser(email))!.paidOnce?.[claim]; i++) await new Promise((r) => setTimeout(r, 5));
+      for (let i = 0; i < 400 && (await getUser(id))!.paidOnce?.[claim]; i++) await new Promise((r) => setTimeout(r, 5));
       return xAnswers()(url);
     };
     await expect(refreshX(u, as("a"), NOW)).rejects.toThrow("x_status_503");
@@ -334,15 +336,15 @@ describe("the X refresh, paid by the account (rules 744, 745)", () => {
     expect(b).toMatchObject({ ok: true, charged: true });
     expect(back).toHaveBeenCalledTimes(1);
     // One credit stands for the day's one read, under Dana's month, held again for the day.
-    expect(await balance(email)).toBe(START - X_READ_CREDITS);
-    expect(agentSpendFor((await getUser(email))!, scope).dana).toBe(X_READ_CREDITS);
-    expect((await getUser(email))!.paidOnce?.[claim]).toBeDefined();
+    expect(await balance(id)).toBe(START - X_READ_CREDITS);
+    expect(agentSpendFor((await getUser(id))!, scope).dana).toBe(X_READ_CREDITS);
+    expect((await getUser(id))!.paidOnce?.[claim]).toBeDefined();
     expect((await getXStats(scope))?.followers).toBe(1500);
   });
 
   it("the click on the hold failing first never refunds; the charging click's read keeps its charge (744)", async () => {
-    const { scope, email } = await workspace();
-    const u = (await getUser(email))!;
+    const { scope, id } = await workspace();
+    const u = (await getUser(id))!;
     const back = vi.spyOn(credits, "refundOnce");
     const as = (token: string): Connection => ({ ...xConn(), data: { access_token: token } });
     const who = (init: Init) => new Headers(init?.headers).get("authorization");
@@ -365,8 +367,8 @@ describe("the X refresh, paid by the account (rules 744, 745)", () => {
     expect(await refreshX(u, as("a"), NOW)).toMatchObject({ ok: true, charged: true });
     expect(await started.b).toBeInstanceOf(Error);
     expect(back).not.toHaveBeenCalled();
-    expect(await balance(email)).toBe(START - X_READ_CREDITS);
-    expect(agentSpendFor((await getUser(email))!, scope).dana).toBe(X_READ_CREDITS);
+    expect(await balance(id)).toBe(START - X_READ_CREDITS);
+    expect(agentSpendFor((await getUser(id))!, scope).dana).toBe(X_READ_CREDITS);
   });
 
   it("keeps X's own characters in the handle: an underscore stays, markup goes (744)", async () => {
@@ -416,22 +418,22 @@ describe("the X refresh, paid by the account (rules 744, 745)", () => {
   });
 
   it("a Composio-routed X record is never read or charged (744)", async () => {
-    const { email } = await workspace({ provider: "x", data: { x: "ca_x" }, meta: { via: "composio", account: "@oud" }, connectedAt: NOW.toISOString() });
+    const { id } = await workspace({ provider: "x", data: { x: "ca_x" }, meta: { via: "composio", account: "@oud" }, connectedAt: NOW.toISOString() });
     const r = await sync();
     expect(r.status).toBe(409);
     expect(await r.json()).toMatchObject({ ok: false, error: "x_direct_only" });
     expect(fetched).toEqual([]);
-    expect(await balance(email)).toBe(START);
+    expect(await balance(id)).toBe(START);
   });
 
   it("no X connection answers 404 and charges nothing", async () => {
-    const { email } = await workspace(null);
+    const { id } = await workspace(null);
     const r = await sync();
     expect(r.status).toBe(404);
     expect(fetched).toEqual([]);
-    expect(await balance(email)).toBe(START);
+    expect(await balance(id)).toBe(START);
     // sync_x is X's alone.
-    await saveConnection(sc((await getUser(email))!), { provider: "linkedin", data: { access_token: "t" }, connectedAt: NOW.toISOString() });
+    await saveConnection(sc((await getUser(id))!), { provider: "linkedin", data: { access_token: "t" }, connectedAt: NOW.toISOString() });
     expect((await post({ action: "sync_x" }, "linkedin")).status).toBe(400);
     expect(fetched).toEqual([]);
   });
@@ -442,7 +444,7 @@ describe("the X refresh, paid by the account (rules 744, 745)", () => {
     const r1 = await sync();
     expect(r1.status).toBe(402);
     expect(await r1.json()).toMatchObject({ ok: false, error: "agent_cap", spent: 0, cap: 0 });
-    expect(await balance(capped.email)).toBe(START);
+    expect(await balance(capped.id)).toBe(START);
 
     const broke = await workspace(xConn(), 0);
     const r2 = await sync();
@@ -450,11 +452,11 @@ describe("the X refresh, paid by the account (rules 744, 745)", () => {
     expect(await r2.json()).toMatchObject({ ok: false, error: "no_credits", need: X_READ_CREDITS, credits: 0 });
 
     const ended = await workspace();
-    await saveUser({ ...(await getUser(ended.email))!, plan: "trial", trialEnds: "2026-10-01T00:00:00.000Z" });
+    await saveUser({ ...(await getUser(ended.id))!, plan: "trial", trialEnds: "2026-10-01T00:00:00.000Z" });
     const r3 = await sync();
     expect(r3.status).toBe(402);
     expect(await r3.json()).toMatchObject({ ok: false, error: "trial_over" });
-    expect(await balance(ended.email)).toBe(START);
+    expect(await balance(ended.id)).toBe(START);
     expect(fetched).toEqual([]);
     void broke;
   });
@@ -490,17 +492,17 @@ describe("the X refresh, paid by the account (rules 744, 745)", () => {
   });
 
   it("wipeAccount deletes xstats (747)", async () => {
-    const { scope, email } = await workspace();
+    const { scope, id } = await workspace();
     expect((await sync()).status).toBe(200);
     expect(await db.get(XSTATS_KEY(scope))).not.toBeNull();
-    await wipeAccount(email);
+    await wipeAccount(id);
     expect(await db.get(XSTATS_KEY(scope))).toBeNull();
   });
 
   it("disconnecting X drops its read and history: another account connected the same day reads as its own (747)", async () => {
-    const { scope, email } = await workspace();
+    const { scope, id } = await workspace();
     expect((await sync()).status).toBe(200);
-    expect(await balance(email)).toBe(START - X_READ_CREDITS);
+    expect(await balance(id)).toBe(START - X_READ_CREDITS);
     const del = await connRoute.DELETE(json("/api/connect/x", "DELETE"), ctx("x"));
     expect(del.status).toBe(200);
     expect(await getConnection(scope, "x")).toBeNull();
@@ -514,7 +516,7 @@ describe("the X refresh, paid by the account (rules 744, 745)", () => {
     const r = await sync();
     expect(r.status).toBe(200);
     expect(await r.json()).toMatchObject({ ok: true, charged: false, x: { followers: 70 } });
-    expect(await balance(email)).toBe(START - X_READ_CREDITS);
+    expect(await balance(id)).toBe(START - X_READ_CREDITS);
     const x = (await getXStats(scope))!;
     expect(x).toMatchObject({ accountId: "2001", followers: 70, posts: [] });
     expect(x.history).toEqual([{ month: "2026-10", platform: "x", followers: 70, totals: x.totals }]);
@@ -522,12 +524,12 @@ describe("the X refresh, paid by the account (rules 744, 745)", () => {
   });
 
   it("six X refreshes an hour per workspace: failing reads that each refund cannot ask X without end (735, 744)", async () => {
-    const { email } = await workspace();
+    const { id } = await workspace();
     const back = vi.spyOn(credits, "refundOnce");
     answer = (url) => (isTweets(url) ? res(503, { title: "Service Unavailable" }) : xAnswers()(url));
     for (let i = 1; i <= 6; i++) expect((await sync()).status, `click ${i}`).toBe(502);
     expect(back).toHaveBeenCalledTimes(6);
-    expect(await balance(email)).toBe(START);
+    expect(await balance(id)).toBe(START);
     const charge = vi.spyOn(credits, "chargeOnce");
     fetched.length = 0;
     const r = await sync();
@@ -536,7 +538,7 @@ describe("the X refresh, paid by the account (rules 744, 745)", () => {
     expect(await r.json()).toMatchObject({ ok: false, error: "slow_down" });
     expect(charge).not.toHaveBeenCalled();
     expect(fetched).toEqual([]);
-    expect(await balance(email)).toBe(START);
+    expect(await balance(id)).toBe(START);
   });
 
   it("a refund that fails never hides X's answer: a 401 still asks the owner to reconnect (744)", async () => {

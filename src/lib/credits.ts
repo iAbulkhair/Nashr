@@ -559,15 +559,16 @@ export async function renewIfDue(email: string): Promise<boolean> {
     u.renewedOn = ksaDay();
     await saveUser(u);
     // A Paymob subscription's month has its payment record; a plan set by hand has none, so its grant is written below.
-    return u.billing ? false : { plan: u.plan, before, after: u.credits, month: u.renewedAt, paidThrough: u.handPlan?.paidThrough ?? null };
+    return u.billing ? false : { address: u.email, plan: u.plan, before, after: u.credits, month: u.renewedAt, paidThrough: u.handPlan?.paidThrough ?? null };
   });
   if (hand === null) return false;
   // Every month of credits a hand-set plan receives leaves a row in the founder's log (rule 1304, 360 study G-012): who
   // granted (the system, for the founder's plan), the plan, the balance before and after, and the paid-through day (none
-  // for a plan set before paid-through days existed). After the save: a failed log write never undoes the month.
+  // for a plan set before paid-through days existed). After the save: a failed log write never undoes the month. The row
+  // names the sign-in address, as every console row does; `email` here is the account id (rule 3819).
   if (hand) {
     await adminAudit({
-      actor: "system", section: "billing", action: "hand_refill", target: email,
+      actor: "system", section: "billing", action: "hand_refill", target: hand.address,
       what: `hand_refill plan:${hand.plan} month:${hand.month} credits:${hand.after} paid_through:${hand.paidThrough ?? "none"}`,
       before: { credits: hand.before }, after: { credits: hand.after, paidThrough: hand.paidThrough },
     }).catch((e) => log.error("hand refill log", e));

@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { acct } from "@/lib/auth";
 import { scopeFor } from "@/lib/brands";
 import { BRAND_SECTIONS } from "@/lib/brand-path";
@@ -11,10 +11,9 @@ import { appHrefFor, appHrefIn, appHrefInBrand } from "@/lib/ws-href";
 import { WS_HEADER, appHref, inWorkspace } from "@/lib/ws-path";
 import { newUser, withHeaders } from "./helpers/session";
 
-vi.mock("@/lib/multi-org", async (orig) => ({ ...(await orig<typeof import("@/lib/multi-org")>()), MULTI_ORG: true }));
 
 /**
- * Task 8 of the brand-in-the-URL plan, with `MULTI_ORG` on for this file: every builder composes the workspace and the
+ * Task 8 of the brand-in-the-URL plan, with `MULTI_ORG` on (the release switch since M2 enable): every builder composes the workspace and the
  * brand as `/{lang}/app/w/{handle}/b/{brandId}/…` (rule 2600), links the server makes about one brand carry that brand
  * (rules 2601-2602, finishing rule 894), and client and page links from an account page name the shell's brand (rule
  * 2603, finishing rule 890). docs/system/tests/2600-brand-url-links.md lists them.

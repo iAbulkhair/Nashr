@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { proxy } from "@/proxy";
 import { MULTI_ORG } from "@/lib/multi-org";
@@ -7,8 +7,11 @@ import { appHrefFor, appHrefIn } from "@/lib/ws-href";
 import { wsHandle } from "@/lib/ws-handle";
 import { WS_HEADER, appHref, oldAppTarget } from "@/lib/ws-path";
 
+vi.mock("@/lib/multi-org", async (orig) => ({ ...(await orig<typeof import("@/lib/multi-org")>()), MULTI_ORG: false }));
+
 /**
- * With `MULTI_ORG` off (as in production through M2), the combined builders are exactly Part C's brand links (rules 889,
+ * With `MULTI_ORG` off (as in production through M1-M3; on since the enable release, so this file turns it off, rule
+ * 3814), the combined builders are exactly Part C's brand links (rules 889,
  * 2113, 2132): no handle is ever made, so every link equals brand-path's `appHref`, the proxy never copies `ws=` from a
  * query and a `/w/…` path is not rewritten. tests/multi-org-brand-url.test.ts covers the switch on.
  */

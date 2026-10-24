@@ -28,7 +28,7 @@ vi.mock("@/lib/media/start", async (orig) => {
 });
 
 import { json, newUser, params, signIn } from "./helpers/session";
-import { getUser, sc } from "@/lib/auth";
+import { getUser, sc, acct } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { saveTask, type Brand } from "@/lib/brand";
 import { byOf } from "@/lib/actor";
@@ -49,9 +49,10 @@ const decide = async (id: string, body: unknown) => {
 const brand = (): Brand => ({ name: "مقهى الفنجان", website: "", industry: "مقاهي", dialect: "saudi", languages: ["ar"], tone: "ودود", products: "قهوة مختصة", audience: "الرياض", offers: "", competitors: "", banned: "", preferred: "", channels: ["instagram"], city: "الرياض", updatedAt: new Date().toISOString() } as Brand);
 async function owner(prefix: string): Promise<User> {
   const u = await newUser(prefix);
-  await db.set(`brand:${u.email}`, brand());
+  await db.set(`brand:${acct(u)}`, brand());
   await signIn(u.email);
-  return (await getUser(u.email))!;
+  // A session user carries its scope (currentUser); runTool reads `user.scope ?? user.email`.
+  return { ...(await getUser(acct(u)))!, scope: acct(u) };
 }
 const turn = (u: User, ownerMsg: string, extra: Partial<ToolCtx> = {}): ToolCtx & { spendProposed: SpendProposal[] } => ({ agent: "noor", by: byOf(u), via: "app", proposed: [], awayProposed: [], instructionProposed: [], spendProposed: [], ownerMsg, lang: "ar", ...extra });
 const ASKED = "اكتب لي 10 منشورات لليوم الوطني";

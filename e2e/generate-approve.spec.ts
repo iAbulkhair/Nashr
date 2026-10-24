@@ -1,5 +1,5 @@
 import type { Page } from "@playwright/test";
-import { test, expect, open } from "./fixtures/app";
+import { test, expect, open, appPath } from "./fixtures/app";
 import { appDict } from "../src/lib/app-i18n";
 import { BRAND, apiTasks, createWorkspace, decide, freshAccount, generateBatch, hydrated, mockItem, versionOf } from "./fixtures/workspace";
 
@@ -36,7 +36,7 @@ test.describe("generate, approve and reject", () => {
     expect(await res.json()).toMatchObject({ ok: true, created: 10, credits: 40 });
 
     // The page moves to the approval inbox, where the batch waits (nothing is approved by itself on a new account).
-    await page.waitForURL((u) => u.pathname === "/en/app/b/default");
+    await page.waitForURL((u) => appPath(u) === "/en/app/b/default");
     await expect(page.getByRole("heading", { level: 1 })).toContainText(I.title);
     await expect(chip(page, I.pending, 10)).toBeVisible();
     await expect(page.locator("article.card", { hasText: "DEV MOCK social" })).toHaveCount(10);

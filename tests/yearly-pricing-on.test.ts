@@ -3,7 +3,7 @@ import { randomBytes } from "crypto";
 import { createElement as h } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { json, newUser, signIn } from "./helpers/session";
-import { getUser, saveUser, type User } from "@/lib/auth";
+import { acct, getUser, saveUser, type User } from "@/lib/auth";
 import { monthKey } from "@/lib/credits";
 import { db } from "@/lib/db";
 import { dict, yearlyPlanCards } from "@/lib/i18n";
@@ -97,9 +97,9 @@ const payments = async (email: string) => Object.values(await db.hgetall<Payment
 
 async function owner(): Promise<User> {
   const u = await newUser("yr1");
-  await saveUser({ ...(await getUser(u.email))!, phone: "+966500000123" });
+  await saveUser({ ...(await getUser(acct(u)))!, phone: "+966500000123" });
   await signIn(u.email);
-  return (await getUser(u.email))!;
+  return (await getUser(acct(u)))!;
 }
 async function payAndConfirm(body: Record<string, unknown>) {
   const res = await pay(body);
@@ -113,9 +113,9 @@ async function subscribed(b: Partial<Billing> = {}): Promise<User> {
   const u = await owner();
   const plan = b.plan ?? "starter";
   const billing: Billing = { provider: "paymob", plan, status: "active", paidThrough: today(), anchor: Number(today().slice(8, 10)), autoRenew: true, failures: 0, txns: [], card: { brand: "MasterCard", last4: "2346" }, ...b };
-  await saveUser({ ...(await getUser(u.email))!, plan, renewedAt: monthKey(), billing });
-  await db.set(cardKey(u.email), { token: "tok_" + randomBytes(16).toString("hex"), last4: "2346", brand: "MasterCard", expMonth: "01", expYear: "38", savedAt: new Date().toISOString(), orderId: 1 });
-  return (await getUser(u.email))!;
+  await saveUser({ ...(await getUser(acct(u)))!, plan, renewedAt: monthKey(), billing });
+  await db.set(cardKey(acct(u)), { token: "tok_" + randomBytes(16).toString("hex"), last4: "2346", brand: "MasterCard", expMonth: "01", expYear: "38", savedAt: new Date().toISOString(), orderId: 1 });
+  return (await getUser(acct(u)))!;
 }
 const vat = (halalas: number) => Math.round(halalas * 0.15);
 
@@ -218,17 +218,17 @@ describe("checkout, paid-through and renewals (rules 3532-3535)", () => {
     expect(intent.amount).toBe(343850);
     const intention = calls.find((c) => c.path === "/v1/intention/")!;
     expect(JSON.stringify(intention.body.items)).toContain("1 year");
-    const after = (await getUser(u.email))!;
+    const after = (await getUser(acct(u)))!;
     expect(after.plan).toBe("starter");
     expect(after.billing).toMatchObject({ plan: "starter", status: "active", interval: "year", paidThrough: addMonths(today(), 12) });
     expect(billingView(after.billing)).toMatchObject({ interval: "year" });
-    expect(await payments(u.email)).toEqual([expect.objectContaining({ amountSar: TEST_STARTER_YEARLY, plan: "starter" })]);
+    expect(await payments(acct(u))).toEqual([expect.objectContaining({ amountSar: TEST_STARTER_YEARLY, plan: "starter" })]);
   });
 
   it("a monthly checkout is unchanged: no interval stored, one month", async () => {
     const u = await owner();
     await payAndConfirm({ kind: "plan", plan: "starter" });
-    const after = (await getUser(u.email))!;
+    const after = (await getUser(acct(u)))!;
     expect(after.billing!.interval).toBeUndefined();
     expect(after.billing!.paidThrough).toBe(addMonths(today(), 1));
   });
@@ -244,9 +244,9 @@ describe("checkout, paid-through and renewals (rules 3532-3535)", () => {
   it("a yearly renewal charges the yearly total on the saved card and moves twelve months on the anchor day", async () => {
     const u = await subscribed({ plan: "starter", interval: "year", paidThrough: today(), anchor: 31 });
     payAnswer = (orderId, ref, amount) => txnObj({ amount, orderId, ref });
-    expect(await renewPaymob(u.email)).toBe("paymob_renewed");
+    expect(await renewPaymob(acct(u))).toBe("paymob_renewed");
     expect(intents.at(-1)!.amount).toBe(343850);
-    const after = (await getUser(u.email))!;
+    const after = (await getUser(acct(u)))!;
     expect(after.billing).toMatchObject({ status: "active", interval: "year", paidThrough: addMonths(today(), 12, 31), anchor: 31 });
   });
 
@@ -254,9 +254,9 @@ describe("checkout, paid-through and renewals (rules 3532-3535)", () => {
     const u = await subscribed({ plan: "starter", paidThrough: today(), anchor: 31 });
     expect(billingInterval(u.billing)).toBe("month");
     payAnswer = (orderId, ref, amount) => txnObj({ amount, orderId, ref });
-    expect(await renewPaymob(u.email)).toBe("paymob_renewed");
+    expect(await renewPaymob(acct(u))).toBe("paymob_renewed");
     expect(intents.at(-1)!.amount).toBe(34385);
-    const after = (await getUser(u.email))!;
+    const after = (await getUser(acct(u)))!;
     expect(after.billing!.paidThrough).toBe(addMonths(today(), 1, 31));
     expect(after.billing!.interval).toBeUndefined();
   });
@@ -264,9 +264,9 @@ describe("checkout, paid-through and renewals (rules 3532-3535)", () => {
   it("a yearly subscription whose yearly price was withdrawn renews monthly and is monthly from then on", async () => {
     const u = await subscribed({ plan: "business", interval: "year", paidThrough: today(), anchor: 31 });
     payAnswer = (orderId, ref, amount) => txnObj({ amount, orderId, ref });
-    expect(await renewPaymob(u.email)).toBe("paymob_renewed");
+    expect(await renewPaymob(acct(u))).toBe("paymob_renewed");
     expect(intents.at(-1)!.amount).toBe(99900 + vat(99900));
-    const after = (await getUser(u.email))!;
+    const after = (await getUser(acct(u)))!;
     expect(after.billing!.paidThrough).toBe(addMonths(today(), 1, 31));
     expect(after.billing!.interval).toBeUndefined();
   });
@@ -275,7 +275,7 @@ describe("checkout, paid-through and renewals (rules 3532-3535)", () => {
     const paidThrough = addDays(today(), 10);
     const u = await subscribed({ plan: "starter", paidThrough, anchor: Number(paidThrough.slice(8, 10)) });
     await payAndConfirm({ kind: "plan", plan: "starter", interval: "year" });
-    const after = (await getUser(u.email))!;
+    const after = (await getUser(acct(u)))!;
     expect(after.billing).toMatchObject({ interval: "year", paidThrough: addMonths(paidThrough, 12, Number(paidThrough.slice(8, 10))) });
   });
 
@@ -289,17 +289,17 @@ describe("checkout, paid-through and renewals (rules 3532-3535)", () => {
     }
     expect(calls).toHaveLength(0);
     // Two tabs: a Starter checkout opened while monthly, paid after the Pro year was bought. Nothing is applied.
-    await saveUser({ ...(await getUser(u.email))!, billing: { ...(await getUser(u.email))!.billing!, interval: undefined } });
+    await saveUser({ ...(await getUser(acct(u)))!, billing: { ...(await getUser(acct(u)))!.billing!, interval: undefined } });
     const res = await pay({ kind: "plan", plan: "starter" });
     expect(res.status).toBe(200);
     const it = intents.at(-1)!;
-    await saveUser({ ...(await getUser(u.email))!, billing: { ...(await getUser(u.email))!.billing!, interval: "year" } });
+    await saveUser({ ...(await getUser(acct(u)))!, billing: { ...(await getUser(acct(u)))!.billing!, interval: "year" } });
     const cb = await hook(txnObj({ amount: it.amount, orderId: it.orderId, ref: it.ref }));
     expect(((await cb.json()) as { result: string }).result).not.toBe("paid");
-    const after = (await getUser(u.email))!;
+    const after = (await getUser(acct(u)))!;
     expect(after.plan).toBe("pro");
     expect(after.billing).toMatchObject({ plan: "pro", interval: "year", paidThrough });
-    expect(await payments(u.email)).toEqual([]);
+    expect(await payments(acct(u))).toEqual([]);
   });
 
   it("the same plan paid again during its year extends it; the year's end frees a plan change", async () => {
@@ -307,7 +307,7 @@ describe("checkout, paid-through and renewals (rules 3532-3535)", () => {
     const anchor = Number(paidThrough.slice(8, 10));
     const u = await subscribed({ plan: "starter", interval: "year", paidThrough, anchor });
     await payAndConfirm({ kind: "plan", plan: "starter", interval: "year" });
-    expect((await getUser(u.email))!.billing!.paidThrough).toBe(addMonths(paidThrough, 12, anchor));
+    expect((await getUser(acct(u)))!.billing!.paidThrough).toBe(addMonths(paidThrough, 12, anchor));
     const ended = await subscribed({ plan: "pro", interval: "year", paidThrough: today() });
     expect(ended.email).toBeTruthy();
     const r = await pay({ kind: "plan", plan: "starter" });

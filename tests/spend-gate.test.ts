@@ -48,7 +48,7 @@ vi.mock("@/lib/auth", async (orig) => {
 
 import { json, newUser, params, signIn, signOut } from "./helpers/session";
 import { claudeOn } from "./helpers/model";
-import { getUser, sc } from "@/lib/auth";
+import { acct, currentUser, sc } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { saveTask, type Brand } from "@/lib/brand";
 import { byOf } from "@/lib/actor";
@@ -67,9 +67,9 @@ const decide = (id: string, body: unknown) => spendRoute.POST(json(`/api/chat/sp
 const brand = (industry = "مقاهي"): Brand => ({ name: "مقهى الفنجان", website: "", industry, dialect: "saudi", languages: ["ar"], tone: "ودود", products: "قهوة مختصة", audience: "الرياض", offers: "", competitors: "", banned: "", preferred: "", channels: ["instagram"], city: "الرياض", updatedAt: new Date().toISOString() } as Brand);
 async function owner(prefix: string, industry?: string): Promise<User> {
   const u = await newUser(prefix);
-  await db.set(`brand:${u.email}`, brand(industry));
+  await db.set(`brand:${acct(u)}`, brand(industry));
   await signIn(u.email);
-  return (await getUser(u.email))!;
+  return (await currentUser())!;
 }
 /** A chat turn's context, as chat() builds it: the owner's message, the turn's card lists, the app. */
 const turn = (u: User, ownerMsg: string, extra: Partial<ToolCtx> = {}): ToolCtx & { spendProposed: SpendProposal[] } => ({ agent: "noor", by: byOf(u), via: "app", proposed: [], awayProposed: [], instructionProposed: [], spendProposed: [], ownerMsg, lang: "ar", ...extra });
@@ -166,7 +166,7 @@ describe("rule 1511: the card carries no login, shows its state after a reload, 
     expect(await spendProposalStates(sc(u), [id, "ffffffffffffffff", "../x"])).toEqual({ [id]: "dismissed", ffffffffffffffff: "expired" });
     const keys = await spendProposalKeys(sc(u));
     expect(keys).toContain(`spendprop-done:${sc(u)}:${id}`);
-    await wipeAccount(u.email);
+    await wipeAccount(acct(u));
     expect(await db.get(`spendprop-done:${sc(u)}:${id}`)).toBeNull();
     expect(await db.smembers(`spendprops:${sc(u)}`)).toEqual([]);
   });
@@ -283,7 +283,7 @@ describe("rule 1513: chat() hands the gate the owner's own message, and the repl
     expect(g.batch).toHaveLength(0);
     expect(m.spendProposals).toHaveLength(1);
     expect(m.spendProposals![0]).toMatchObject({ kind: "batch", type: "social", credits: TASK_COST.social });
-    const m2 = await chat((await getUser(u.email))!, "اكتب 10 منشورات للأسبوع");
+    const m2 = await chat((await currentUser())!, "اكتب 10 منشورات للأسبوع");
     expect(g.batch).toHaveLength(1);
     expect(m2.spendProposals).toBeUndefined();
   });

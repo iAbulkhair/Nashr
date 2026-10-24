@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createHash } from "node:crypto";
 import { newUser } from "./helpers/session";
+import { acct } from "@/lib/auth";
 import { CAPS, db } from "@/lib/db";
 import { saveBrands, type BrandMeta } from "@/lib/brands";
 import { KINDS } from "@/lib/usage";
@@ -257,7 +258,7 @@ describe("rule 792: the owner's other brands", () => {
 
   it("otherBrandNames lists the other brands with the default brand's real name", async () => {
     const u = await newUser("scope-brands");
-    await Promise.all([db.set(`brand:${u.email}`, file("Main Co")), saveBrands(u.email, [meta("default", ""), meta("b2", "Second")])]);
+    await Promise.all([db.set(`brand:${acct(u)}`, file("Main Co")), saveBrands(acct(u), [meta("default", ""), meta("b2", "Second")])]);
     expect(await otherBrandNames({ ...u, brandId: "b2" })).toEqual(["Main Co"]);
     expect(await otherBrandNames({ ...u, brandId: "default" })).toEqual(["Second"]);
     // No active brand on the user means the default one.
@@ -266,16 +267,16 @@ describe("rule 792: the owner's other brands", () => {
 
   it("otherBrandNames reads the brand list and the default brand file, and nothing else", async () => {
     const u = await newUser("scope-brands-round");
-    await Promise.all([db.set(`brand:${u.email}`, file("Main Co")), saveBrands(u.email, [meta("default", ""), meta("b2", "Second"), meta("b3", "Third")])]);
+    await Promise.all([db.set(`brand:${acct(u)}`, file("Main Co")), saveBrands(acct(u), [meta("default", ""), meta("b2", "Second"), meta("b3", "Third")])]);
     const get = vi.spyOn(db, "get");
     await otherBrandNames({ ...u, brandId: "b2" });
-    expect(get.mock.calls.map((c) => c[0]).sort()).toEqual([`brand:${u.email}`, `brands:${u.email}`]);
+    expect(get.mock.calls.map((c) => c[0]).sort()).toEqual([`brand:${acct(u)}`, `brands:${acct(u)}`]);
   });
 
   it("otherBrandNames drops empty names and has none to list for an account with one brand", async () => {
     const u = await newUser("scope-brands-empty");
     // The default brand has no file yet (an owner who never filled it in): its name is empty, so it is dropped.
-    await saveBrands(u.email, [meta("default", ""), meta("b2", "Second"), meta("b3", "   "), meta("b4", "")]);
+    await saveBrands(acct(u), [meta("default", ""), meta("b2", "Second"), meta("b3", "   "), meta("b4", "")]);
     expect(await otherBrandNames({ ...u, brandId: "b2" })).toEqual([]);
     expect(await otherBrandNames({ ...u, brandId: "default" })).toEqual(["Second"]);
     const solo = await newUser("scope-brands-solo");
@@ -284,7 +285,7 @@ describe("rule 792: the owner's other brands", () => {
 
   it("otherBrandNames names only this account's brands", async () => {
     const [a, b] = await Promise.all([newUser("scope-brands-a"), newUser("scope-brands-b")]);
-    await Promise.all([saveBrands(a.email, [meta("default", ""), meta("b2", "A Second")]), saveBrands(b.email, [meta("default", ""), meta("b2", "B Second")])]);
+    await Promise.all([saveBrands(acct(a), [meta("default", ""), meta("b2", "A Second")]), saveBrands(acct(b), [meta("default", ""), meta("b2", "B Second")])]);
     expect(await otherBrandNames({ ...a, brandId: "default" })).toEqual(["A Second"]);
     expect(await otherBrandNames({ ...b, brandId: "default" })).toEqual(["B Second"]);
   });

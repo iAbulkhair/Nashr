@@ -3,7 +3,7 @@ import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { newUser, signIn } from "./helpers/session";
 import { vjson } from "./helpers/version";
-import { currentUser } from "@/lib/auth";
+import { acct, currentUser } from "@/lib/auth";
 import { getTask, saveBrand, saveTask, type Brand, type Task } from "@/lib/brand";
 import { bannedTerms, brandRules, checkText, gateTask, initialStatus } from "@/lib/brand-rules";
 import { saveConnection } from "@/lib/connectors/store";
@@ -75,25 +75,25 @@ describe("the approve and publish routes enforce the brand rules in code (rule 7
   it("refuses to approve an item that breaks a rule, and saves nothing", async () => {
     const u = await newUser("guard");
     await signIn(u.email);
-    await saveBrand(u.email, BRAND);
-    await saveTask(u.email, task("bad", "قهوة مضمونة"), true);
+    await saveBrand(acct(u), BRAND);
+    await saveTask(acct(u), task("bad", "قهوة مضمونة"), true);
     const res = await patch("bad", { status: "approved" });
     expect(res.status).toBe(409);
     const j = await res.json();
     expect(j.error).toBe("brand_violation");
     expect(j.violations[0].term).toBe("مضمون");
-    expect((await getTask(u.email, "bad"))!.status).toBe("pending");
+    expect((await getTask(acct(u), "bad"))!.status).toBe("pending");
   });
 
   it("approves once the owner's edit removes the word, and refuses an edit that adds one to an approved item", async () => {
     const u = await newUser("guard");
     await signIn(u.email);
-    await saveBrand(u.email, BRAND);
-    await saveTask(u.email, task("fix", "قهوة مضمونة"), true);
+    await saveBrand(acct(u), BRAND);
+    await saveTask(acct(u), task("fix", "قهوة مضمونة"), true);
     expect((await patch("fix", { editedBody: "قهوة محمّصة طازج", status: "approved" })).status).toBe(200);
-    expect((await getTask(u.email, "fix"))!.status).toBe("approved");
+    expect((await getTask(acct(u), "fix"))!.status).toBe("approved");
     expect((await patch("fix", { editedBody: "أرخص قهوة، رخيص جداً" })).status).toBe(409);
-    expect((await getTask(u.email, "fix"))!.editedBody).toBe("قهوة محمّصة طازج");
+    expect((await getTask(acct(u), "fix"))!.editedBody).toBe("قهوة محمّصة طازج");
     // Saving the draft as pending is allowed: the rule holds approval, not the owner's own editing.
     expect((await patch("fix", { editedBody: "قهوة رخيص", status: "pending" })).status).toBe(200);
   });
@@ -102,15 +102,15 @@ describe("the approve and publish routes enforce the brand rules in code (rule 7
     published.length = 0;
     const u = await newUser("guard");
     await signIn(u.email);
-    await saveBrand(u.email, BRAND);
-    await saveConnection(u.email, { provider: "telegram", data: { token: "t", chat: "c" }, connectedAt: new Date().toISOString() });
-    await saveTask(u.email, { ...task("old", "أفضل قهوة وأرخص... رخيص", "approved"), decidedAt: new Date().toISOString() }, true);
+    await saveBrand(acct(u), BRAND);
+    await saveConnection(acct(u), { provider: "telegram", data: { token: "t", chat: "c" }, connectedAt: new Date().toISOString() });
+    await saveTask(acct(u), { ...task("old", "أفضل قهوة وأرخص... رخيص", "approved"), decidedAt: new Date().toISOString() }, true);
     const res = await publishRoute.POST(await vjson("/api/publish/old", "POST", { provider: "telegram" }), { params: Promise.resolve({ id: "old" }) });
     expect(res.status).toBe(409);
     expect((await res.json()).error).toBe("brand_violation");
     expect(await runTool((await currentUser())!, "publish_item", { task_id: "old", provider: "telegram" }, [])).toMatch(/Not published.*رخيص/);
     expect(published).toEqual([]);
-    await saveTask(u.email, task("clean", "قهوة طازجة من المحمصة", "approved"), true);
+    await saveTask(acct(u), task("clean", "قهوة طازجة من المحمصة", "approved"), true);
     expect((await publishRoute.POST(await vjson("/api/publish/clean", "POST", { provider: "telegram" }), { params: Promise.resolve({ id: "clean" }) })).status).toBe(200);
     expect(published).toEqual(["clean"]);
   });
@@ -131,8 +131,8 @@ describe("MCP brand tools (rule 79)", () => {
 
   it("returns the caller's own rules and checks with the same code as the approve button", async () => {
     const u = await newUser("mcpguard");
-    await saveBrand(u.email, BRAND);
-    const token = await createMcpToken(u.email);
+    await saveBrand(acct(u), BRAND);
+    const token = await createMcpToken(acct(u));
     const rules = await body(await call("get_brand_rules", {}, token));
     expect(rules.brand).toBe("محمصة ريف");
     expect(rules.enforced.map((r: { term: string }) => r.term)).toEqual(["مضمون", "الأفضل في المملكة", "cheap", "رخيص"]);
@@ -145,9 +145,9 @@ describe("MCP brand tools (rule 79)", () => {
 
   it("another account's token sees its own brand, never this one", async () => {
     const a = await newUser("mcpguard");
-    await saveBrand(a.email, BRAND);
+    await saveBrand(acct(a), BRAND);
     const b = await newUser("mcpguard");
-    const token = await createMcpToken(b.email);
+    const token = await createMcpToken(acct(b));
     const res = await call("get_brand_rules", {}, token);
     expect((await res.json()).result.isError).toBe(true);
   });

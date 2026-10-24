@@ -27,6 +27,8 @@ import { modelState } from "./model";
 import { modelAllowsTask, modelById } from "./models/catalog";
 import { creditsFor } from "./models/credits";
 import { draftCharge } from "./task-costs";
+// Re-exported for chat-run-tool, which drafts through this module and is held under 450 lines (rule 2014).
+export { draftCharge };
 import { type Rejected } from "./models/route";
 import { generateRouteFor } from "./models/overrides";
 import { noteRejectedPick, usageWho } from "./usage";

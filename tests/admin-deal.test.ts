@@ -1,6 +1,6 @@
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { adminSignIn, jar, json, newUser, params, signIn } from "./helpers/session";
-import { getUser, saveUser, seatLimit, type Plan, type User } from "@/lib/auth";
+import { acct, getUser, saveUser, seatLimit, type Plan, type User } from "@/lib/auth";
 import { monthKey, renewIfDue } from "@/lib/credits";
 import { db } from "@/lib/db";
 import { saveTask, type Task } from "@/lib/brand";
@@ -40,7 +40,7 @@ const logLength = async () => (await db.lrange("admin:log", 0, -1)).length;
 const lastLog = async () => JSON.parse((await db.lrange("admin:log", 0, 0))[0]) as { what: string; before: { deal: string; seats: number; chat: number }; after: { deal: string; credits: number; seats: number; chat: number }; actor: string; reason?: string };
 async function account(p: Plan, prefix = "deal"): Promise<User> {
   const u = await newUser(prefix);
-  const x = { ...(await getUser(u.email))!, plan: p };
+  const x = { ...(await getUser(acct(u)))!, plan: p };
   await saveUser(x);
   return x;
 }
@@ -67,13 +67,13 @@ describe("an Agency deal is checked in code (rule 244)", () => {
       expect(res.status, JSON.stringify(deal)).toBe(400);
       expect(await res.json(), JSON.stringify(deal)).toEqual({ ok: false, error });
     }
-    expect((await getUser(u.email))!.deal).toBeUndefined();
+    expect((await getUser(acct(u)))!.deal).toBeUndefined();
     expect(await logLength(), "a refused change is not logged as made").toBe(logged);
   });
 
   it("exactly the Business rate is accepted; a deal change alone keeps the balance and applies at renewal", async () => {
     const u = await account("agency");
-    await saveUser({ ...(await getUser(u.email))!, credits: 1234 });
+    await saveUser({ ...(await getUser(acct(u)))!, credits: 1234 });
     const res = await call(u.email, { deal: { ...AGENCY_MIN, seats: 40, setBy: "someone else" }, reason: "signed" });
     expect(res.status).toBe(200);
     const body = (await res.json()) as { user: { deal: Record<string, unknown>; allowance: number; credits: number } };
@@ -83,21 +83,21 @@ describe("an Agency deal is checked in code (rule 244)", () => {
     expect(body.user.credits).toBe(1234);
 
     expect((await call(u.email, { deal: { credits: 3003, priceSar: 2000 } })).status).toBe(200);
-    const after = (await getUser(u.email))!;
+    const after = (await getUser(acct(u)))!;
     expect(after.deal).toMatchObject({ credits: 3003, priceSar: 2000 });
     expect(after.credits, "the balance waits for the renewal").toBe(1234);
     expect(await lastLog()).toMatchObject({ what: "deal:3003@2000", before: { deal: "1500@999" }, after: { deal: "3003@2000" }, actor: "key" });
 
     await saveUser({ ...after, renewedAt: "2020-01" });
-    expect(await renewIfDue(u.email)).toBe(true);
-    expect((await getUser(u.email))!.credits, "renewal grants the deal's credits (rule 243)").toBe(3003);
+    expect(await renewIfDue(acct(u))).toBe(true);
+    expect((await getUser(acct(u)))!.credits, "renewal grants the deal's credits (rule 243)").toBe(3003);
   });
 
   it("plan agency with a deal grants the deal at once and starts the renewal cycle", async () => {
     const u = await account("trial");
     const res = await call(u.email, { plan: "agency", deal: { credits: 3000, priceSar: 1998 } });
     expect(res.status).toBe(200);
-    const x = (await getUser(u.email))!;
+    const x = (await getUser(acct(u)))!;
     expect(x.plan).toBe("agency");
     expect(x.credits).toBe(3000);
     expect(x.renewedAt).toBe(monthKey());
@@ -110,13 +110,13 @@ describe("an Agency deal is checked in code (rule 244)", () => {
       const res = await call(u.email, { deal: AGENCY_MIN });
       expect(res.status, p).toBe(400);
       expect(await res.json()).toEqual({ ok: false, error: "deal_needs_agency" });
-      expect((await getUser(u.email))!.deal).toBeUndefined();
+      expect((await getUser(acct(u)))!.deal).toBeUndefined();
     }
     const a = await account("agency");
     await call(a.email, { deal: { credits: 2000, priceSar: 1332 } });
     const res = await call(a.email, { plan: "business", deal: AGENCY_MIN });
     expect(res.status).toBe(400);
-    const x = (await getUser(a.email))!;
+    const x = (await getUser(acct(a)))!;
     expect(x.plan, "a refused request writes nothing").toBe("agency");
     expect(x.deal).toMatchObject({ credits: 2000, priceSar: 1332 });
   });
@@ -125,16 +125,16 @@ describe("an Agency deal is checked in code (rule 244)", () => {
     const u = await account("agency");
     // The console's Deal prompt sends the deal's seats with it: they live in the seat override.
     await call(u.email, { deal: { credits: 3003, priceSar: 2000 }, seats: 20 });
-    expect(seatLimit((await getUser(u.email))!)).toBe(20);
+    expect(seatLimit((await getUser(acct(u)))!)).toBe(20);
     expect((await call(u.email, { plan: "pro" })).status).toBe(200);
-    const x = (await getUser(u.email))!;
+    const x = (await getUser(acct(u)))!;
     expect(x.deal).toBeUndefined();
     expect(x.credits).toBe(PLAN_CREDITS.pro);
     expect(x.seats, "the deal's seats went with the deal").toBeUndefined();
     expect(seatLimit(x), "Pro's seats, not the deal's 20").toBe(PLAN_SEATS.pro);
     expect(await lastLog()).toMatchObject({ what: `plan:pro deal:none seats:plan${PAID}`, before: { deal: "3003@2000", seats: 20 }, after: { deal: "none", seats: PLAN_SEATS.pro } });
     expect((await call(u.email, { plan: "agency" })).status).toBe(200);
-    const back = (await getUser(u.email))!;
+    const back = (await getUser(acct(u)))!;
     expect(back.credits, "Agency without a deal is Business's allowance").toBe(PLAN_CREDITS.business);
     expect(seatLimit(back), "and Business's seats").toBe(PLAN_SEATS.business);
   });
@@ -143,7 +143,7 @@ describe("an Agency deal is checked in code (rule 244)", () => {
     const u = await account("agency");
     await call(u.email, { deal: { credits: 3003, priceSar: 2000 }, seats: 20 });
     expect((await call(u.email, { plan: "business", seats: 9 })).status).toBe(200);
-    expect(seatLimit((await getUser(u.email))!)).toBe(9);
+    expect(seatLimit((await getUser(acct(u)))!)).toBe(9);
     expect((await lastLog()).what).toBe(`plan:business deal:none seats:9${PAID}`);
   });
 
@@ -153,7 +153,7 @@ describe("an Agency deal is checked in code (rule 244)", () => {
     const res = await call(u.email, { deal: null });
     expect(res.status).toBe(200);
     expect(((await res.json()) as { user: { deal: unknown; allowance: number; seats: number } }).user).toMatchObject({ deal: null, allowance: 1500, seats: PLAN_SEATS.business });
-    expect((await getUser(u.email))!.deal).toBeUndefined();
+    expect((await getUser(acct(u)))!.deal).toBeUndefined();
     expect(await lastLog()).toMatchObject({ what: "deal:none seats:plan", before: { deal: "1500@1200", seats: 12 }, after: { deal: "none", seats: PLAN_SEATS.business } });
   });
 
@@ -190,9 +190,9 @@ describe("the owner's usage table counts what renders really charged", () => {
     await signIn(u.email);
     const base: Omit<Task, "id"> = { type: "social", channel: "instagram", title: "x", body: "x", status: "pending", createdAt: new Date().toISOString(), lang: "ar" };
     await Promise.all([
-      saveTask(u.email, { ...base, id: "media-premium", imageUrl: "https://blob.example/1.png", imageModel: "img-premium", mediaCredits: 2 }, true),
-      saveTask(u.email, { ...base, id: "media-video", videoUrl: "https://blob.example/2.mp4", videoModel: "vid-quick", mediaCredits: 12 }, true),
-      saveTask(u.email, { ...base, id: "media-legacy", imageUrl: "https://blob.example/3.png" }, true),
+      saveTask(acct(u), { ...base, id: "media-premium", imageUrl: "https://blob.example/1.png", imageModel: "img-premium", mediaCredits: 2 }, true),
+      saveTask(acct(u), { ...base, id: "media-video", videoUrl: "https://blob.example/2.mp4", videoModel: "vid-quick", mediaCredits: 12 }, true),
+      saveTask(acct(u), { ...base, id: "media-legacy", imageUrl: "https://blob.example/3.png" }, true),
     ]);
     const p = (await (await profileRoute.GET()).json()) as { images: number; mediaCredits: number };
     expect(p.images, "items with an image or a video").toBe(3);
@@ -203,15 +203,15 @@ describe("the owner's usage table counts what renders really charged", () => {
 describe("credits the founder adds are finite and bounded", () => {
   it("1e999, a string or more than 100,000 either way is refused; a bounded number is added", async () => {
     const u = await account("pro");
-    const before = (await getUser(u.email))!.credits;
+    const before = (await getUser(acct(u)))!.credits;
     const inf = await raw(`{"email":"${u.email}","addCredits":1e999,"reason":"test reason"}`);
     expect(inf.status).toBe(400);
     expect(await inf.json()).toEqual({ ok: false, error: "bad_credits" });
     for (const addCredits of ["30", 100_001, -100_001, true]) expect((await call(u.email, { addCredits })).status, String(addCredits)).toBe(400);
-    expect((await getUser(u.email))!.credits).toBe(before);
+    expect((await getUser(acct(u)))!.credits).toBe(before);
     expect((await call(u.email, { addCredits: 30.7 })).status).toBe(200);
-    expect((await getUser(u.email))!.credits).toBe(before + 30);
-    expect(Number.isFinite((await getUser(u.email))!.credits)).toBe(true);
+    expect((await getUser(acct(u)))!.credits).toBe(before + 30);
+    expect(Number.isFinite((await getUser(acct(u)))!.credits)).toBe(true);
   });
 });
 
@@ -229,7 +229,7 @@ describe("the founder sets an account's chat messages (rule 316)", () => {
     expect(await inf.json()).toEqual({ ok: false, error: "bad_chat" });
     // A bad override refuses the whole request, not only its own part.
     expect((await call(u.email, { chatAllowance: -1, addCredits: 30 })).status).toBe(400);
-    const x = (await getUser(u.email))!;
+    const x = (await getUser(acct(u)))!;
     expect(x.chatAllowance).toBeUndefined();
     expect(x.credits).toBe(u.credits);
     expect(await logLength(), "a refused change is not logged as made").toBe(logged);
@@ -240,18 +240,18 @@ describe("the founder sets an account's chat messages (rule 316)", () => {
     const res = await call(u.email, { chatAllowance: 2000, reason: "pilot" });
     expect(res.status).toBe(200);
     expect(((await res.json()) as { user: Record<string, unknown> }).user).toMatchObject({ chatAllowance: 2000, chatOverride: 2000 });
-    expect((await getUser(u.email))!.chatAllowance).toBe(2000);
+    expect((await getUser(acct(u)))!.chatAllowance).toBe(2000);
     expect(await lastLog()).toMatchObject({ what: "chat:2000", before: { chat: CHAT_ALLOWANCE.pro }, after: { chat: 2000 }, reason: "pilot" });
 
     // A request about something else keeps the override.
     expect((await call(u.email, { addCredits: 5 })).status).toBe(200);
-    expect((await getUser(u.email))!.chatAllowance).toBe(2000);
+    expect((await getUser(acct(u)))!.chatAllowance).toBe(2000);
 
     // 0 is an override, not "clear": unlike seats, where 0 goes back to the plan's.
     const zero = await call(u.email, { chatAllowance: 0 });
     expect(zero.status).toBe(200);
     expect(((await zero.json()) as { user: Record<string, unknown> }).user).toMatchObject({ chatAllowance: 0, chatOverride: 0 });
-    const stopped = (await getUser(u.email))!;
+    const stopped = (await getUser(acct(u)))!;
     expect(stopped.chatAllowance).toBe(0);
     expect(chatAllowanceOf(stopped)).toBe(0);
     expect(await lastLog()).toMatchObject({ what: "chat:0", before: { chat: 2000 }, after: { chat: 0 } });
@@ -262,21 +262,21 @@ describe("the founder sets an account's chat messages (rule 316)", () => {
     const cleared = await call(u.email, { chatAllowance: null });
     expect(cleared.status).toBe(200);
     expect(((await cleared.json()) as { user: Record<string, unknown> }).user).toMatchObject({ chatAllowance: CHAT_ALLOWANCE.pro, chatOverride: null });
-    expect((await getUser(u.email))!.chatAllowance).toBeUndefined();
+    expect((await getUser(acct(u)))!.chatAllowance).toBeUndefined();
     expect(await lastLog()).toMatchObject({ what: "chat:plan", before: { chat: 0 }, after: { chat: CHAT_ALLOWANCE.pro } });
 
     await call(u.email, { chatAllowance: 10 });
     expect((await call(u.email, { chatAllowance: "" })).status).toBe(200);
-    expect((await getUser(u.email))!.chatAllowance, "an empty string clears it too").toBeUndefined();
+    expect((await getUser(acct(u)))!.chatAllowance, "an empty string clears it too").toBeUndefined();
     expect((await call(u.email, { chatAllowance: MAX_CHAT_OVERRIDE })).status, "the bound itself is accepted").toBe(200);
   });
 
   it("leaving Agency or clearing the deal clears the chat override, unless the same request sets it", async () => {
     const a = await account("agency", "chat");
     await call(a.email, { deal: { credits: 3003, priceSar: 2000 }, seats: 20, chatAllowance: 4000 });
-    expect(chatAllowanceOf((await getUser(a.email))!)).toBe(4000);
+    expect(chatAllowanceOf((await getUser(acct(a)))!)).toBe(4000);
     expect((await call(a.email, { plan: "pro" })).status).toBe(200);
-    const x = (await getUser(a.email))!;
+    const x = (await getUser(acct(a)))!;
     expect(x.chatAllowance, "the deal's chat messages went with the deal").toBeUndefined();
     expect(chatAllowanceOf(x)).toBe(CHAT_ALLOWANCE.pro);
     expect(await lastLog()).toMatchObject({ what: `plan:pro deal:none seats:plan chat:plan${PAID}`, before: { chat: 4000 }, after: { chat: CHAT_ALLOWANCE.pro } });
@@ -284,33 +284,33 @@ describe("the founder sets an account's chat messages (rule 316)", () => {
     const b = await account("agency", "chat");
     await call(b.email, { deal: { credits: 3003, priceSar: 2000 }, chatAllowance: 4000 });
     expect((await call(b.email, { plan: "business", chatAllowance: 3000 })).status).toBe(200);
-    expect((await getUser(b.email))!.chatAllowance, "a plan change that sets it keeps what it sets").toBe(3000);
+    expect((await getUser(acct(b)))!.chatAllowance, "a plan change that sets it keeps what it sets").toBe(3000);
     expect((await lastLog()).what).toBe(`plan:business deal:none chat:3000${PAID}`);
 
     const c = await account("agency", "chat");
     await call(c.email, { deal: { credits: 1500, priceSar: 1200 }, chatAllowance: 2500 });
     expect((await call(c.email, { deal: null })).status).toBe(200);
-    expect((await getUser(c.email))!.chatAllowance).toBeUndefined();
+    expect((await getUser(acct(c)))!.chatAllowance).toBeUndefined();
     expect(await lastLog()).toMatchObject({ what: "deal:none chat:plan", before: { chat: 2500 }, after: { chat: CHAT_ALLOWANCE.business } });
 
     // No contract ends between two fixed plans: an override given to a Pro account stays when it moves to Business.
     const d = await account("pro", "chat");
     await call(d.email, { chatAllowance: 900 });
     expect((await call(d.email, { plan: "business" })).status).toBe(200);
-    expect((await getUser(d.email))!.chatAllowance).toBe(900);
+    expect((await getUser(acct(d)))!.chatAllowance).toBe(900);
   });
 
   it("GET rows, the detail view and the CSV carry each account's chat; a trial's messages are its trial count", async () => {
     const p = await account("pro", "chat");
-    await saveUser({ ...(await getUser(p.email))!, chatOverflow: true });
-    await Promise.all([db.set(chatMsgKey(p.email), 5), db.set(chatOverKey(p.email), 1), db.set(chatCredKey(p.email), 4)]);
+    await saveUser({ ...(await getUser(acct(p)))!, chatOverflow: true });
+    await Promise.all([db.set(chatMsgKey(acct(p)), 5), db.set(chatOverKey(acct(p)), 1), db.set(chatCredKey(acct(p)), 4)]);
     // Two chat model calls of $0.03 each (claude-sonnet-5: 10,000 input and 1,000 output tokens).
     const usage = { input_tokens: 10_000, output_tokens: 1_000 };
-    await meter(p.email, "claude-sonnet-5-5", "chat", usage);
-    await meter(p.email, "claude-sonnet-5-5", "chat", usage);
+    await meter(acct(p), "claude-sonnet-5-5", "chat", usage);
+    await meter(acct(p), "claude-sonnet-5-5", "chat", usage);
     const t = await account("trial", "chat");
     await call(t.email, { chatAllowance: 20 });
-    await db.set(chatTrialKey(t.email), 12);
+    await db.set(chatTrialKey(acct(t)), 12);
 
     const rows = ((await (await plan.GET(json("/api/admin/plan", "GET", undefined, headers))).json()) as { users: Record<string, unknown>[] }).users;
     expect(rows.find((r) => r.email === p.email)).toMatchObject({
@@ -344,12 +344,12 @@ describe("the founder sets an account's chat messages (rule 316)", () => {
 
   it("after the allowance was lowered mid-month the row shows the raw count past it, and the cost per message divides by every message", async () => {
     const u = await account("pro", "chat");
-    await saveUser({ ...(await getUser(u.email))!, chatOverflow: true });
+    await saveUser({ ...(await getUser(acct(u)))!, chatOverflow: true });
     // 25 sent inside the plan's allowance, then 5 on credits billed 7 credits in all.
-    await Promise.all([db.set(chatMsgKey(u.email), 25), db.set(chatOverKey(u.email), 5), db.set(chatCredKey(u.email), 7)]);
+    await Promise.all([db.set(chatMsgKey(acct(u)), 25), db.set(chatOverKey(acct(u)), 5), db.set(chatCredKey(acct(u)), 7)]);
     const usage = { input_tokens: 10_000, output_tokens: 1_000 };
-    await meter(u.email, "claude-sonnet-5-5", "chat", usage);
-    await meter(u.email, "claude-sonnet-5-5", "chat", usage);
+    await meter(acct(u), "claude-sonnet-5-5", "chat", usage);
+    await meter(acct(u), "claude-sonnet-5-5", "chat", usage);
     expect((await call(u.email, { chatAllowance: 10 })).status).toBe(200);
 
     const rows = ((await (await plan.GET(json("/api/admin/plan", "GET", undefined, headers))).json()) as { users: Record<string, unknown>[] }).users;

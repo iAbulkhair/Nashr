@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { aidOf, ownerOf } from "@/lib/membership";
 import { randomBytes } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { newMember as helperNewMember, newOpaqueUser, newUser as helperNewUser, params, signOut } from "./helpers/session";
@@ -57,8 +58,8 @@ const pushOnEnv = () => { vi.stubEnv("PUSH_VAPID_PUBLIC_KEY", PUB); vi.stubEnv("
 let n = 0;
 const ep = () => `https://fcm.googleapis.com/fcm/send/dev-${++n}-${Math.random().toString(36).slice(2)}`;
 
-const newUser = (prefix?: string) => helperNewUser(prefix, { legacy: true });
-const newMember = (owner: User) => helperNewMember(owner, "member", "m", { legacy: true });
+const newUser = (prefix?: string) => helperNewUser(prefix);
+const newMember = (owner: User) => helperNewMember(owner, "member", "m");
 const ownerActor = (u: User): Actor => ({ kind: "owner", pid: storedPersonId(u.email), home: true, email: u.email, name: u.name, lang: u.lang, role: "owner" });
 
 beforeEach(() => {
@@ -98,7 +99,7 @@ describe("rule 3020: a removed member's device gets no push", () => {
 describe("rule 3021: the calendar feed's address limit counts misses only", () => {
   it("a live link answers from an address that already had 120 misses, and a miss past the limit is 429", async () => {
     const o = await newUser("f3021");
-    const token = await createFeed(o.email, o.email, "en");
+    const token = await createFeed({ pid: ownerOf(o), aid: aidOf(o), login: o.email, home: true }, sc(o), "en");
     const ip = "10.77.1.1";
     const call = (t: string) => feedRoute.GET(new Request(`http://x/api/secretary/feed/${t}`, { headers: { "x-forwarded-for": ip } }), params({ token: t }));
     for (let i = 0; i < 120; i++) expect((await call(randomBytes(32).toString("base64url"))).status).toBe(404);
@@ -108,7 +109,7 @@ describe("rule 3021: the calendar feed's address limit counts misses only", () =
   it("many live links fetched from one shared address are all served", async () => {
     const ip = "10.77.2.2";
     // One link per subscriber (a login has one), as a calendar service fetching for many users from one address.
-    const tokens = await Promise.all(Array.from({ length: 12 }, async () => { const o = await newUser("f3021b"); return createFeed(o.email, o.email, "en"); }));
+    const tokens = await Promise.all(Array.from({ length: 12 }, async () => { const o = await newUser("f3021b"); return createFeed({ pid: ownerOf(o), aid: aidOf(o), login: o.email, home: true }, sc(o), "en"); }));
     for (const t of tokens) {
       const r = await feedRoute.GET(new Request(`http://x/api/secretary/feed/${t}`, { headers: { "x-forwarded-for": ip } }), params({ token: t }));
       expect(r.status).toBe(200);
@@ -146,7 +147,7 @@ describe("rule 3022: the signup nudge's marker belongs to the account", () => {
     expect(await db.get(onceKey(a.email, "nudge1"))).toBeNull();
   });
   it("the notification choices are read under the account, not the address (source pin)", () => {
-    expect(read("src/app/api/cron/daily/route.ts")).toMatch(/readPrefs\(u\.scope \?\? u\.email, acct\(u\)\)/);
+    expect(read("src/app/api/cron/daily/route.ts")).toMatch(/readPrefs\(u\.scope \?\? acct\(u\), acct\(u\)\)/);
   });
 });
 
@@ -160,7 +161,7 @@ describe("rule 3023: one daily email per workspace and day", () => {
   const run = async (u: User) => {
     const day = new Date().toISOString().slice(0, 10);
     // A retry after a killed run: the batch's own done marker never got written.
-    await Promise.all([db.del(`crondone:daily:${day}:${u.email}`), db.del(`crontry:daily:${day}:${u.email}`)]);
+    await Promise.all([db.del(`crondone:daily:${day}:${acct(u)}`), db.del(`crontry:daily:${day}:${acct(u)}`)]);
     const r = await dailyRoute.GET(new Request("https://nashr.test/api/cron/daily?chain=1", { headers: { authorization: "Bearer cron-secret-3023" } }));
     expect(r.status).toBe(200);
   };
@@ -169,10 +170,10 @@ describe("rule 3023: one daily email per workspace and day", () => {
     vi.stubEnv("RESEND_API_KEY", "re_test_key");
     vi.stubEnv("MAIL_FROM", "Noor <noor@mail.example>");
     const u = await newUser("d3023");
-    await saveBrand(u.email, BRAND);
-    await db.set(`profile:${u.email}`, { emails: "important" });
-    await saveSchedule(u.email, { followUps: false });
-    await seedOverdue(u.email);
+    await saveBrand(acct(u), BRAND);
+    await db.set(`profile:${acct(u)}`, { emails: "important" });
+    await saveSchedule(acct(u), { followUps: false });
+    await seedOverdue(acct(u));
 
     accept = false;
     await run(u);
@@ -190,31 +191,31 @@ describe("rule 3024: a late hold sweep keeps a routine that delivered", () => {
   const COST = 4;
   /** Charge every claim first (a charge drops holds older than `PAID_ONCE_MS`), then age them all in one write. */
   async function heldAll(u: User, claims: string[], ageMs: number) {
-    for (const c of claims) await chargeOnce(u.email, COST, { scope: u.email, agent: "dana" }, c);
-    const rec = (await getUser(u.email))!;
+    for (const c of claims) await chargeOnce(acct(u), COST, { scope: acct(u), agent: "dana" }, c);
+    const rec = (await getUser(acct(u)))!;
     const at = new Date(Date.now() - ageMs).toISOString();
-    await db.set(`user:${u.email}`, { ...rec, paidOnce: Object.fromEntries(Object.entries(rec.paidOnce!).map(([k, v]) => [k, { ...v, at }])) });
+    await db.set(`user:${acct(u)}`, { ...rec, paidOnce: Object.fromEntries(Object.entries(rec.paidOnce!).map(([k, v]) => [k, { ...v, at }])) });
     return at;
   }
   it("no receipt and a last-run marker minutes after the charge: kept; no marker, or one from a later run: refunded; a receipt still decides first", async () => {
     const u = await newUser("h3024");
-    const before = (await getUser(u.email))!.credits;
+    const before = (await getUser(acct(u)))!.credits;
     const age = 9 * 86400e3; // past the receipt's 7 days and the 8-day hold
-    const kept = routineClaim(u.email, "dana_weekly_report", "2026-10-04");
-    const lost = routineClaim(u.email, "razan_cash_forecast", "2026-10");
-    const later = routineClaim(u.email, "majed_monthly_review", "2026-10");
-    const receipted = routineClaim(u.email, "noor_cart_recovery", "2026-10-04");
+    const kept = routineClaim(acct(u), "dana_weekly_report", "2026-10-04");
+    const lost = routineClaim(acct(u), "razan_cash_forecast", "2026-10");
+    const later = routineClaim(acct(u), "majed_monthly_review", "2026-10");
+    const receipted = routineClaim(acct(u), "noor_cart_recovery", "2026-10-04");
     const at = await heldAll(u, [kept, lost, later, receipted], age);
     const atKept = at, atLater = at;
-    await db.set(`routinelast:${u.email}:dana_weekly_report`, new Date(Date.parse(atKept) + 90e3).toISOString());
+    await db.set(`routinelast:${acct(u)}:dana_weekly_report`, new Date(Date.parse(atKept) + 90e3).toISOString());
     // A later period's run says nothing about this claim.
-    await db.set(`routinelast:${u.email}:majed_monthly_review`, new Date(Date.parse(atLater) + 5 * 86400e3).toISOString());
+    await db.set(`routinelast:${acct(u)}:majed_monthly_review`, new Date(Date.parse(atLater) + 5 * 86400e3).toISOString());
     await deliverRun(receipted, 600, ["t1"]);
 
-    const r = await sweepHolds((await getUser(u.email))!);
+    const r = await sweepHolds((await getUser(acct(u)))!);
     expect([...(r?.dropped ?? [])].sort()).toEqual([kept, receipted].sort());
     expect((r?.refunded ?? []).map((x) => x.claim).sort()).toEqual([lost, later].sort());
-    expect((await getUser(u.email))!.credits).toBe(before - 2 * COST);
+    expect((await getUser(acct(u)))!.credits).toBe(before - 2 * COST);
     expect(RUN_STALE_MS).toBeLessThan(age);
   });
 });

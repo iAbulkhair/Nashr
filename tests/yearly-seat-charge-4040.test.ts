@@ -79,7 +79,7 @@ let ipSeq = 0;
 const ip = () => ({ "x-forwarded-for": `10.40.${++ipSeq % 250}.${(ipSeq * 7) % 250}` });
 const hook = async (body: unknown) => ((await (await webhook.POST(json("/api/billing/geidea/webhook", "POST", body, ip()))).json()) as { result?: string }).result;
 const payments = async (u: User) => Object.values(await db.hgetall<Payment>(`payments:${acct(u)}`));
-const stored = async (u: User) => (await getUser(u.email))!;
+const stored = async (u: User) => (await getUser(acct(u)))!;
 const freshEmail = () => `yseat-${randomBytes(4).toString("hex")}@test.example`;
 const today = () => ksaDay();
 /** The saved-card pay call answers paid, under the agreement the checkout saved. */

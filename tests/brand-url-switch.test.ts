@@ -235,7 +235,9 @@ describe("rule 896: two tabs, two brands of one account", () => {
     const file = { name: "Z", industry: "cafe", products: "coffee", audience: "everyone" };
     const res = brandRoute.PUT(json("/api/brand", "PUT", file));
     expect((await res).status).toBe(200);
-    await expect(withHeaders({ [BRAND_HEADER]: "elsewhere" }, () => brandRoute.PUT(json("/api/brand", "PUT", { ...file, name: "Q" })))).rejects.toMatchObject({ digest: expect.stringMatching(/^NEXT_HTTP_ERROR_FALLBACK;404/) });
+    // With the switch on the route answers a JSON 404 (api-handler.ts: `fail("not_found", 404)`); with it off it throws Next's 404.
+    const miss = await withHeaders({ [BRAND_HEADER]: "elsewhere" }, () => brandRoute.PUT(json("/api/brand", "PUT", { ...file, name: "Q" })));
+    expect(miss.status).toBe(404);
     expect((await getBrand(scopeFor(acct(owner), "elsewhere")))).toBeNull();
   });
 });

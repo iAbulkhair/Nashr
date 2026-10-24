@@ -6,6 +6,8 @@ import { sc } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { readFile, writeFile } from "@/lib/files";
 import { WINDOW } from "@/lib/rate";
+import { handleOf } from "@/lib/ws-handle";
+import { WS_HEADER } from "@/lib/ws-path";
 import * as filesRoute from "@/app/api/files/route";
 import * as brandRoute from "@/app/api/brand/route";
 import * as activityRoute from "@/app/api/activity/route";
@@ -159,7 +161,8 @@ describe("rule 1903: zod refusals answer 400 with the field's own code, else `in
     const owner = await newUser("hzod");
     await signIn(owner.email);
     const h = handler({ auth: "user", input: schema, ...opts }, ({ input }) => Response.json({ ok: true, input }));
-    return h(new Request("https://nashr.test/api/probe", { method: "POST", body: typeof payload === "string" ? payload : JSON.stringify(payload) }));
+    // The browser names its workspace (rule 2113); the raw body here is what this rule reads, so the header is set by hand.
+    return h(new Request("https://nashr.test/api/probe", { method: "POST", headers: { [WS_HEADER]: handleOf(owner) }, body: typeof payload === "string" ? payload : JSON.stringify(payload) }));
   };
 
   it("the first failing field in key order decides, when its message is a known code", async () => {

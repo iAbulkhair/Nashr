@@ -3,11 +3,11 @@
  */
 import { agentById, agentForTask } from "./agents";
 import { sc, type User } from "./auth";
+import { acct } from "./account-id";
 import { wsKey } from "./keys";
 import { getBrand, isWaiting, listLite, type Task, getTask } from "./brand";
 import { DRAFT_TYPES, IMAGE_TYPES, TASK_COST, TASK_TYPES, isDraftType, isTaskType } from "./tasks";
-import { generateBatch, withheldNote } from "./generate-batch";
-import { draftCharge } from "./task-costs";
+import { draftCharge, generateBatch, withheldNote } from "./generate-batch";
 import { CORE_FILES, FileLimitError, MAX_FILES, readFile, safeName, writeFile } from "./files";
 import { fileResult, fileSrc, parseRefRecords, parseSrc, provenanceOf } from "./ref-provenance";
 import { refsKey } from "./instructions-store";
@@ -82,7 +82,7 @@ export async function runTool(user: User, name: string, input: Record<string, un
   // Reem's two read or store tools keep their own refusal text (rules 607 and 919), which says who to ask; it is still
   // answered here, before any read or write.
   if (ctx.agent && !toolsFor(ctx.agent).some((t) => t.name === name)) return Object.hasOwn(REEM_ONLY_REFUSAL, name) ? REEM_ONLY_REFUSAL[name] : "Unknown tool.";
-  const email = user.scope ?? user.email;
+  const email = user.scope ?? acct(user);
   // The role gate comes first: a refused tool reaches no pipeline, write or activity row.
   const needs = Object.prototype.hasOwnProperty.call(TOOL_ACTION, name) ? TOOL_ACTION[name] : null;
   // `todo.write` is held by every login of the account (members too), so for it the refusal is for a chat with no acting login.

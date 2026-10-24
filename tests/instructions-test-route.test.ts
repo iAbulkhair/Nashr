@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { json, newMember, newUser, signIn, signOut } from "./helpers/session";
-import { currentUser, getUser, saveUser, sc, type User } from "@/lib/auth";
+import { acct, currentUser, getUser, saveUser, sc, type User } from "@/lib/auth";
 import { agentSpendFor, monthKey } from "@/lib/credits";
 import { listActivity } from "@/lib/activity";
 import { db } from "@/lib/db";
@@ -59,18 +59,18 @@ const run = (body: Body = {}) => testRoute.POST(json("/api/instructions/test", "
 const item = (text: string, extra: Body = {}) => ({ text, agents: "all", on: true, ...extra });
 const put = (items: unknown[]) => layerRoute.PUT(json("/api/instructions", "PUT", { items })).then(call);
 const activate = () => (activateRoute.POST as unknown as (r: Request) => Promise<Response>)(json("/api/instructions/activate", "POST", {})).then(call);
-const credits = async (email: string) => (await getUser(email))!.credits;
+const credits = async (id: string) => (await getUser(id))!.credits;
 
 /** An agency owner with a brand file, 100 credits, a live set ("LIVE") and a draft ("DRAFT"). */
 async function owner(prefix = "itest", withDraft = true): Promise<User> {
   const u = await newUser(prefix);
   await saveUser({ ...u, plan: "agency", credits: 100 });
-  await db.set(`brand:${u.email}`, brand);
+  await db.set(`brand:${acct(u)}`, brand);
   await signIn(u.email);
   expect((await put([item("LIVE")])).status).toBe(200);
   expect((await activate()).status).toBe(200);
   if (withDraft) expect((await put([item("DRAFT")])).status).toBe(200);
-  return (await getUser(u.email))!;
+  return (await getUser(acct(u)))!;
 }
 /** The price the spec names: two items of the type, at the brand's model, each at least the type's draft minimum (rule 4032). */
 const priceOf = async (u: User, type: TaskType = "social") => {
@@ -96,7 +96,7 @@ describe("rule 952: who may test, and the order of the checks", () => {
     const r = await run();
     expect(r.status).toBe(403);
     expect(gen.calls).toHaveLength(0);
-    expect(await credits(u.email)).toBe(100);
+    expect(await credits(acct(u))).toBe(100);
   });
 
   it("rule 952: an admin member may test, and is charged to the account", async () => {
@@ -105,7 +105,7 @@ describe("rule 952: who may test, and the order of the checks", () => {
     await signIn(a.email);
     const r = await run();
     expect(r.status).toBe(200);
-    expect(await credits(u.email)).toBe(100 - r.body.spent);
+    expect(await credits(acct(u))).toBe(100 - r.body.spent);
   });
 
   it("rule 952: without confirm: true (absent, false, the string \"true\", 1) it is 400 confirm_required, nothing is charged, nothing is generated", async () => {
@@ -114,7 +114,7 @@ describe("rule 952: who may test, and the order of the checks", () => {
       const r = await run({ confirm });
       expect([r.status, r.body.error]).toEqual([400, "confirm_required"]);
     }
-    expect(await credits(u.email)).toBe(100);
+    expect(await credits(acct(u))).toBe(100);
     expect(gen.calls).toHaveLength(0);
   });
 
@@ -136,7 +136,7 @@ describe("rule 952: who may test, and the order of the checks", () => {
       const r = await run(b);
       expect([r.status, r.body.error, JSON.stringify(b)]).toEqual([400, "bad_type", JSON.stringify(b)]);
     }
-    expect(await credits(u.email)).toBe(100);
+    expect(await credits(acct(u))).toBe(100);
     expect(gen.calls).toHaveLength(0);
   });
 
@@ -154,7 +154,7 @@ describe("rule 952: who may test, and the order of the checks", () => {
     expect((await run({ brief: "x".repeat(501) })).body).toMatchObject({ ok: false, error: "brief_too_long" });
     expect((await run({ brief: "ا".repeat(501) })).status).toBe(400);
     expect((await run({ brief: { a: 1 } })).status).toBe(400);
-    expect(await credits(u.email)).toBe(100);
+    expect(await credits(acct(u))).toBe(100);
     expect((await run({ brief: "x".repeat(500) })).status).toBe(200);
   });
 
@@ -164,7 +164,7 @@ describe("rule 952: who may test, and the order of the checks", () => {
       const r = await run({ nonce: n });
       expect([r.status, r.body.error]).toEqual([400, "bad_nonce"]);
     }
-    expect(await credits(u.email)).toBe(100);
+    expect(await credits(acct(u))).toBe(100);
     expect((await run({ nonce: "A_b-c_d-" + "9".repeat(56) })).status).toBe(200);
   });
 
@@ -172,7 +172,7 @@ describe("rule 952: who may test, and the order of the checks", () => {
     const u = await owner("itest-nd", false);
     const r = await run();
     expect([r.status, r.body.error]).toEqual([400, "no_draft"]);
-    expect(await credits(u.email)).toBe(100);
+    expect(await credits(acct(u))).toBe(100);
     expect(gen.calls).toHaveLength(0);
   });
 
@@ -180,10 +180,10 @@ describe("rule 952: who may test, and the order of the checks", () => {
     const u = await owner();
     const other = await owner("itest-other");
     await signIn(u.email);
-    const r = await run({ scope: other.email, email: other.email, brandId: "x" });
+    const r = await run({ scope: acct(other), email: other.email, brandId: "x" });
     expect(r.status).toBe(200);
-    expect(await credits(other.email)).toBe(100);
-    expect(await credits(u.email)).toBe(100 - r.body.spent);
+    expect(await credits(acct(other))).toBe(100);
+    expect(await credits(acct(u))).toBe(100 - r.body.spent);
     const raw = await testRoute.POST(new Request("https://nashr.test/api/instructions/test", { method: "POST", body: "not json" })).then(call);
     expect(raw.status).toBe(400);
   });
@@ -194,7 +194,7 @@ describe("rule 952: who may test, and the order of the checks", () => {
     const n = nonce();
     const r = await run({ nonce: n });
     expect([r.status, r.body.error]).toEqual([503, "model_paused"]);
-    expect(await credits(u.email)).toBe(100);
+    expect(await credits(acct(u))).toBe(100);
     gen.state = "on";
     expect((await run({ nonce: n })).status).toBe(200);
   });
@@ -209,7 +209,7 @@ describe("rule 952: a test that could show nothing is refused before the claim a
       const n = nonce();
       const r = await run({ nonce: n });
       expect([r.status, r.body.error]).toEqual([409, "paused"]);
-      expect(await credits(u.email)).toBe(100);
+      expect(await credits(acct(u))).toBe(100);
       expect(gen.calls).toHaveLength(0);
       expect(await db.get(`skilltest:${sc(u)}:${n}`)).toBeNull();
       expect((await listActivity(sc(u))).rows).toHaveLength(before);
@@ -230,7 +230,7 @@ describe("rule 952: a test that could show nothing is refused before the claim a
     const n = nonce();
     const r = await run({ nonce: n });
     expect([r.status, r.body.error]).toEqual([409, "no_change"]);
-    expect(await credits(u.email)).toBe(100);
+    expect(await credits(acct(u))).toBe(100);
     expect(gen.calls).toHaveLength(0);
     expect(await db.get(`skilltest:${sc(u)}:${n}`)).toBeNull();
     expect((await listActivity(sc(u))).rows).toHaveLength(before);
@@ -249,9 +249,9 @@ describe("rule 952: the price and the charge", () => {
     const r = await run();
     expect(r.status).toBe(200);
     expect(r.body.spent).toBe(want);
-    expect(await credits(u.email)).toBe(100 - want);
+    expect(await credits(acct(u))).toBe(100 - want);
     // The agent's monthly counter (the owner's cap) moves with it.
-    expect(agentSpendFor((await getUser(u.email))!, sc(u)).noor).toBe(want);
+    expect(agentSpendFor((await getUser(acct(u)))!, sc(u)).noor).toBe(want);
   });
 
   it("rule 952: the answer is { ok, before, after, spent } with the live set's item before and the draft's after", async () => {
@@ -264,16 +264,16 @@ describe("rule 952: the price and the charge", () => {
   it("rule 952: not enough credits is 402 no_credits, nothing generated, the balance untouched, and the same nonce may be used again after a top-up", async () => {
     const u = await owner();
     const want = await priceOf(u);
-    await saveUser({ ...(await getUser(u.email))!, credits: want - 1 });
+    await saveUser({ ...(await getUser(acct(u)))!, credits: want - 1 });
     const n = nonce();
     const r = await run({ nonce: n });
     expect([r.status, r.body.error]).toEqual([402, "no_credits"]);
     expect(gen.calls).toHaveLength(0);
-    expect(await credits(u.email)).toBe(want - 1);
-    await saveUser({ ...(await getUser(u.email))!, credits: want });
+    expect(await credits(acct(u))).toBe(want - 1);
+    await saveUser({ ...(await getUser(acct(u)))!, credits: want });
     const again = await run({ nonce: n });
     expect(again.status).toBe(200);
-    expect(await credits(u.email)).toBe(0);
+    expect(await credits(acct(u))).toBe(0);
   });
 
   it("rule 952: the agent's monthly cap the owner set is honoured: at the cap it is 402 agent_cap and nothing is charged", async () => {
@@ -282,7 +282,7 @@ describe("rule 952: the price and the charge", () => {
     const r = await run();
     expect([r.status, r.body.error]).toEqual([402, "agent_cap"]);
     expect(gen.calls).toHaveLength(0);
-    expect(await credits(u.email)).toBe(100);
+    expect(await credits(acct(u))).toBe(100);
   });
 });
 
@@ -293,7 +293,7 @@ describe("rule 952: one charge per click", () => {
     const first = await run({ nonce: n });
     const second = await run({ nonce: n });
     expect([first.status, second.status, second.body.error]).toEqual([200, 409, "duplicate"]);
-    expect(await credits(u.email)).toBe(100 - first.body.spent);
+    expect(await credits(acct(u))).toBe(100 - first.body.spent);
     expect(gen.calls).toHaveLength(2);
   });
 
@@ -304,7 +304,7 @@ describe("rule 952: one charge per click", () => {
     expect(rs.map((r) => r.status).sort()).toEqual([200, 409]);
     expect(rs.find((r) => r.status === 409)!.body.error).toBe("duplicate");
     const ok = rs.find((r) => r.status === 200)!;
-    expect(await credits(u.email)).toBe(100 - ok.body.spent);
+    expect(await credits(acct(u))).toBe(100 - ok.body.spent);
     expect(gen.calls).toHaveLength(2);
   });
 
@@ -315,10 +315,10 @@ describe("rule 952: one charge per click", () => {
     expect(same.filter((r) => r.status === 200)).toHaveLength(1);
     expect(same.filter((r) => r.status === 409)).toHaveLength(4);
     const spent = same.find((r) => r.status === 200)!.body.spent;
-    expect(await credits(u.email)).toBe(100 - spent);
+    expect(await credits(acct(u))).toBe(100 - spent);
     const two = await Promise.all([run(), run()]);
     expect(two.map((r) => r.status)).toEqual([200, 200]);
-    expect(await credits(u.email)).toBe(100 - 3 * spent);
+    expect(await credits(acct(u))).toBe(100 - 3 * spent);
   });
 
   it("rule 952: a nonce is claimed per workspace: the same string from another workspace is not a duplicate", async () => {
@@ -328,7 +328,7 @@ describe("rule 952: one charge per click", () => {
     const b = await owner("itest-b");
     await signIn(b.email);
     expect((await run({ nonce: n })).status).toBe(200);
-    expect(await credits(a.email)).toBeLessThan(100);
+    expect(await credits(acct(a))).toBeLessThan(100);
   });
 
   it("rule 952: the claim key is skilltest:{scope}:{nonce} (the caller's scope) and expires after 600 seconds", async () => {
@@ -342,7 +342,7 @@ describe("rule 952: one charge per click", () => {
       spy.mockRestore();
     }
     expect(seen).toEqual([{ key: `skilltest:${sc((await currentUser())!)}:${n}`, ttl: 600 }]);
-    expect(u.email).toBe(sc((await currentUser())!));
+    expect(acct(u)).toBe(sc((await currentUser())!));
   });
 });
 
@@ -355,7 +355,7 @@ describe("rule 952: what the two generations are", () => {
     const by = (text: string) => gen.calls.find((c) => (c.opts as GenOptions).layers?.workspace?.items[0].text === text)!;
     for (const c of gen.calls) {
       expect(c.type).toBe("social");
-      expect(c.opts).toMatchObject({ count: 1, crossReview: false, reviewer: true, meter: u.email });
+      expect(c.opts).toMatchObject({ count: 1, crossReview: false, reviewer: true, meter: acct(u) });
       // The brief is data for the owner's-notes slot, never part of a system text.
       expect(c.extra).toBe("Ramadan offer, short");
     }
@@ -381,7 +381,7 @@ describe("rule 952: what the two generations are", () => {
 
   it("rule 952: the reference files of the items load for both sets (the owning agent is named to loadLayers)", async () => {
     const u = await owner("itest-refs", false);
-    await writeFile(u.email, "tone.md", "Warm, never pushy.", "user");
+    await writeFile(acct(u), "tone.md", "Warm, never pushy.", "user");
     expect((await put([item("LIVE", { refs: ["tone.md"] })])).status).toBe(200);
     expect((await activate()).status).toBe(200);
     expect((await put([item("DRAFT", { refs: ["tone.md"] })])).status).toBe(200);
@@ -407,7 +407,7 @@ describe("rule 952: a failure after the charge gives it back exactly", () => {
     const r = await run({ nonce: n });
     expect([r.status, r.body.ok, r.body.error]).toEqual([502, false, "generation_failed"]);
     expect(JSON.stringify(r.body)).not.toMatch(/secret|sk-test|model failure/);
-    const after = (await getUser(u.email))!;
+    const after = (await getUser(acct(u)))!;
     expect(after.credits).toBe(100);
     expect(agentSpendFor(after, sc(u)).noor ?? 0).toBe(0);
     // The claim stays after a refunded failure: a retry is a new click with a new nonce.
@@ -422,7 +422,7 @@ describe("rule 952: a failure after the charge gives it back exactly", () => {
     const r = await run();
     expect(r.status).toBe(502);
     expect(gen.calls).toHaveLength(2);
-    expect(await credits(u.email)).toBe(100);
+    expect(await credits(acct(u))).toBe(100);
   });
 
   it("rule 952: the paused-model throw from generate refunds too (503 model_paused)", async () => {
@@ -430,14 +430,14 @@ describe("rule 952: a failure after the charge gives it back exactly", () => {
     gen.fail = "paused";
     const r = await run();
     expect([r.status, r.body.error]).toEqual([503, "model_paused"]);
-    expect(await credits(u.email)).toBe(100);
+    expect(await credits(acct(u))).toBe(100);
   });
 });
 
 describe("rule 952: rate limits", () => {
   it("rule 952: the 11th test in an hour is 429 with Retry-After 3600, counted per workspace and before the body is read", async () => {
     const u = await owner();
-    await saveUser({ ...(await getUser(u.email))!, credits: 100000 });
+    await saveUser({ ...(await getUser(acct(u)))!, credits: 100000 });
     for (let i = 0; i < INSTRUCTION_TESTS_PER_HOUR; i++) expect((await run()).status).toBe(200);
     const r = await run();
     expect([r.status, r.retry, r.body.error]).toEqual([429, "3600", "slow_down"]);
@@ -451,7 +451,7 @@ describe("rule 952: rate limits", () => {
 
   it("rule 952: the day allowance (30) holds too, with Retry-After 86400", async () => {
     const u = await owner();
-    await saveUser({ ...(await getUser(u.email))!, credits: 100000 });
+    await saveUser({ ...(await getUser(acct(u)))!, credits: 100000 });
     await db.set(`rate:instr:t:h:${sc(u)}`, 0, 3600);
     await db.set(`rate:instr:t:d:${sc(u)}`, INSTRUCTION_TESTS_PER_DAY, 86400);
     const r = await run();
@@ -497,12 +497,12 @@ describe("rule 952: the order claim, charge; the activity log; the model pick", 
   it("rule 952: a refusal at the charge is a no_credits / cap_reached row with what the test would have cost, as generateBatch writes it", async () => {
     const u = await owner();
     const want = await priceOf(u);
-    await saveUser({ ...(await getUser(u.email))!, credits: 0 });
+    await saveUser({ ...(await getUser(acct(u)))!, credits: 0 });
     expect((await run()).status).toBe(402);
     const noCredits = (await listActivity(sc(u))).rows.filter((x) => x.kind === "no_credits");
     expect(noCredits).toHaveLength(1);
     expect(noCredits[0]).toMatchObject({ agent: "noor", type: "social", via: "app", credits: want, note: "instruction test" });
-    await saveUser({ ...(await getUser(u.email))!, credits: 100 });
+    await saveUser({ ...(await getUser(acct(u)))!, credits: 100 });
     await saveGov(sc(u), { agentCaps: { noor: 1 } });
     expect((await run()).body.error).toBe("agent_cap");
     const capped = (await listActivity(sc(u))).rows.filter((x) => x.kind === "cap_reached");
@@ -521,20 +521,20 @@ describe("rule 952: the order claim, charge; the activity log; the model pick", 
     const u = await owner();
     // WhatsApp on Opus costs more than on the automatic writer (the prices are small: the rounding shows it on this type).
     const auto = await priceOf(u, "whatsapp");
-    await db.set(`brand:${u.email}`, { ...brand, model: "claude-opus-5-5" });
+    await db.set(`brand:${acct(u)}`, { ...brand, model: "claude-opus-5-5" });
     expect(generateRouteFor(u, { model: "claude-opus-5-5" } as Brand, "whatsapp")).toMatchObject({ model: "claude-opus-5-5", overridden: true });
     const want = 2 * creditsFor(countCost("whatsapp", 1), "claude-opus-5-5", "generate", "whatsapp");
     expect(want).toBeGreaterThan(auto);
     const r = await run({ type: "whatsapp" });
     expect(r.body.spent).toBe(want);
-    expect(await credits(u.email)).toBe(100 - want);
+    expect(await credits(acct(u))).toBe(100 - want);
     expect(gen.calls.map((c) => c.opts.model)).toEqual(["claude-opus-5-5", "claude-opus-5-5"]);
   });
 
   it("rule 952: a pick the router refuses falls back to Automatic at Automatic's price and is counted for the console", async () => {
     const u = await owner();
     const auto = await priceOf(u);
-    await db.set(`brand:${u.email}`, { ...brand, model: "claude-haiku-5-5" }); // not offered as a pick
+    await db.set(`brand:${acct(u)}`, { ...brand, model: "claude-haiku-5-5" }); // not offered as a pick
     const key = `usage:_all:${monthKey()}:pickreject:generate:not_pickable`;
     const before = Number((await db.get(key)) ?? 0);
     const r = await run();
@@ -558,7 +558,7 @@ describe("rule 952: the order claim, charge; the activity log; the model pick", 
     spy.mockRestore();
     expect([r.status, r.body.error]).toEqual([500, "refund_failed"]);
     expect(logged).toContain(String(await priceOf(u)));
-    expect(logged).not.toContain(u.email);
+    expect(logged).not.toContain(acct(u));
     expect(logged).not.toContain("hejazy@gmail.com");
     expect(logged).not.toContain("sk-test");
   });

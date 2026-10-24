@@ -7,7 +7,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { createElement, type ReactElement } from "react";
 import { claudeOn } from "./helpers/model";
 import { json, newMember, newUser, params, settle, signIn, signOut } from "./helpers/session";
-import { getUser, saveUser, type User } from "@/lib/auth";
+import { acct, getUser, saveUser, type User } from "@/lib/auth";
 import { CAPS, db } from "@/lib/db";
 import { getTask, listLite, type Brand, type Task } from "@/lib/brand";
 import { agentById, agentForTask } from "@/lib/agents";
@@ -70,9 +70,10 @@ const CONV = "abc123def456";
 
 async function owner(prefix: string, credits?: number): Promise<User> {
   const u = await newUser(prefix);
-  await db.set(`brand:${u.email}`, brand);
-  if (credits !== undefined) await saveUser({ ...(await getUser(u.email))!, credits });
-  return (await getUser(u.email))!;
+  await db.set(`brand:${acct(u)}`, brand);
+  if (credits !== undefined) await saveUser({ ...(await getUser(acct(u)))!, credits });
+  // Carries its `scope`, as the session's user does (several library calls read `user.scope ?? user.email`).
+  return { ...(await getUser(acct(u)))!, scope: acct(u) };
 }
 const ownerBy = (u: User) => ({ kind: "owner" as const, email: u.email });
 /** Majed proposing through the chat tool, as a turn would. Returns the tool's text and the saved id, if any. */
@@ -82,7 +83,7 @@ async function propose(u: User, input: Record<string, unknown>, ctx: Partial<Too
 }
 const TWO = { items: [{ type: "pricing_review", brief: "راجعي تسعير الباقات الثلاث" }, { type: "gtm_plan", brief: "خطة دخول للسوق لمدة 90 يوماً" }], why: "نحتاج الأرقام والخطة معاً" };
 const rows = async (scope: string) => (await listActivity(scope, { limit: CAPS.activity })).rows;
-const credits = async (email: string) => (await getUser(email))!.credits;
+const credits = async (id: string) => (await getUser(id))!.credits;
 const run = (id: string, body: unknown) => runRoute.POST(json(`/api/handoffs/${id}/run`, "POST", body), params({ id }));
 const decline = (id: string, body: unknown = {}) => declineRoute.POST(json(`/api/handoffs/${id}/decline`, "POST", body), params({ id }));
 const read = (id: string) => getRoute.GET(json(`/api/handoffs/${id}`, "GET"), params({ id }));
@@ -117,7 +118,7 @@ describe("only Majed proposes, in the app's chat, for free (rule 271)", () => {
 
   it("saves the record with everything but the types and briefs set in code, charges nothing, and tags the turn", async () => {
     const u = await owner("ho-propose");
-    const before = await credits(u.email);
+    const before = await credits(acct(u));
     const member = { kind: "member" as const, email: "sara@team.example", role: "member" as const };
     const long = "م".repeat(HANDOFF_OWNER_MSG_MAX + 50);
     const { text, id, actions } = await propose(u, TWO, { by: member, ownerMsg: long });
@@ -128,18 +129,18 @@ describe("only Majed proposes, in the app's chat, for free (rule 271)", () => {
     expect(text).toContain(`1. ${label("razan")}: pricing_review, ${TASK_COST.pricing_review} credits`);
     expect(text).toContain(`2. ${label("faris")}: gtm_plan, ${TASK_COST.gtm_plan} credits`);
     expect(text).toContain(`Total if every item runs: ${TASK_COST.pricing_review + TASK_COST.gtm_plan} credits`);
-    const h = (await getHandoff(u.email, id!))!;
+    const h = (await getHandoff(acct(u), id!))!;
     expect(h).toMatchObject({ id, agent: "majed", requestedBy: member, origin: "web_chat", conv: CONV, why: TWO.why, status: "proposed", ownerMsg: long.slice(0, HANDOFF_OWNER_MSG_MAX) });
     expect(h.items).toEqual([
       { type: "pricing_review", agent: "razan", brief: TWO.items[0].brief, cost: TASK_COST.pricing_review, status: "proposed" },
       { type: "gtm_plan", agent: "faris", brief: TWO.items[1].brief, cost: TASK_COST.gtm_plan, status: "proposed" },
     ]);
-    expect(await credits(u.email)).toBe(before);
-    expect(await index(u.email)).toEqual([id]);
-    expect(await rows(u.email)).toEqual([expect.objectContaining({ kind: "handoff_proposed", agent: "majed", by: member, via: "chat", count: 2, credits: TASK_COST.pricing_review + TASK_COST.gtm_plan, outcome: `handoff:${id}`, note: "pricing_review,gtm_plan" })]);
+    expect(await credits(acct(u))).toBe(before);
+    expect(await index(acct(u))).toEqual([id]);
+    expect(await rows(acct(u))).toEqual([expect.objectContaining({ kind: "handoff_proposed", agent: "majed", by: member, via: "chat", count: 2, credits: TASK_COST.pricing_review + TASK_COST.gtm_plan, outcome: `handoff:${id}`, note: "pricing_review,gtm_plan" })]);
     // The default thread keeps no conversation id.
     const def = await propose(u, TWO, { conv: "default" });
-    expect((await getHandoff(u.email, def.id!))!.conv).toBeUndefined();
+    expect((await getHandoff(acct(u), def.id!))!.conv).toBeUndefined();
   });
 
   it("is refused in code for any other agent, a turn with no agent, a connected app, and a second proposal in one reply", async () => {
@@ -162,8 +163,8 @@ describe("only Majed proposes, in the app's chat, for free (rule 271)", () => {
     expect(first.id).toBeTruthy();
     expect(second.text).toContain("already proposed a handoff");
     expect(actions).toEqual([`handoff:${first.id}`]);
-    expect(await index(u.email)).toEqual([first.id]);
-    expect((await rows(u.email)).filter((r) => r.kind === "handoff_proposed")).toHaveLength(1);
+    expect(await index(acct(u))).toEqual([first.id]);
+    expect((await rows(acct(u))).filter((r) => r.kind === "handoff_proposed")).toHaveLength(1);
   });
 
   it("a real turn: Majed gets the tool, Noor does not, and the reply carries the card with the owner's own message", async () => {
@@ -192,13 +193,13 @@ describe("only Majed proposes, in the app's chat, for free (rule 271)", () => {
     expect(id).toMatch(/^[a-f0-9]{16}$/);
     expect(m.actions).toContain(`handoff:${id}`);
     expect(m.agent).toBe("majed");
-    const h = (await getHandoff(u.email, id!))!;
+    const h = (await getHandoff(acct(u), id!))!;
     expect(h).toMatchObject({ ownerMsg: "ماجد، جهّز لنا خطة الربع", conv: CONV, origin: "web_chat", requestedBy: ownerBy(u) });
     // Marked shown once the reply carrying the card was saved (the auto-run's rule 290).
     expect(h.shownAt).toEqual(expect.any(String));
     // Stored in the thread, so the card is there after a reload.
     const { history } = await import("@/lib/chat");
-    expect((await history(u.email, CONV)).at(-1)?.handoff).toEqual({ id });
+    expect((await history(acct(u), CONV)).at(-1)?.handoff).toEqual({ id });
     // Noor's turn is offered no proposal tool at all.
     seen.length = 0;
     turns.push({ stop_reason: "end_turn", content: [{ type: "text", text: "تمام" }] });
@@ -212,17 +213,17 @@ describe("the model never sets an item's agent, cost, status or scope (rule 272)
     const u = await owner("ho-forge");
     const other = await owner("ho-forge-other");
     const forged = {
-      items: [{ type: "social", brief: "عشرة منشورات لليوم الوطني", cost: 0, agent: "majed", status: "done", tasks: ["x"], scope: other.email }],
-      why: "w", id: "0000000000000000", scope: other.email, status: "done", agent: "noor", requestedBy: { kind: "system", job: "auto_handoff" }, origin: "mcp", createdAt: "2020-01-01T00:00:00.000Z",
+      items: [{ type: "social", brief: "عشرة منشورات لليوم الوطني", cost: 0, agent: "majed", status: "done", tasks: ["x"], scope: acct(other) }],
+      why: "w", id: "0000000000000000", scope: acct(other), status: "done", agent: "noor", requestedBy: { kind: "system", job: "auto_handoff" }, origin: "mcp", createdAt: "2020-01-01T00:00:00.000Z",
     };
     const { id } = await propose(u, forged);
     expect(id).not.toBe("0000000000000000");
-    const h = (await getHandoff(u.email, id!))!;
+    const h = (await getHandoff(acct(u), id!))!;
     expect(h).toMatchObject({ agent: "majed", origin: "web_chat", status: "proposed", requestedBy: ownerBy(u) });
     expect(h.createdAt).not.toBe(forged.createdAt);
     expect(h.items).toEqual([{ type: "social", agent: "noor", brief: "عشرة منشورات لليوم الوطني", cost: TASK_COST.social, status: "proposed" }]);
-    expect(await index(other.email)).toEqual([]);
-    expect(await getHandoff(other.email, id!)).toBeNull();
+    expect(await index(acct(other))).toEqual([]);
+    expect(await getHandoff(acct(other), id!)).toBeNull();
   });
 
   it("checks the list, the types and the briefs, and cleans what it keeps", () => {
@@ -253,7 +254,7 @@ describe("the model never sets an item's agent, cost, status or scope (rule 272)
 describe("Majed cannot produce other agents' work himself (rule 273)", () => {
   it("refuses generate_content and draft_items for a type he does not own, before any charge", async () => {
     const u = await owner("ho-bypass");
-    const before = await credits(u.email);
+    const before = await credits(acct(u));
     const made: Task[] = [];
     const gen = await runTool(u, "generate_content", { type: "pricing_review", notes: "n" }, [], made, undefined, { agent: "majed", by: ownerBy(u) });
     expect(gen).toBe(roleRefusalText("majed", "pricing_review"));
@@ -263,9 +264,9 @@ describe("Majed cannot produce other agents' work himself (rule 273)", () => {
     const draft = await runTool(u, "draft_items", { type: "social", count: 2, brief: "b" }, [], made, undefined, { agent: "majed", by: ownerBy(u) });
     expect(draft).toContain("social is Noor's work");
     expect(made).toEqual([]);
-    expect(await credits(u.email)).toBe(before);
-    expect(await listLite(u.email)).toEqual([]);
-    expect(await rows(u.email)).toEqual([]);
+    expect(await credits(acct(u))).toBe(before);
+    expect(await listLite(acct(u))).toEqual([]);
+    expect(await rows(acct(u))).toEqual([]);
   });
 
   it("lets him write his own types, and every other agent any type, as before", async () => {
@@ -421,7 +422,7 @@ describe("the routes authenticate, gate, limit and stay in the caller's scope (r
       expect(await r.json()).toEqual({ error: "forbidden" });
     }
     gate.strip = false;
-    expect((await getHandoff(u.email, id!))!.items.map((i) => i.status)).toEqual(["proposed", "proposed"]);
+    expect((await getHandoff(acct(u), id!))!.items.map((i) => i.status)).toEqual(["proposed", "proposed"]);
   });
 
   it("a malformed id or another account's id is 404, and the other account's record is untouched", async () => {
@@ -434,12 +435,12 @@ describe("the routes authenticate, gate, limit and stay in the caller's scope (r
       expect((await run(bad, { item: 0 })).status, bad).toBe(404);
       expect((await decline(bad)).status, bad).toBe(404);
     }
-    const before = await credits(b.email);
+    const before = await credits(acct(b));
     expect((await read(id!)).status).toBe(404);
     expect((await run(id!, { item: 0 })).status).toBe(404);
     expect((await decline(id!)).status).toBe(404);
-    expect(await credits(b.email)).toBe(before);
-    expect((await getHandoff(a.email, id!))!.items.map((i) => i.status)).toEqual(["proposed", "proposed"]);
+    expect(await credits(acct(b))).toBe(before);
+    expect((await getHandoff(acct(a), id!))!.items.map((i) => i.status)).toEqual(["proposed", "proposed"]);
     // A member of A reads, runs and declines A's; the owner of B sees nothing of it.
     const m = await newMember(a, "member");
     await signIn(m.email);
@@ -468,7 +469,7 @@ describe("the routes authenticate, gate, limit and stay in the caller's scope (r
     await db.set(`rate:handoffrun:${u.email}`, HANDOFF_RUNS_PER_HOUR);
     const r = await run(id!, { item: 0 });
     expect(r.status).toBe(429);
-    expect((await getHandoff(u.email, id!))!.items[0].status).toBe("proposed");
+    expect((await getHandoff(acct(u), id!))!.items[0].status).toBe("proposed");
     const src = (f: string) => readFileSync(join("src", "app", "api", "handoffs", "[id]", ...f.split("/").filter(Boolean), "route.ts"), "utf8");
     expect(src("")).toMatch(/allow\(`handoffread:\$\{u\.email\}`, HANDOFF_READS_PER_HOUR, 3600\)/);
     expect(src("run")).toMatch(/allow\(`handoffrun:\$\{u\.email\}`, HANDOFF_RUNS_PER_HOUR, 3600\)/);
@@ -480,56 +481,56 @@ describe("a run is one item through generateBatch, with its parent and the norma
   it("runs exactly the item named, charges its agent once, and keeps the handoff on every task it made", async () => {
     const u = await owner("ho-run");
     const { id } = await propose(u, TWO);
-    const before = await credits(u.email);
+    const before = await credits(acct(u));
     await signIn(u.email);
     const res = await run(id!, { item: 0 });
     expect(res.status).toBe(200);
     const body = (await res.json()) as { handoff: HandoffView; items: { id: string; type: string; status: string }[]; credits: number };
     expect(body.credits).toBe(before - TASK_COST.pricing_review);
-    expect(await credits(u.email)).toBe(before - TASK_COST.pricing_review);
+    expect(await credits(acct(u))).toBe(before - TASK_COST.pricing_review);
     expect(body.handoff.items.map((i) => i.status)).toEqual(["done", "proposed"]);
     expect(body.handoff.status).toBe("proposed");
     expect(body.items.length).toBeGreaterThan(0);
     expect(body.handoff.items[0].made.map((m) => m.id)).toEqual(body.items.map((m) => m.id));
-    const tasks = (await Promise.all(body.items.map((m) => getTask(u.email, m.id)))) as Task[];
+    const tasks = (await Promise.all(body.items.map((m) => getTask(acct(u), m.id)))) as Task[];
     for (const t of tasks) {
       expect(t).toMatchObject({ type: "pricing_review", source: "handoff", parent: { handoff: id, item: 0, conv: CONV }, status: "pending" });
       // The owner's notes were never the brief: a handoff child keeps no `brief`, and its stamp is the type's own.
       expect(t.brief).toBeUndefined();
       expect(t.pb).toEqual(promptStamp("pricing_review", brand, { plat: "none", ins: "none" }));
     }
-    const lite = await listLite(u.email);
+    const lite = await listLite(acct(u));
     expect(lite.filter((l) => l.source === "handoff").map((l) => l.parent)).toEqual(tasks.map(() => ({ handoff: id, item: 0, conv: CONV })));
-    const h = (await getHandoff(u.email, id!))!;
+    const h = (await getHandoff(acct(u), id!))!;
     expect(h.items[0]).toMatchObject({ status: "done", tasks: tasks.map((t) => t.id), cost: TASK_COST.pricing_review, ranBy: ownerBy(u) });
     expect(h.items[1].status).toBe("proposed");
-    const log = await rows(u.email);
+    const log = await rows(acct(u));
     expect(log.find((r) => r.kind === "generated")).toMatchObject({ agent: "razan", by: ownerBy(u), via: "handoff", type: "pricing_review", credits: TASK_COST.pricing_review });
     expect(log.find((r) => r.kind === "handoff_run")).toMatchObject({ agent: "majed", by: ownerBy(u), via: "handoff", type: "pricing_review", count: tasks.length, outcome: `done:${id}:0` });
     // Done means done: the same item never runs again, and nothing is charged for asking.
     const again = await run(id!, { item: 0 });
     expect(again.status).toBe(409);
     expect(((await again.json()) as { error: string }).error).toBe("done");
-    expect(await credits(u.email)).toBe(before - TASK_COST.pricing_review);
+    expect(await credits(acct(u))).toBe(before - TASK_COST.pricing_review);
   });
 
   it("a done item records what the run charged, not the price stored when Majed proposed it", async () => {
     const u = await owner("ho-cost");
     const { id } = await propose(u, TWO);
     // A proposal made before a price change: its stored cost is no longer today's price.
-    const stale = (await getHandoff(u.email, id!))!;
-    await db.set(`handoff:${u.email}:${id}`, { ...stale, items: stale.items.map((it, n) => (n === 0 ? { ...it, cost: TASK_COST.pricing_review + 7 } : it)) });
-    const before = await credits(u.email);
+    const stale = (await getHandoff(acct(u), id!))!;
+    await db.set(`handoff:${acct(u)}:${id}`, { ...stale, items: stale.items.map((it, n) => (n === 0 ? { ...it, cost: TASK_COST.pricing_review + 7 } : it)) });
+    const before = await credits(acct(u));
     await signIn(u.email);
     expect((await run(id!, { item: 0 })).status).toBe(200);
-    expect(await credits(u.email)).toBe(before - TASK_COST.pricing_review);
-    expect((await getHandoff(u.email, id!))!.items[0]).toMatchObject({ status: "done", cost: TASK_COST.pricing_review });
+    expect(await credits(acct(u))).toBe(before - TASK_COST.pricing_review);
+    expect((await getHandoff(acct(u), id!))!.items[0]).toMatchObject({ status: "done", cost: TASK_COST.pricing_review });
   });
 
   it("one item per request: an array, a string, a missing or an out-of-range item is refused", async () => {
     const u = await owner("ho-one");
     const { id } = await propose(u, TWO);
-    const before = await credits(u.email);
+    const before = await credits(acct(u));
     await signIn(u.email);
     for (const body of [{ item: [0, 1] }, { items: [0, 1] }, { item: "0" }, {}, { item: -1 }, { item: 0.5 }, [0]]) {
       const r = await run(id!, body);
@@ -538,25 +539,25 @@ describe("a run is one item through generateBatch, with its parent and the norma
     }
     const far = await run(id!, { item: 2 });
     expect(far.status).toBe(400);
-    expect(await credits(u.email)).toBe(before);
-    expect((await getHandoff(u.email, id!))!.items.map((i) => i.status)).toEqual(["proposed", "proposed"]);
+    expect(await credits(acct(u))).toBe(before);
+    expect((await getHandoff(acct(u), id!))!.items.map((i) => i.status)).toEqual(["proposed", "proposed"]);
   });
 
   it("children follow the owner's auto-approval like any batch, and a member's run is recorded as the member", async () => {
     const u = await owner("ho-auto");
-    await saveGov(u.email, { autoApprove: { social: true } });
+    await saveGov(acct(u), { autoApprove: { social: true } });
     const { id } = await propose(u, { items: [{ type: "social", brief: "منشورات اليوم الوطني" }] });
     const m = await newMember(u, "member");
     await signIn(m.email);
     const res = await run(id!, { item: 0 });
     expect(res.status).toBe(200);
     const ids = ((await res.json()) as { items: { id: string }[] }).items.map((x) => x.id);
-    const tasks = (await Promise.all(ids.map((x) => getTask(u.email, x)))) as Task[];
+    const tasks = (await Promise.all(ids.map((x) => getTask(acct(u), x)))) as Task[];
     expect(tasks.length).toBeGreaterThan(0);
     for (const t of tasks) expect(t.status, t.body).toBe("approved");
     const member = { kind: "member", email: m.email, role: "member" };
-    expect((await getHandoff(u.email, id!))!.items[0].ranBy).toEqual(member);
-    expect((await rows(u.email)).find((r) => r.kind === "handoff_run")?.by).toEqual(member);
+    expect((await getHandoff(acct(u), id!))!.items[0].ranBy).toEqual(member);
+    expect((await rows(acct(u))).find((r) => r.kind === "handoff_run")?.by).toEqual(member);
   });
 
   it("under auto-approve a child waits for the owner when it has an unfilled placeholder, a slot off its channel or another agent's flag (rules 213 and 264 on the handoff path)", async () => {
@@ -593,15 +594,15 @@ describe("a run is one item through generateBatch, with its parent and the norma
     }));
     const lib = await import("@/lib/handoffs");
     const u = await owner("ho-gates");
-    await saveGov(u.email, { autoApprove: { followup_seq: true, gtm_plan: true } });
+    await saveGov(acct(u), { autoApprove: { followup_seq: true, gtm_plan: true } });
     const { id } = await propose(u, { items: [{ type: "followup_seq", brief: "رسائل متابعة بعد الشراء" }, { type: "gtm_plan", brief: "خطة دخول للسوق" }] });
-    for (const n of [0, 1]) expect(await lib.runHandoffItem(u, u.email, id!, n, { by: ownerBy(u), deadline: Date.now() + 300_000 }), String(n)).toMatchObject({ ok: true });
+    for (const n of [0, 1]) expect(await lib.runHandoffItem(u, acct(u), id!, n, { by: ownerBy(u), deadline: Date.now() + 300_000 }), String(n)).toMatchObject({ ok: true });
     await settle();
-    const h = (await getHandoff(u.email, id!))!;
-    const status = async (n: number) => (await Promise.all(h.items[n].tasks!.map((t) => getTask(u.email, t)))).map((t) => (t as Task).status);
+    const h = (await getHandoff(acct(u), id!))!;
+    const status = async (n: number) => (await Promise.all(h.items[n].tasks!.map((t) => getTask(acct(u), t)))).map((t) => (t as Task).status);
     expect(await status(0)).toEqual(["approved", "pending", "pending"]);
     expect(await status(1)).toEqual(["approved", "pending", "approved"]);
-    const flagged = (await getTask(u.email, h.items[1].tasks![1]))!;
+    const flagged = (await getTask(acct(u), h.items[1].tasks![1]))!;
     expect(flagged.crossReview?.map((v) => [v.by, v.verdict]).sort()).toEqual([["majed", "flag"], ["razan", "flag"]]);
   });
 });
@@ -610,15 +611,15 @@ describe("the handoff's lock runs an item once (rule 277)", () => {
   it("two runs of the same item at once: one runs and is charged once, the other is 409 busy", async () => {
     const u = await owner("ho-lock");
     const { id } = await propose(u, TWO);
-    const before = await credits(u.email);
+    const before = await credits(acct(u));
     await signIn(u.email);
     const [a, b] = await Promise.all([run(id!, { item: 0 }), run(id!, { item: 0 })]);
     expect([a.status, b.status].sort()).toEqual([200, 409]);
     const loser = a.status === 409 ? a : b;
     expect(((await loser.json()) as { error: string }).error).toBe("busy");
-    expect(await credits(u.email)).toBe(before - TASK_COST.pricing_review);
-    expect((await listLite(u.email)).filter((l) => l.source === "handoff").length).toBe(1);
-    expect((await rows(u.email)).filter((r) => r.kind === "handoff_run")).toHaveLength(1);
+    expect(await credits(acct(u))).toBe(before - TASK_COST.pricing_review);
+    expect((await listLite(acct(u))).filter((l) => l.source === "handoff").length).toBe(1);
+    expect((await rows(acct(u))).filter((r) => r.kind === "handoff_run")).toHaveLength(1);
     // The lock is released: the next item runs.
     expect((await run(id!, { item: 1 })).status).toBe(200);
   });
@@ -626,25 +627,25 @@ describe("the handoff's lock runs an item once (rule 277)", () => {
   it("a decline waits for no run: while the lock is held it is 409 busy and changes nothing", async () => {
     const u = await owner("ho-lock-decline");
     const { id } = await propose(u, TWO);
-    await db.lock(`handofflock:${u.email}:${id}`, HANDOFF_RUN_LOCK_S);
-    const r = await declineHandoff(u.email, id!, 0, ownerBy(u));
+    await db.lock(`handofflock:${acct(u)}:${id}`, HANDOFF_RUN_LOCK_S);
+    const r = await declineHandoff(acct(u), id!, 0, ownerBy(u));
     expect(r).toEqual({ ok: false, error: "busy" });
-    expect(await runHandoffItem(u, u.email, id!, 0, { by: ownerBy(u), deadline: Date.now() + 300_000 })).toEqual({ ok: false, error: "busy" });
-    await db.unlock(`handofflock:${u.email}:${id}`);
-    expect((await getHandoff(u.email, id!))!.items.map((i) => i.status)).toEqual(["proposed", "proposed"]);
+    expect(await runHandoffItem(u, acct(u), id!, 0, { by: ownerBy(u), deadline: Date.now() + 300_000 })).toEqual({ ok: false, error: "busy" });
+    await db.unlock(`handofflock:${acct(u)}:${id}`);
+    expect((await getHandoff(acct(u), id!))!.items.map((i) => i.status)).toEqual(["proposed", "proposed"]);
   });
 
   it("a run that died (still running after the lock's life) is offered again; a live one is not", async () => {
     const u = await owner("ho-stale");
     const { id } = await propose(u, TWO);
-    const h = (await getHandoff(u.email, id!))!;
+    const h = (await getHandoff(acct(u), id!))!;
     const recent = { ...h, items: [{ ...h.items[0], status: "running", at: new Date().toISOString() }, h.items[1]] };
-    await db.set(`handoff:${u.email}:${id}`, recent);
-    expect(await runHandoffItem(u, u.email, id!, 0, { by: ownerBy(u), deadline: Date.now() + 300_000 })).toMatchObject({ ok: false, error: "running" });
+    await db.set(`handoff:${acct(u)}:${id}`, recent);
+    expect(await runHandoffItem(u, acct(u), id!, 0, { by: ownerBy(u), deadline: Date.now() + 300_000 })).toMatchObject({ ok: false, error: "running" });
     const dead = { ...h, items: [{ ...h.items[0], status: "running", at: new Date(Date.now() - (HANDOFF_RUN_LOCK_S + 5) * 1000).toISOString() }, h.items[1]] };
-    await db.set(`handoff:${u.email}:${id}`, dead);
-    expect((await handoffView(u.email, (await getHandoff(u.email, id!))!)).items[0].status).toBe("failed");
-    expect(await runHandoffItem(u, u.email, id!, 0, { by: ownerBy(u), deadline: Date.now() + 300_000 })).toMatchObject({ ok: true });
+    await db.set(`handoff:${acct(u)}:${id}`, dead);
+    expect((await handoffView(acct(u), (await getHandoff(acct(u), id!))!)).items[0].status).toBe("failed");
+    expect(await runHandoffItem(u, acct(u), id!, 0, { by: ownerBy(u), deadline: Date.now() + 300_000 })).toMatchObject({ ok: true });
   });
 });
 
@@ -656,20 +657,20 @@ describe("refusals charge nothing and leave the item; a failed generation is ref
     const r = await run(id!, { item: 0 });
     expect(r.status).toBe(402);
     expect(await r.json()).toMatchObject({ ok: false, error: "no_credits", need: TASK_COST.pricing_review, have: 1, handoff: { items: [{ status: "proposed" }, { status: "proposed" }] } });
-    expect(await credits(poor.email)).toBe(1);
-    expect((await rows(poor.email)).find((x) => x.kind === "no_credits")).toMatchObject({ agent: "razan", via: "handoff" });
+    expect(await credits(acct(poor))).toBe(1);
+    expect((await rows(acct(poor))).find((x) => x.kind === "no_credits")).toMatchObject({ agent: "razan", via: "handoff" });
 
     const capped = await owner("ho-cap");
-    await saveGov(capped.email, { agentCaps: { razan: 0 } });
+    await saveGov(acct(capped), { agentCaps: { razan: 0 } });
     const c = await propose(capped, TWO);
     await signIn(capped.email);
     const rc = await run(c.id!, { item: 0 });
     expect(rc.status).toBe(402);
     expect(await rc.json()).toMatchObject({ error: "agent_cap", agent: "razan", spent: 0, cap: 0 });
-    expect((await getHandoff(capped.email, c.id!))!.items[0].status).toBe("proposed");
+    expect((await getHandoff(acct(capped), c.id!))!.items[0].status).toBe("proposed");
 
     const ended = await owner("ho-trial");
-    await saveUser({ ...(await getUser(ended.email))!, trialEnds: "2020-01-01T00:00:00.000Z" });
+    await saveUser({ ...(await getUser(acct(ended)))!, trialEnds: "2020-01-01T00:00:00.000Z" });
     const e = await propose(ended, TWO);
     await signIn(ended.email);
     const re = await run(e.id!, { item: 0 });
@@ -680,11 +681,11 @@ describe("refusals charge nothing and leave the item; a failed generation is ref
   it("with too little of the request left nothing is charged, and the lock is let go", async () => {
     const u = await owner("ho-late");
     const { id } = await propose(u, TWO);
-    const before = await credits(u.email);
-    expect(await runHandoffItem(u, u.email, id!, 0, { by: ownerBy(u), deadline: Date.now() + 1000 })).toMatchObject({ ok: false, error: "too_late" });
-    expect(await credits(u.email)).toBe(before);
-    expect((await getHandoff(u.email, id!))!.items[0].status).toBe("proposed");
-    expect(await runHandoffItem(u, u.email, id!, 0, { by: ownerBy(u), deadline: Date.now() + 300_000 })).toMatchObject({ ok: true });
+    const before = await credits(acct(u));
+    expect(await runHandoffItem(u, acct(u), id!, 0, { by: ownerBy(u), deadline: Date.now() + 1000 })).toMatchObject({ ok: false, error: "too_late" });
+    expect(await credits(acct(u))).toBe(before);
+    expect((await getHandoff(acct(u), id!))!.items[0].status).toBe("proposed");
+    expect(await runHandoffItem(u, acct(u), id!, 0, { by: ownerBy(u), deadline: Date.now() + 300_000 })).toMatchObject({ ok: true });
   });
 
   it("paused: 503 before the lock or any charge", async () => {
@@ -694,7 +695,7 @@ describe("refusals charge nothing and leave the item; a failed generation is ref
     const route = await import("@/app/api/handoffs/[id]/run/route");
     const u = await owner("ho-paused");
     const { id } = await propose(u, TWO);
-    const before = await credits(u.email);
+    const before = await credits(acct(u));
     await signIn(u.email);
     // The modules the route loaded: before the lock means no lock is taken and the record is never written, not only
     // that generateBatch's own paused refusal (the backstop) left it as it was.
@@ -706,9 +707,9 @@ describe("refusals charge nothing and leave the item; a failed generation is ref
     expect(spy.lock).not.toHaveBeenCalled();
     expect(spy.setXx).not.toHaveBeenCalled();
     expect(spy.set.mock.calls.filter((c) => String(c[0]).startsWith("handoff"))).toEqual([]);
-    expect(await credits(u.email)).toBe(before);
-    expect(await db.get(`handofflock:${u.email}:${id}`)).toBeNull();
-    expect((await getHandoff(u.email, id!))!.items[0].status).toBe("proposed");
+    expect(await credits(acct(u))).toBe(before);
+    expect(await db.get(`handofflock:${acct(u)}:${id}`)).toBeNull();
+    expect((await getHandoff(acct(u), id!))!.items[0].status).toBe("proposed");
   });
 
   it("a failed generation is refunded, marks the item failed, and it can be run again", async () => {
@@ -726,17 +727,17 @@ describe("refusals charge nothing and leave the item; a failed generation is ref
     const route = await import("@/app/api/handoffs/[id]/run/route");
     const u = await owner("ho-fail");
     const { id } = await propose(u, TWO);
-    const before = await credits(u.email);
+    const before = await credits(acct(u));
     await signIn(u.email);
     const r = await route.POST(json(`/api/handoffs/${id}/run`, "POST", { item: 0 }), params({ id: id! }));
     expect(r.status).toBe(502);
     expect(await r.json()).toMatchObject({ ok: false, error: "generation_failed", handoff: { items: [{ status: "failed" }, { status: "proposed" }] }, credits: before });
-    expect(await credits(u.email)).toBe(before);
-    expect((await rows(u.email)).find((x) => x.kind === "handoff_run")).toMatchObject({ outcome: `failed:${id}:0`, agent: "majed" });
+    expect(await credits(acct(u))).toBe(before);
+    expect((await rows(acct(u))).find((x) => x.kind === "handoff_run")).toMatchObject({ outcome: `failed:${id}:0`, agent: "majed" });
     fail = false;
     const again = await route.POST(json(`/api/handoffs/${id}/run`, "POST", { item: 0 }), params({ id: id! }));
     expect(again.status).toBe(200);
-    expect(await credits(u.email)).toBe(before - TASK_COST.pricing_review);
+    expect(await credits(acct(u))).toBe(before - TASK_COST.pricing_review);
   });
 });
 
@@ -744,7 +745,7 @@ describe("declines (rule 279)", () => {
   it("one item, then the rest; done and declined items stay as they are; nothing is charged", async () => {
     const u = await owner("ho-decline");
     const { id } = await propose(u, { items: [...TWO.items, { type: "roadmap", brief: "خارطة طريق" }] });
-    const before = await credits(u.email);
+    const before = await credits(acct(u));
     await signIn(u.email);
     expect((await run(id!, { item: 0 })).status).toBe(200);
     const one = await decline(id!, { item: 1 });
@@ -763,8 +764,8 @@ describe("declines (rule 279)", () => {
     expect(view.handoff.status).toBe("done");
     expect(((await (await decline(id!)).json()) as { error: string }).error).toBe("nothing");
     expect(((await (await run(id!, { item: 2 })).json()) as { error: string }).error).toBe("declined");
-    expect(await credits(u.email)).toBe(before - TASK_COST.pricing_review);
-    const log = (await rows(u.email)).filter((r) => r.kind === "handoff_declined");
+    expect(await credits(acct(u))).toBe(before - TASK_COST.pricing_review);
+    const log = (await rows(acct(u))).filter((r) => r.kind === "handoff_declined");
     expect(log).toHaveLength(2);
     expect(log.map((r) => ({ count: r.count, note: r.note, by: r.by, agent: r.agent, via: r.via }))).toEqual(expect.arrayContaining([
       { count: 1, note: "gtm_plan", by: ownerBy(u), agent: "majed", via: "handoff" },
@@ -808,10 +809,10 @@ describe("depth 1, and no MCP surface (rule 280)", () => {
     const lib = await import("@/lib/handoffs");
     const u = await owner("ho-depth");
     const { id } = await propose(u, TWO);
-    expect(await lib.runHandoffItem(u, u.email, id!, 0, { by: ownerBy(u), deadline: Date.now() + 300_000 })).toMatchObject({ ok: true });
+    expect(await lib.runHandoffItem(u, acct(u), id!, 0, { by: ownerBy(u), deadline: Date.now() + 300_000 })).toMatchObject({ ok: true });
     await settle();
-    expect(await index(u.email)).toEqual([id]);
-    expect((await rows(u.email)).filter((r) => r.kind === "handoff_proposed")).toHaveLength(1);
+    expect(await index(acct(u))).toEqual([id]);
+    expect((await rows(acct(u))).filter((r) => r.kind === "handoff_proposed")).toHaveLength(1);
   });
 
   it("no MCP tool proposes, runs, declines or lists handoffs, and a call by that name is refused", async () => {
@@ -820,14 +821,14 @@ describe("depth 1, and no MCP surface (rule 280)", () => {
     const listed = await mcpRoute.POST(new Request("https://nashr.test/api/mcp", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list" }) }));
     expect(JSON.stringify(await listed.json())).not.toMatch(/handoff/i);
     const u = await owner("ho-mcp");
-    const token = await createMcpToken(u.email);
+    const token = await createMcpToken(acct(u));
     for (const name of ["propose_handoff", "run_handoff", "decline_handoff", "list_handoffs"]) {
       const r = await mcpRoute.POST(new Request("https://nashr.test/api/mcp", { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${token}` }, body: JSON.stringify({ jsonrpc: "2.0", id: 2, method: "tools/call", params: { name, arguments: TWO } }) }));
       expect(((await r.json()) as { error?: { message: string } }).error?.message, name).toBe("Unknown tool");
     }
     // ask_noor talks to Noor, who is never offered the tool and is refused it in code.
     expect(code(join("src", "app", "api", "mcp", "route.ts"))).toMatch(/chat\(user, message, undefined, "noor"/);
-    expect(await index(u.email)).toEqual([]);
+    expect(await index(acct(u))).toEqual([]);
   });
 });
 
@@ -883,8 +884,8 @@ describe("the log, the card, the chip and the page (rule 281)", () => {
   it("the chat page renders the thread's handoff card from the server, and the inbox says where a child came from", async () => {
     const u = await owner("ho-page");
     const { id } = await propose(u, TWO);
-    await push(u.email, { role: "user", content: "خطة الربع", at: new Date().toISOString() }, CONV);
-    await push(u.email, { role: "assistant", content: "اقترحت بندين", at: new Date().toISOString(), agent: "majed", handoff: { id: id! } }, CONV);
+    await push(acct(u), { role: "user", content: "خطة الربع", at: new Date().toISOString() }, CONV);
+    await push(acct(u), { role: "assistant", content: "اقترحت بندين", at: new Date().toISOString(), agent: "majed", handoff: { id: id! } }, CONV);
     await signIn(u.email);
     await run(id!, { item: 0 });
     const chat = renderToStaticMarkup((await ChatPage({ params: Promise.resolve({ lang: "en" }), searchParams: Promise.resolve({ conv: CONV }) } as never)) as ReactElement);
@@ -905,11 +906,11 @@ describe("the log, the card, the chip and the page (rule 281)", () => {
     for (let i = 0; i < 12; i++) {
       const { id } = await propose(u, { items: [{ type: "prd", brief: `مواصفة رقم ${i}` }] });
       ids.push(id!);
-      await push(u.email, { role: "user", content: `طلب ${i}`, at: new Date().toISOString() }, CONV);
-      await push(u.email, { role: "assistant", content: "اقترحت بنداً", at: new Date().toISOString(), agent: "majed", handoff: { id: id! } }, CONV);
+      await push(acct(u), { role: "user", content: `طلب ${i}`, at: new Date().toISOString() }, CONV);
+      await push(acct(u), { role: "assistant", content: "اقترحت بنداً", at: new Date().toISOString(), agent: "majed", handoff: { id: id! } }, CONV);
     }
     // The oldest card's record is gone (its 180 days passed, or it was pushed off the index).
-    await db.del(`handoff:${u.email}:${ids[0]}`);
+    await db.del(`handoff:${acct(u)}:${ids[0]}`);
     await signIn(u.email);
     const spy = vi.spyOn(db, "mget");
     const chat = renderToStaticMarkup((await ChatPage({ params: Promise.resolve({ lang: "en" }), searchParams: Promise.resolve({ conv: CONV }) } as never)) as ReactElement);
@@ -924,33 +925,33 @@ describe("the log, the card, the chip and the page (rule 281)", () => {
 describe("the handoffs go with the account (rule 282)", () => {
   it("wipeAccount deletes every record, lock and index of every brand; an id that falls off the index takes its record", async () => {
     const u = await owner("ho-wipe");
-    await saveUser({ ...(await getUser(u.email))!, plan: "agency" });
-    const second = await addBrand((await getUser(u.email))!, "Second");
+    await saveUser({ ...(await getUser(acct(u)))!, plan: "agency" });
+    const second = await addBrand((await getUser(acct(u)))!, "Second");
     if ("error" in second) throw new Error(second.error);
-    const s2 = scopeFor(u.email, second.id);
-    const a = await createHandoff(u.email, { proposal: { items: [{ type: "social", brief: "b" }] }, requestedBy: ownerBy(u), origin: "web_chat", ownerMsg: "m" });
+    const s2 = scopeFor(acct(u), second.id);
+    const a = await createHandoff(acct(u), { proposal: { items: [{ type: "social", brief: "b" }] }, requestedBy: ownerBy(u), origin: "web_chat", ownerMsg: "m" });
     const b = await createHandoff(s2, { proposal: { items: [{ type: "prd", brief: "b" }] }, requestedBy: ownerBy(u), origin: "web_chat", ownerMsg: "m" });
     await db.lock(`handofflock:${s2}:${b.id}`, 60);
     // Each item's auto-run attempt counter too (rule 283 onwards, tests/handoff-auto.test.ts), one per possible item.
     // And each item's run receipt, written only when a delivered item owed credits back (rule 2480).
     expect(await handoffKeys(s2)).toEqual([`handoff:${s2}:${b.id}`, `handofflock:${s2}:${b.id}`, ...[0, 1, 2].map((n) => `handofftry:${s2}:${b.id}:${n}`), ...[0, 1, 2].map((n) => `runrec:handoff:${s2}:${b.id}:${n}`), `handoffs:${s2}`]);
-    await wipeAccount(u.email);
+    await wipeAccount(acct(u));
     const mem = (globalThis as unknown as { __nashrMem: { kv: Map<string, unknown>; lists: Map<string, string[]> } }).__nashrMem;
-    const left = [...mem.kv.keys(), ...mem.lists.keys()].filter((k) => /^handoff/.test(k) && k.includes(u.email));
+    const left = [...mem.kv.keys(), ...mem.lists.keys()].filter((k) => /^handoff/.test(k) && k.includes(acct(u)));
     expect(left).toEqual([]);
-    expect(await getHandoff(u.email, a.id)).toBeNull();
+    expect(await getHandoff(acct(u), a.id)).toBeNull();
 
     // The capped index: the oldest id falls off, and its record and lock with it.
     const v = await owner("ho-cap-index");
-    const first = await createHandoff(v.email, { proposal: { items: [{ type: "social", brief: "b" }] }, requestedBy: ownerBy(v), origin: "web_chat", ownerMsg: "m" });
-    await db.lock(`handofflock:${v.email}:${first.id}`, 60);
-    for (let i = 1; i < CAPS.handoffs; i++) await createHandoff(v.email, { proposal: { items: [{ type: "social", brief: "b" }] }, requestedBy: ownerBy(v), origin: "web_chat", ownerMsg: "m" });
-    expect(await getHandoff(v.email, first.id)).not.toBeNull();
-    await createHandoff(v.email, { proposal: { items: [{ type: "social", brief: "b" }] }, requestedBy: ownerBy(v), origin: "web_chat", ownerMsg: "m" });
-    expect((await index(v.email)).length).toBe(CAPS.handoffs);
-    expect(await index(v.email)).not.toContain(first.id);
-    expect(await getHandoff(v.email, first.id)).toBeNull();
-    expect(await db.get(`handofflock:${v.email}:${first.id}`)).toBeNull();
+    const first = await createHandoff(acct(v), { proposal: { items: [{ type: "social", brief: "b" }] }, requestedBy: ownerBy(v), origin: "web_chat", ownerMsg: "m" });
+    await db.lock(`handofflock:${acct(v)}:${first.id}`, 60);
+    for (let i = 1; i < CAPS.handoffs; i++) await createHandoff(acct(v), { proposal: { items: [{ type: "social", brief: "b" }] }, requestedBy: ownerBy(v), origin: "web_chat", ownerMsg: "m" });
+    expect(await getHandoff(acct(v), first.id)).not.toBeNull();
+    await createHandoff(acct(v), { proposal: { items: [{ type: "social", brief: "b" }] }, requestedBy: ownerBy(v), origin: "web_chat", ownerMsg: "m" });
+    expect((await index(acct(v))).length).toBe(CAPS.handoffs);
+    expect(await index(acct(v))).not.toContain(first.id);
+    expect(await getHandoff(acct(v), first.id)).toBeNull();
+    expect(await db.get(`handofflock:${acct(v)}:${first.id}`)).toBeNull();
   });
 
   /** Every `handoff:{scope}:*` record in the store that the index does not name: what the wipe would leave behind. */
@@ -971,17 +972,17 @@ describe("the handoffs go with the account (rule 282)", () => {
 
   it("two proposals at once on a full index: both ids they push off go with their records, and no record outlives the index", async () => {
     const u = await owner("ho-race");
-    const ids = await fullIndex(u.email);
-    const mk = () => createHandoff(u.email, { proposal: { items: [{ type: "social", brief: "b" }] }, requestedBy: ownerBy(u), origin: "web_chat", ownerMsg: "m" });
+    const ids = await fullIndex(acct(u));
+    const mk = () => createHandoff(acct(u), { proposal: { items: [{ type: "social", brief: "b" }] }, requestedBy: ownerBy(u), origin: "web_chat", ownerMsg: "m" });
     const [a, b] = await Promise.all([mk(), mk()]);
-    const idx = await index(u.email);
+    const idx = await index(acct(u));
     expect(idx).toHaveLength(CAPS.handoffs);
     expect(idx.slice(0, 2).sort()).toEqual([a.id, b.id].sort());
     for (const old of ids.slice(0, 2)) {
       expect(idx, old).not.toContain(old);
-      expect(await db.get(`handoff:${u.email}:${old}`), old).toBeNull();
+      expect(await db.get(`handoff:${acct(u)}:${old}`), old).toBeNull();
     }
-    expect(await orphans(u.email)).toEqual([]);
+    expect(await orphans(acct(u))).toEqual([]);
   });
 
   it("a run that ends after its proposal was pushed off the index does not bring the record back; one that starts after it charges nothing", async () => {
@@ -1002,33 +1003,33 @@ describe("the handoffs go with the account (rule 282)", () => {
     const u = await owner("ho-evict-run");
     const { id } = await propose(u, { items: [{ type: "prd", brief: "مواصفة" }] });
     // 199 newer proposals: the one about to run is the oldest the index keeps.
-    for (let i = 0; i < CAPS.handoffs - 1; i++) await db.lpush(`handoffs:${u.email}`, randomBytes(8).toString("hex"));
-    const running = lib.runHandoffItem(u, u.email, id!, 0, { by: ownerBy(u), deadline: Date.now() + 300_000 });
+    for (let i = 0; i < CAPS.handoffs - 1; i++) await db.lpush(`handoffs:${acct(u)}`, randomBytes(8).toString("hex"));
+    const running = lib.runHandoffItem(u, acct(u), id!, 0, { by: ownerBy(u), deadline: Date.now() + 300_000 });
     await vi.waitFor(() => expect(started).toBe(true));
-    await lib.createHandoff(u.email, { proposal: { items: [{ type: "social", brief: "b" }] }, requestedBy: ownerBy(u), origin: "web_chat", ownerMsg: "m" });
-    expect(await index(u.email)).not.toContain(id);
-    expect(await db.get(`handoff:${u.email}:${id}`)).toBeNull();
+    await lib.createHandoff(acct(u), { proposal: { items: [{ type: "social", brief: "b" }] }, requestedBy: ownerBy(u), origin: "web_chat", ownerMsg: "m" });
+    expect(await index(acct(u))).not.toContain(id);
+    expect(await db.get(`handoff:${acct(u)}:${id}`)).toBeNull();
     release();
     expect(await running).toMatchObject({ ok: true });
     await settle();
     // The run's own last write found no record and wrote none: nothing outside the index for the wipe to miss.
-    expect(await db.get(`handoff:${u.email}:${id}`)).toBeNull();
-    expect(await orphans(u.email)).toEqual([]);
+    expect(await db.get(`handoff:${acct(u)}:${id}`)).toBeNull();
+    expect(await orphans(acct(u))).toEqual([]);
 
     // A run whose record is gone by the time it would be marked running: not_found, nothing charged, its attempt settled.
     const v = await owner("ho-evict-before");
     const p = await propose(v, { items: [{ type: "prd", brief: "مواصفة" }] });
-    const h = (await getHandoff(v.email, p.id!))!;
-    await db.del(`handoff:${v.email}:${h.id}`);
+    const h = (await getHandoff(acct(v), p.id!))!;
+    await db.del(`handoff:${acct(v)}:${h.id}`);
     const settleSpy = vi.fn(async () => {});
-    const before = await credits(v.email);
-    expect(await runItemLocked(v, v.email, h, 0, { by: ownerBy(v), settle: settleSpy })).toEqual({ ok: false, error: "not_found" });
+    const before = await credits(acct(v));
+    expect(await runItemLocked(v, acct(v), h, 0, { by: ownerBy(v), settle: settleSpy })).toEqual({ ok: false, error: "not_found" });
     expect(settleSpy).toHaveBeenCalledTimes(1);
-    expect(await credits(v.email)).toBe(before);
-    expect(await db.get(`handoff:${v.email}:${h.id}`)).toBeNull();
+    expect(await credits(acct(v))).toBe(before);
+    expect(await db.get(`handoff:${acct(v)}:${h.id}`)).toBeNull();
     // A decline of a record that went meanwhile writes nothing back either.
-    expect(await declineHandoff(v.email, h.id, 0, ownerBy(v))).toEqual({ ok: false, error: "not_found" });
-    expect(await db.get(`handoff:${v.email}:${h.id}`)).toBeNull();
+    expect(await declineHandoff(acct(v), h.id, 0, ownerBy(v))).toEqual({ ok: false, error: "not_found" });
+    expect(await db.get(`handoff:${acct(v)}:${h.id}`)).toBeNull();
   });
 });
 
@@ -1066,10 +1067,10 @@ describe("a chat card never offers Approve on an item another agent flagged (rul
   it("the handoff card's made items, the chat page's waiting card and a chat turn's items all carry it", async () => {
     const u = await owner("ho-xflag");
     const { id } = await propose(u, TWO);
-    await saveTask(u.email, task("x1", { crossReview: [V("razan", "flag", "«1 + 1 = 3»")] }), true);
-    const h = (await getHandoff(u.email, id!))!;
-    await db.set(`handoff:${u.email}:${id}`, { ...h, items: [{ ...h.items[0], status: "done", tasks: ["x1"] }, h.items[1]] });
-    expect((await handoffView(u.email, (await getHandoff(u.email, id!))!)).items[0].made[0].xflag).toEqual([{ by: "razan", n: 1 }]);
+    await saveTask(acct(u), task("x1", { crossReview: [V("razan", "flag", "«1 + 1 = 3»")] }), true);
+    const h = (await getHandoff(acct(u), id!))!;
+    await db.set(`handoff:${acct(u)}:${id}`, { ...h, items: [{ ...h.items[0], status: "done", tasks: ["x1"] }, h.items[1]] });
+    expect((await handoffView(acct(u), (await getHandoff(acct(u), id!))!)).items[0].made[0].xflag).toEqual([{ by: "razan", n: 1 }]);
     await signIn(u.email);
     const page = renderToStaticMarkup((await ChatPage({ params: Promise.resolve({ lang: "en" }), searchParams: Promise.resolve({}) } as never)) as ReactElement);
     expect(page).toContain(fill(en.inbox.xNote, { name: en.agents.razan.name }));
@@ -1136,6 +1137,6 @@ describe("an agents' handoff note in the same reply never takes Majed's card (ru
     expect(p.text).not.toMatch(/^Not done/);
     expect(p.id).toBeTruthy();
     expect(p.id).not.toBe(actions.find((a) => a.startsWith("note:"))!.slice(5));
-    expect(await getHandoff(u.email, p.id!)).not.toBeNull();
+    expect(await getHandoff(acct(u), p.id!)).not.toBeNull();
   });
 });

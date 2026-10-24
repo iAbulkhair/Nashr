@@ -23,7 +23,7 @@ vi.mock("@anthropic-ai/sdk", () => {
 });
 vi.mock("@/lib/model", async (orig) => ({ ...(await orig<typeof import("@/lib/model")>()), modelState: () => "on" as const }));
 
-import { getUser, saveUser, type User } from "@/lib/auth";
+import { getUser, saveUser, type User, acct, sc } from "@/lib/auth";
 import { db } from "@/lib/db";
 import type { Brand } from "@/lib/brand";
 import { listActivity } from "@/lib/activity";
@@ -40,8 +40,8 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 async function owner(prefix: string, credits: number): Promise<User> {
   const u = await newUser(prefix);
   await saveUser({ ...u, credits });
-  await db.set(`brand:${u.email}`, brand);
-  return (await getUser(u.email))!;
+  await db.set(`brand:${acct(u)}`, brand);
+  return (await getUser(acct(u)))!;
 }
 const balance = async (email: string) => (await getUser(email))!.credits;
 const opts = (claim: string, model?: string): BatchOpts => ({ type: "social", source: "manual", via: "app", once: claim, ...(model ? { model } : {}) });
@@ -49,11 +49,11 @@ const opts = (claim: string, model?: string): BatchOpts => ({ type: "social", so
 /** A run on `model` killed after its charge: the platform stops it while it generates, so its hold stays. */
 async function killedRun(u: User, claim: string, model: string, price: number) {
   h.mode = "hang";
-  const before = await balance(u.email);
-  void generateBatch(u, u.email, opts(claim, model));
-  for (let i = 0; i < 200 && (await balance(u.email)) === before; i++) await sleep(5);
-  expect(await balance(u.email), "the killed run was charged").toBe(before - price);
-  expect((await getUser(u.email))!.paidOnce?.[claim]?.credits).toBe(price);
+  const before = await balance(acct(u));
+  void generateBatch(u, sc(u), opts(claim, model));
+  for (let i = 0; i < 200 && (await balance(acct(u))) === before; i++) await sleep(5);
+  expect(await balance(acct(u)), "the killed run was charged").toBe(before - price);
+  expect((await getUser(acct(u)))!.paidOnce?.[claim]?.credits).toBe(price);
   h.mode = "ok";
 }
 const generatedRow = async (email: string) => (await listActivity(email, { kind: "generated" })).rows[0];
@@ -64,73 +64,73 @@ afterEach(async () => { await settle(); vi.unstubAllEnvs(); });
 describe("a retry on another model never reuses a hold priced for a different model (rule 333 by tier)", () => {
   it("a Sonnet hold of 5, retried on Opus at 10: the 5 is given back and 10 charged; balance, row and cost say 10", async () => {
     const u = await owner("once-up", 40);
-    const claim = `weekly:${u.email}:2026-10-04`;
+    const claim = `weekly:${acct(u)}:2026-10-04`;
     await killedRun(u, claim, SONNET, 5);
-    const r = await generateBatch((await getUser(u.email))!, u.email, opts(claim, OPUS));
+    const r = await generateBatch((await getUser(acct(u)))!, sc(u), opts(claim, OPUS));
     expect(r.ok).toBe(true);
     if (!r.ok) return;
-    const after = (await getUser(u.email))!;
-    expect([r.cost, after.credits, r.credits, after.paidOnce?.[claim]?.credits, agentSpendFor(after, u.email).noor]).toEqual([10, 30, 30, 10, 10]);
-    expect((await generatedRow(u.email))?.credits).toBe(10);
+    const after = (await getUser(acct(u)))!;
+    expect([r.cost, after.credits, r.credits, after.paidOnce?.[claim]?.credits, agentSpendFor(after, sc(u)).noor]).toEqual([10, 30, 30, 10, 10]);
+    expect((await generatedRow(acct(u)))?.credits).toBe(10);
   });
 
   it("an Opus hold of 10, retried on Sonnet at 5: the 10 is given back and 5 charged; balance, row and cost say 5", async () => {
     const u = await owner("once-down", 40);
-    const claim = `weekly:${u.email}:2026-10-04`;
+    const claim = `weekly:${acct(u)}:2026-10-04`;
     await killedRun(u, claim, OPUS, 10);
-    const r = await generateBatch((await getUser(u.email))!, u.email, opts(claim, SONNET));
+    const r = await generateBatch((await getUser(acct(u)))!, sc(u), opts(claim, SONNET));
     expect(r.ok).toBe(true);
     if (!r.ok) return;
-    const after = (await getUser(u.email))!;
-    expect([r.cost, after.credits, r.credits, after.paidOnce?.[claim]?.credits, agentSpendFor(after, u.email).noor]).toEqual([5, 35, 35, 5, 5]);
-    expect((await generatedRow(u.email))?.credits).toBe(5);
+    const after = (await getUser(acct(u)))!;
+    expect([r.cost, after.credits, r.credits, after.paidOnce?.[claim]?.credits, agentSpendFor(after, sc(u)).noor]).toEqual([5, 35, 35, 5, 5]);
+    expect((await generatedRow(acct(u)))?.credits).toBe(5);
   });
 
   it("the same model reuses the hold: nothing more is charged, and the row and cost report the hold's credits", async () => {
     const u = await owner("once-same", 40);
-    const claim = `weekly:${u.email}:2026-10-04`;
+    const claim = `weekly:${acct(u)}:2026-10-04`;
     await killedRun(u, claim, SONNET, 5);
-    const r = await generateBatch((await getUser(u.email))!, u.email, opts(claim, SONNET));
+    const r = await generateBatch((await getUser(acct(u)))!, sc(u), opts(claim, SONNET));
     expect(r.ok && [r.cost, r.receipt.credits]).toEqual([5, 35]);
-    expect([await balance(u.email), (await generatedRow(u.email))?.credits]).toEqual([35, 5]);
+    expect([await balance(acct(u)), (await generatedRow(acct(u)))?.credits]).toEqual([35, 5]);
   });
 
   it("when the new price cannot be paid nothing moves: the old hold stays for the daily sweep, which gives it back", async () => {
     const u = await owner("once-short", 8);
-    const claim = `weekly:${u.email}:2026-10-04`;
+    const claim = `weekly:${acct(u)}:2026-10-04`;
     await killedRun(u, claim, SONNET, 5);
-    const r = await generateBatch((await getUser(u.email))!, u.email, opts(claim, OPUS));
+    const r = await generateBatch((await getUser(acct(u)))!, sc(u), opts(claim, OPUS));
     expect(r).toMatchObject({ ok: false, reason: "no_credits", need: 10, credits: 3 });
-    const after = (await getUser(u.email))!;
-    expect([after.credits, after.paidOnce?.[claim]?.credits, agentSpendFor(after, u.email).noor]).toEqual([3, 5, 5]);
+    const after = (await getUser(acct(u)))!;
+    expect([after.credits, after.paidOnce?.[claim]?.credits, agentSpendFor(after, sc(u)).noor]).toEqual([3, 5, 5]);
     // The hold is not stranded: the sweep of a week with no plan refunds it (rule 337).
-    expect((await resolveOnceHolds(u.email, { [claim]: false })).credits).toBe(8);
+    expect((await resolveOnceHolds(acct(u), { [claim]: false })).credits).toBe(8);
   });
 
   it("the ledger: chargeOnce swaps a hold of another price in one save, and reuses one of the same price", async () => {
     const u = await owner("once-ledger", 20);
-    const meta = { scope: u.email, agent: "noor" as const };
-    expect(await chargeOnce(u.email, 5, meta, "c")).toMatchObject({ ok: true, reused: false, credits: 15 });
-    expect(await chargeOnce(u.email, 5, meta, "c")).toMatchObject({ ok: true, reused: true, credits: 15, hold: { credits: 5 } });
-    expect(await chargeOnce(u.email, 10, meta, "c")).toMatchObject({ ok: true, reused: false, credits: 10, replaced: 5 });
-    expect(await chargeOnce(u.email, 3, meta, "c")).toMatchObject({ ok: true, reused: false, credits: 17, replaced: 10 });
-    const after = (await getUser(u.email))!;
-    expect([after.paidOnce?.c?.credits, agentSpendFor(after, u.email).noor]).toEqual([3, 3]);
+    const meta = { scope: sc(u), agent: "noor" as const };
+    expect(await chargeOnce(acct(u), 5, meta, "c")).toMatchObject({ ok: true, reused: false, credits: 15 });
+    expect(await chargeOnce(acct(u), 5, meta, "c")).toMatchObject({ ok: true, reused: true, credits: 15, hold: { credits: 5 } });
+    expect(await chargeOnce(acct(u), 10, meta, "c")).toMatchObject({ ok: true, reused: false, credits: 10, replaced: 5 });
+    expect(await chargeOnce(acct(u), 3, meta, "c")).toMatchObject({ ok: true, reused: false, credits: 17, replaced: 10 });
+    const after = (await getUser(acct(u)))!;
+    expect([after.paidOnce?.c?.credits, agentSpendFor(after, sc(u)).noor]).toEqual([3, 3]);
     // Too dear even with the old hold given back: refused, and the record is as it was.
-    expect(await chargeOnce(u.email, 30, meta, "c")).toMatchObject({ ok: false, reason: "no_credits", need: 30, credits: 17 });
-    expect([(await getUser(u.email))!.credits, (await getUser(u.email))!.paidOnce?.c?.credits]).toEqual([17, 3]);
+    expect(await chargeOnce(acct(u), 30, meta, "c")).toMatchObject({ ok: false, reason: "no_credits", need: 30, credits: 17 });
+    expect([(await getUser(acct(u)))!.credits, (await getUser(acct(u)))!.paidOnce?.c?.credits]).toEqual([17, 3]);
   });
 
   it("a swap refused at the agent's cap reports the record as it was: the balance, and the agent's spend with the old hold still in it", async () => {
     const u = await owner("once-cap", 20);
-    const meta = { scope: u.email, agent: "noor" as const, cap: 8 };
-    expect(await chargeOnce(u.email, 5, meta, "c")).toMatchObject({ ok: true, reused: false, credits: 15, spent: 5, cap: 8 });
+    const meta = { scope: sc(u), agent: "noor" as const, cap: 8 };
+    expect(await chargeOnce(acct(u), 5, meta, "c")).toMatchObject({ ok: true, reused: false, credits: 15, spent: 5, cap: 8 });
     // 10 is over the cap of 8 even with the hold's 5 given back. Nothing is saved, so the refusal says what the record
     // says: 5 spent of 8 (not the 0 the in-memory give-back left before the refusal), 15 credits.
-    expect(await chargeOnce(u.email, 10, meta, "c")).toEqual({ ok: false, reason: "agent_cap", credits: 15, agent: "noor", spent: 5, cap: 8 });
-    const after = (await getUser(u.email))!;
-    expect([after.credits, after.paidOnce?.c?.credits, agentSpendFor(after, u.email).noor]).toEqual([15, 5, 5]);
+    expect(await chargeOnce(acct(u), 10, meta, "c")).toEqual({ ok: false, reason: "agent_cap", credits: 15, agent: "noor", spent: 5, cap: 8 });
+    const after = (await getUser(acct(u)))!;
+    expect([after.credits, after.paidOnce?.c?.credits, agentSpendFor(after, sc(u)).noor]).toEqual([15, 5, 5]);
     // Within the cap with the hold given back (5 spent - 5 + 7 = 7 of 8): the swap goes through.
-    expect(await chargeOnce(u.email, 7, meta, "c")).toMatchObject({ ok: true, reused: false, credits: 13, spent: 7, replaced: 5 });
+    expect(await chargeOnce(acct(u), 7, meta, "c")).toMatchObject({ ok: true, reused: false, credits: 13, spent: 7, replaced: 5 });
   });
 });

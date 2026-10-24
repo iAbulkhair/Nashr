@@ -104,7 +104,7 @@ const WEEKLY_NOTE = "This is the automatic Sunday plan. Reference strategy.md ph
  * invocation ends (epoch ms), which bounds the generation so its refund runs before the platform's kill.
  */
 export async function runWeekly(user: User, by: By = systemBy("cron"), opts: { deadline?: number; resume?: boolean } = {}): Promise<string> {
-  const email = user.scope ?? user.email;
+  const email = user.scope ?? acct(user);
   const brand = await getBrand(email);
   if (!brand) return "no_brand";
   const sched = await getSchedule(email);
@@ -227,7 +227,7 @@ async function notifyNotNow(user: User, scope: string, n: number) {
 
 /** Daily brief: no model call, no credits. Pure summary from stored data. */
 export async function runDaily(user: User): Promise<Brief | null> {
-  const email = user.scope ?? user.email;
+  const email = user.scope ?? acct(user);
   // One round of reads, not three in a row (rule 1434).
   const [sched, brand, stamp] = await Promise.all([getSchedule(email), getBrand(email), indexedAt(email)]);
   // Weekly: rebuild the light index from the tasks themselves, so a write that failed half way cannot stay wrong for long.

@@ -4,8 +4,8 @@ import { readFileSync } from "node:fs";
 import type { ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { jar, json, markVerified, newMember, newUser, params, signIn, signOut } from "./helpers/session";
-import { createUser, getUser, saveUser, type User } from "@/lib/auth";
-import { storedPersonId } from "@/lib/keys";
+import { acct, createUser, getLogin, getUser, saveUser, type User } from "@/lib/auth";
+import { ownerOf } from "@/lib/membership";
 import { db } from "@/lib/db";
 import { codeFor } from "@/lib/referral";
 import { wipeAccount } from "@/lib/account";
@@ -65,6 +65,11 @@ const body = async <T = Record<string, unknown>>(r: Response | Promise<Response>
 type AsyncPage = (p: { params: Promise<{ lang: string }> }) => Promise<ReactElement>;
 const html = async (page: unknown, lang = "en") => renderToStaticMarkup(await (page as AsyncPage)({ params: Promise.resolve({ lang }) }));
 
+/** The account an address opens, found through the login index as production does: with `OPAQUE_IDS` on it is `a_…`, never the address. */
+const idOf = async (email: string) => (await getLogin(email))?.acct ?? null;
+/** The account record behind a sign-in address (null when no account was made), read by its id. */
+const userAt = async (email: string) => { const id = await idOf(email); return id ? getUser(id) : null; };
+
 const asFounder = () => signIn(FOUNDER);
 /** A founder approval; the founder states the partner agreed to the terms outside the form unless `extra` says otherwise (rule 415). */
 async function approve(email: string, c: string, extra: Record<string, unknown> = {}) {
@@ -75,7 +80,7 @@ async function partner(prefix = "partner"): Promise<{ user: User; code: string }
   const user = await newUser(prefix);
   const c = code();
   expect(await status(approve(user.email, c))).toBe(200);
-  return { user: (await getUser(user.email))!, code: c };
+  return { user: (await getUser(acct(user)))!, code: c };
 }
 /** A signup through the real route, from its own address so the per-IP limit never interferes. */
 async function signupVia(fields: Record<string, unknown>, cookie?: string) {
@@ -83,7 +88,7 @@ async function signupVia(fields: Record<string, unknown>, cookie?: string) {
   if (cookie) jar().set(PARTNER_COOKIE, cookie);
   const email = `cust-${randomBytes(4).toString("hex")}@test.example`;
   const res = await signup.POST(json("/api/auth/signup", "POST", { email, password: "abc12345", name: "Customer", lang: "en", ...fields }, { "x-forwarded-for": ip() }));
-  return { res, email };
+  return { res, email, id: await idOf(email) as string };
 }
 async function record(email: string, b: Record<string, unknown>) {
   await asFounder();
@@ -107,7 +112,7 @@ const visit = (c: string, headers: Record<string, string> = {}, query = "") => p
 beforeAll(async () => {
   vi.stubEnv("ADMIN_EMAILS", FOUNDER);
   vi.stubEnv("WAITLIST_ADMIN_KEY", "");
-  if (!(await getUser(FOUNDER))) await markVerified((await createUser({ email: FOUNDER, name: "Founder", phone: "", password: "abc12345", lang: "en" })).email);
+  if (!(await userAt(FOUNDER))) await markVerified((await createUser({ email: FOUNDER, name: "Founder", phone: "", password: "abc12345", lang: "en" })).email);
 });
 afterEach(() => signOut());
 
@@ -135,7 +140,7 @@ describe("rule 390: partner codes are the founder's to approve, unique, uppercas
     const res = await approve(u.email, c.toLowerCase());
     expect(res.status).toBe(200);
     expect((await partnerByCode(c.toLowerCase()))!.email).toBe(u.email);
-    expect((await getUser(u.email))!.partnerCode).toBe(c);
+    expect((await getUser(acct(u)))!.partnerCode).toBe(c);
     const log = JSON.parse((await db.lrange("admin:log", 0, 0))[0]) as { actor: string; what: string };
     expect(log).toMatchObject({ actor: FOUNDER, what: `partner:approve code:${c} terms:founder` });
   });
@@ -146,8 +151,8 @@ describe("rule 390: partner codes are the founder's to approve, unique, uppercas
     expect(await body(approve(other.email, taken))).toMatchObject({ ok: false, error: "code_taken" });
     expect(await body(approve(other.email, "ADMIN"))).toMatchObject({ ok: false, error: "reserved_code" });
     const someone = await newUser("ref");
-    await db.set(`ref:${codeFor(someone.email)}`, someone.email);
-    expect(await body(approve(other.email, codeFor(someone.email)))).toMatchObject({ ok: false, error: "code_taken" });
+    await db.set(`ref:${codeFor(acct(someone))}`, acct(someone));
+    expect(await body(approve(other.email, codeFor(acct(someone))))).toMatchObject({ ok: false, error: "code_taken" });
     const c = code();
     expect(await status(approve(other.email, c))).toBe(200);
     expect(await body(approve(other.email, code()))).toMatchObject({ ok: false, error: "already_partner" });
@@ -172,7 +177,7 @@ describe("rule 390: partner codes are the founder's to approve, unique, uppercas
     expect(await status(approve(email, c))).toBe(200);
     jar().clear();
     expect(await status(signup.POST(json("/api/auth/signup", "POST", { email, password: "abc12345", name: "Late", lang: "en" }, { "x-forwarded-for": ip() })))).toBe(200);
-    expect((await getUser(email))!.partnerCode).toBe(c);
+    expect((await userAt(email))!.partnerCode).toBe(c);
   });
 });
 
@@ -223,20 +228,20 @@ describe("rule 392: signup attributes the account (a typed code wins over the co
   it("a typed code wins over the link cookie, and the account gets the 15% first-month offer", async () => {
     const a = await partner("sa");
     const b = await partner("sb");
-    const { res, email } = await signupVia({ partnerCode: b.code.toLowerCase() }, a.code);
+    const { res, email, id } = await signupVia({ partnerCode: b.code.toLowerCase() }, a.code);
     expect(await body(res)).toMatchObject({ ok: true, partner: true });
-    const u = (await getUser(email))!;
+    const u = (await userAt(email))!;
     expect(u.referredBy).toMatchObject({ partner: b.user.email, code: b.code, via: "code" });
     expect(u.firstMonthOffer).toMatchObject({ kind: "partner", pct: FIRST_MONTH_DISCOUNT_PCT });
-    expect(await db.sismember(`partner:refs:${b.user.email}`, email)).toBe(true);
-    expect(await db.sismember(`partner:refs:${a.user.email}`, email)).toBe(false);
+    expect(await db.sismember(`partner:refs:${b.user.email}`, id)).toBe(true);
+    expect(await db.sismember(`partner:refs:${a.user.email}`, id)).toBe(false);
   });
 
   it("the cookie alone attributes by link, and is spent", async () => {
     const a = await partner("sc");
     const { res, email } = await signupVia({}, a.code);
     expect(res.status).toBe(200);
-    expect((await getUser(email))!.referredBy).toMatchObject({ partner: a.user.email, via: "link" });
+    expect((await userAt(email))!.referredBy).toMatchObject({ partner: a.user.email, via: "link" });
     expect(jar().has(PARTNER_COOKIE)).toBe(false);
   });
 
@@ -244,14 +249,14 @@ describe("rule 392: signup attributes the account (a typed code wins over the co
     const { res, email } = await signupVia({ partnerCode: "NOSUCHCODE9" });
     expect(res.status).toBe(400);
     expect(await body(res)).toMatchObject({ error: "bad_partner_code" });
-    expect(await getUser(email)).toBeNull();
+    expect(await userAt(email)).toBeNull();
   });
 
   it("the credits referral (?ref=) keeps working next to a partner code", async () => {
     const referrer = await newUser("credref");
-    await db.set(`ref:${codeFor(referrer.email)}`, referrer.email);
+    await db.set(`ref:${codeFor(acct(referrer))}`, acct(referrer));
     const a = await partner("sd");
-    const { res } = await signupVia({ ref: codeFor(referrer.email), partnerCode: a.code });
+    const { res } = await signupVia({ ref: codeFor(acct(referrer)), partnerCode: a.code });
     expect(await body(res)).toMatchObject({ ok: true, referred: true, partner: true });
   });
 
@@ -262,7 +267,7 @@ describe("rule 392: signup attributes the account (a typed code wins over the co
     jar().clear();
     const res = await signup.POST(json("/api/auth/signup", "POST", { email, password: "abc12345", name: "Self", lang: "en", partnerCode: c }, { "x-forwarded-for": ip() }));
     expect(await body(res)).toMatchObject({ ok: true, partner: false });
-    expect((await getUser(email))!.referredBy).toBeUndefined();
+    expect((await userAt(email))!.referredBy).toBeUndefined();
   });
 
   it("the owner's profile never carries the partner's email", async () => {
@@ -282,10 +287,10 @@ describe("rule 393: one first-month discount per account, never stacked; the bil
     const b = await partner("cb");
     const u = await newUser("claim");
     expect(await body(claim(u.email, a.code))).toMatchObject({ ok: true, code: a.code });
-    expect((await getUser(u.email))!.firstMonthOffer?.kind).toBe("partner");
+    expect((await getUser(acct(u)))!.firstMonthOffer?.kind).toBe("partner");
     expect(await body(claim(u.email, b.code))).toMatchObject({ ok: false, error: "already_attributed" });
     const paid = await newUser("claimpaid");
-    await saveUser({ ...(await getUser(paid.email))!, plan: "pro" });
+    await saveUser({ ...(await getUser(acct(paid)))!, plan: "pro" });
     expect(await body(claim(paid.email, a.code))).toMatchObject({ ok: false, error: "already_paid" });
     expect(await body(claim(paid.email, "NOSUCH12"))).toMatchObject({ ok: false, error: "bad_partner_code" });
   });
@@ -293,9 +298,9 @@ describe("rule 393: one first-month discount per account, never stacked; the bil
   it("an account with an unused early-partner offer still holds one offer when it takes a code: the code's", async () => {
     const a = await partner("cc");
     const u = await newUser("early");
-    await saveUser({ ...(await getUser(u.email))!, firstMonthOffer: { kind: "early", pct: FIRST_MONTH_DISCOUNT_PCT, at: new Date().toISOString() } });
+    await saveUser({ ...(await getUser(acct(u)))!, firstMonthOffer: { kind: "early", pct: FIRST_MONTH_DISCOUNT_PCT, at: new Date().toISOString() } });
     expect(await status(claim(u.email, a.code))).toBe(200);
-    const x = (await getUser(u.email))!;
+    const x = (await getUser(acct(u)))!;
     expect(x.firstMonthOffer, "replaced, never stacked").toMatchObject({ kind: "partner", pct: FIRST_MONTH_DISCOUNT_PCT });
     expect(x.firstMonthOffer?.usedAt).toBeUndefined();
     expect(x.referredBy?.partner).toBe(a.user.email);
@@ -319,7 +324,7 @@ describe("rule 393: one first-month discount per account, never stacked; the bil
 describe("rule 394: the trial's last day grants the early-partner offer, mail or not", () => {
   const trial = async (hoursLeft: number) => {
     const u = await newUser("eo");
-    const x = { ...(await getUser(u.email))!, trialEnds: new Date(Date.now() + hoursLeft * 36e5).toISOString() };
+    const x = { ...(await getUser(acct(u)))!, trialEnds: new Date(Date.now() + hoursLeft * 36e5).toISOString() };
     await saveUser(x);
     return x;
   };
@@ -330,9 +335,9 @@ describe("rule 394: the trial's last day grants the early-partner offer, mail or
     expect(earlyOfferDue(await trial(-5)), "the cron's window is the last day only").toBe(false);
     const u = await trial(10);
     expect(earlyOfferDue({ ...u, plan: "pro" })).toBe(false);
-    expect(await grantEarlyOffer(u.email, (x) => earlyOfferDue(x))).toBe(true);
-    expect(await grantEarlyOffer(u.email, (x) => earlyOfferDue(x))).toBe(false);
-    expect((await getUser(u.email))!.firstMonthOffer).toMatchObject({ kind: "early", pct: FIRST_MONTH_DISCOUNT_PCT });
+    expect(await grantEarlyOffer(acct(u), (x) => earlyOfferDue(x))).toBe(true);
+    expect(await grantEarlyOffer(acct(u), (x) => earlyOfferDue(x))).toBe(false);
+    expect((await getUser(acct(u)))!.firstMonthOffer).toMatchObject({ kind: "early", pct: FIRST_MONTH_DISCOUNT_PCT });
   });
 
   it("the daily cron grants it on the last day without any mail set up", async () => {
@@ -341,8 +346,8 @@ describe("rule 394: the trial's last day grants the early-partner offer, mail or
     const u = await trial(12);
     const { GET } = await import("@/app/api/cron/daily/route");
     const report = (await (await GET(new Request("https://nashr.test/api/cron/daily", { headers: { authorization: "Bearer cron-secret-partners" } }))).json()) as { results: Record<string, string> };
-    expect(report.results[u.email]).toMatch(/offer/);
-    expect((await getUser(u.email))!.firstMonthOffer?.kind).toBe("early");
+    expect(report.results[acct(u)]).toMatch(/offer/);
+    expect((await getUser(acct(u)))!.firstMonthOffer?.kind).toBe("early");
     vi.stubEnv("CRON_SECRET", "");
   });
 
@@ -396,17 +401,17 @@ describe("rule 395: the billing page quotes the discounted first month and route
 
   it("a just-ended trial with no offer is granted the early-partner one when the owner opens billing; a member and a founder impersonating grant nothing", async () => {
     const u = await newUser("bend");
-    await saveUser({ ...(await getUser(u.email))!, trialEnds: new Date(Date.now() - 2 * 864e5).toISOString() });
+    await saveUser({ ...(await getUser(acct(u)))!, trialEnds: new Date(Date.now() - 2 * 864e5).toISOString() });
     await signIn(u.email, { imp: FOUNDER });
     await html(BillingPage);
-    expect((await getUser(u.email))!.firstMonthOffer, "looking as the founder is not the customer's visit").toBeUndefined();
-    const m = await newMember((await getUser(u.email))!);
+    expect((await getUser(acct(u)))!.firstMonthOffer, "looking as the founder is not the customer's visit").toBeUndefined();
+    const m = await newMember((await getUser(acct(u)))!);
     await signIn(m.email);
     expect(await html(BillingPage)).not.toContain("data-offer");
-    expect((await getUser(u.email))!.firstMonthOffer).toBeUndefined();
+    expect((await getUser(acct(u)))!.firstMonthOffer).toBeUndefined();
     await signIn(u.email);
     expect(await html(BillingPage)).toContain(`data-offer="early"`);
-    expect((await getUser(u.email))!.firstMonthOffer?.kind).toBe("early");
+    expect((await getUser(acct(u)))!.firstMonthOffer?.kind).toBe("early");
   });
 });
 
@@ -441,7 +446,7 @@ describe("rule 396: a recorded payment pays 15% for the first 4 months when attr
     const { email } = await signupVia({ partnerCode: a.code });
     const first = await body<{ ok: boolean; payment: { id: string; offer?: string; expectedSar?: number; commission?: { sar: number } } }>(record(email, { amountSar: firstMonthPriceSar("starter"), plan: "starter", date: day(), reference: "TRX-1" }));
     expect(first.payment).toMatchObject({ offer: "partner", expectedSar: firstMonthPriceSar("starter"), commission: { sar: commissionSar(firstMonthPriceSar("starter")) } });
-    const u = (await getUser(email))!;
+    const u = (await userAt(email))!;
     expect(u.firstMonthOffer?.usedAt).toBeTruthy();
     expect(u.firstPaidOn).toBe(day());
     const second = await body<{ payment: { offer?: string; commission?: { sar: number } } }>(record(email, { amountSar: PLAN_PRICE_SAR.starter, plan: "starter", date: day() }));
@@ -452,7 +457,7 @@ describe("rule 396: a recorded payment pays 15% for the first 4 months when attr
     // An account attributed 200 days ago that paid first 190 days ago (within its 30 days): that payment counts, and one
     // dated today is past the 4 months that started with it.
     const { email: old } = await signupVia({ partnerCode: a.code });
-    const o = (await getUser(old))!;
+    const o = (await userAt(old))!;
     await saveUser({ ...o, referredBy: { ...o.referredBy!, at: new Date(Date.now() - 200 * 864e5).toISOString() } });
     expect((await body<{ payment: { commission?: { sar: number } } }>(record(old, { amountSar: 100, plan: "starter", date: day(-190) }))).payment.commission?.sar).toBe(15);
     expect((await body<{ payment: { notCounted?: string } }>(record(old, { amountSar: 100, plan: "starter", date: day() }))).payment.notCounted).toBe("window");
@@ -461,19 +466,28 @@ describe("rule 396: a recorded payment pays 15% for the first 4 months when attr
   it("a referral whose first payment came more than 30 days after attribution lapses for every payment, and stays on record", async () => {
     const a = await partner("rl");
     const { email } = await signupVia({ partnerCode: a.code });
-    const u = (await getUser(email))!;
+    const u = (await userAt(email))!;
     await saveUser({ ...u, referredBy: { ...u.referredBy!, at: new Date(Date.now() - 40 * 864e5).toISOString() } });
     expect((await body<{ payment: { notCounted?: string } }>(record(email, { amountSar: 299, plan: "starter", date: day() }))).payment.notCounted).toBe("lapsed");
     expect((await body<{ payment: { notCounted?: string } }>(record(email, { amountSar: 299, plan: "starter", date: day() }))).payment.notCounted).toBe("lapsed");
-    expect((await getUser(email))!.referredBy, "kept, marked lapsed by its dates").toBeTruthy();
-    expect(referralStatus((await getUser(email))!.referredBy!.at, day())).toBe("lapsed");
+    expect((await userAt(email))!.referredBy, "kept, marked lapsed by its dates").toBeTruthy();
+    expect(referralStatus((await userAt(email))!.referredBy!.at, day())).toBe("lapsed");
     expect(await ledger(a.user.email)).toEqual([]);
   });
 
   it("a partner on the customer's team is not counted", async () => {
     const a = await partner("rt");
-    const { email } = await signupVia({ partnerCode: a.code });
-    await db.sadd(`members:${email}`, a.user.email);
+    const { email, id } = await signupVia({ partnerCode: a.code });
+    // The roster holds person ids since M1: the partner's person, found through its login (rule 3820).
+    await db.sadd(`members:${id}`, (await getLogin(a.user.email))!.pid);
+    expect((await body<{ payment: { notCounted?: string } }>(record(email, { amountSar: 299, plan: "starter", date: day() }))).payment.notCounted).toBe("team");
+  });
+
+  it("a customer's owner on the roster of the partner's own account is not counted either (rule 3820)", async () => {
+    const a = await partner("rt2");
+    const { email, id } = await signupVia({ partnerCode: a.code });
+    const customer = (await getUser(id))!;
+    await db.sadd(`members:${acct(a.user)}`, (await getLogin(customer.email))!.pid);
     expect((await body<{ payment: { notCounted?: string } }>(record(email, { amountSar: 299, plan: "starter", date: day() }))).payment.notCounted).toBe("team");
   });
 
@@ -503,7 +517,7 @@ describe("rule 397: voiding a payment voids its commission", () => {
     const rows = await ledger(a.user.email);
     expect(rows[0]).toMatchObject({ kind: "commission", voidedAt: expect.any(String) });
     expect(balances(rows).earned).toBe(0);
-    const u = (await getUser(email))!;
+    const u = (await userAt(email))!;
     expect(u.firstPaidOn).toBeUndefined();
     expect(u.firstMonthOffer?.usedAt).toBeUndefined();
     expect(await status(voidPay(email, payment.id)), "idempotent").toBe(200);
@@ -516,7 +530,7 @@ describe("rule 397: voiding a payment voids its commission", () => {
     const { payment } = await body<{ payment: { id: string } }>(record(email, { amountSar: 299, plan: "starter", date: day() }));
     await voidPay(email, payment.id);
     expect(balances(await ledger(a.user.email)).earned).toBe(commissionSar(254));
-    expect((await getUser(email))!.firstMonthOffer?.usedAt).toBeTruthy();
+    expect((await userAt(email))!.firstMonthOffer?.usedAt).toBeTruthy();
     expect(await status(voidPay(email, "pay_00000000"))).toBe(404);
   });
 });
@@ -611,7 +625,7 @@ describe("rule 399: the partner page shows no customer PII; bank details are the
     await record(paid, { amountSar: 254, plan: "starter", date: day() });
     const d = (await partnerDashboard(a.user.email))!;
     expect(d.referrals.map((r) => r.status).sort()).toEqual(["paid", "trial"]);
-    const paidLabel = customerLabel((await getUser(paid))!);
+    const paidLabel = customerLabel((await userAt(paid))!);
     expect(d.referrals.find((r) => r.label === paidLabel)).toMatchObject({ status: "paid", months: 1 });
     const text = JSON.stringify(d);
     for (const e of [paid, waiting]) expect(text).not.toContain(e);
@@ -629,7 +643,7 @@ describe("rule 399: the partner page shows no customer PII; bank details are the
     await signIn(m.email);
     const page = await html(PartnerPage);
     expect(page).not.toContain(a.code);
-    const owner = { ...a.user, actor: { kind: "owner" as const, pid: storedPersonId(a.user.email), home: true, email: a.user.email, name: "P", lang: "en" as const, role: "owner" as const } };
+    const owner = { ...a.user, actor: { kind: "owner" as const, pid: ownerOf(a.user), home: true, email: a.user.email, name: "P", lang: "en" as const, role: "owner" as const } };
     const founder = { ...owner, actor: { ...owner.actor, kind: "founder" as const, impersonating: FOUNDER } };
     expect(can(owner, "partner")).toBe(true);
     expect(can(owner, "partner.bank")).toBe(true);
@@ -655,14 +669,14 @@ describe("rule 400: the founder console lists applications with ids, decisions a
 describe("rule 401: deleting an account removes its partner-programme data", () => {
   it("a customer: payments go and it leaves its partner's referral set; a partner: record, bank, code and ledger go", async () => {
     const a = await partner("wipe");
-    const { email } = await signupVia({ partnerCode: a.code });
+    const { email, id } = await signupVia({ partnerCode: a.code });
     await record(email, { amountSar: 254, plan: "starter", date: day() });
-    await wipeAccount(email);
-    expect(await db.hgetall(`payments:${email}`)).toEqual({});
-    expect(await db.sismember(`partner:refs:${a.user.email}`, email)).toBe(false);
+    await wipeAccount(id);
+    expect(await db.hgetall(`payments:${id}`)).toEqual({});
+    expect(await db.sismember(`partner:refs:${a.user.email}`, id)).toBe(false);
     await signIn(a.user.email);
     await partnerRoute.PUT(json("/api/partner", "PUT", { holder: "Name", iban: VALID_IBAN, country: "SA" }));
-    await wipeAccount(a.user.email);
+    await wipeAccount(acct(a.user));
     expect(await getPartner(a.user.email)).toBeNull();
     expect(await partnerByCode(a.code)).toBeNull();
     expect(await db.get(`partnercode:${a.code}`)).toBeNull();
@@ -722,7 +736,7 @@ describe("rule 403: the 30 days run from the click on the partner's link, else f
     const clickMs = Date.now() - 29 * 864e5;
     const { res, email } = await signupVia({ partnerCode: a.code }, partnerCookieValue(a.code, clickMs));
     expect(await body(res)).toMatchObject({ ok: true, partner: true });
-    const u = (await getUser(email))!;
+    const u = (await userAt(email))!;
     expect(u.referredBy).toMatchObject({ partner: a.user.email, via: "link", at: new Date(clickMs).toISOString() });
     expect(attributionDeadline(u.referredBy!.at), "30 days from the click, not from signup").toBe(ksaDay(clickMs + 30 * 864e5));
   });
@@ -731,7 +745,7 @@ describe("rule 403: the 30 days run from the click on the partner's link, else f
     const a = await partner("clk2");
     const b = await partner("clk3");
     const { email } = await signupVia({ partnerCode: a.code }, partnerCookieValue(b.code, Date.now() - 20 * 864e5));
-    const u = (await getUser(email))!;
+    const u = (await userAt(email))!;
     expect(u.referredBy).toMatchObject({ partner: a.user.email, via: "code" });
     expect(Date.now() - Date.parse(u.referredBy!.at)).toBeLessThan(60_000);
     jar().clear();
@@ -746,7 +760,7 @@ describe("rule 404: every payment's commission follows the first payment day; a 
   const attributedDaysAgo = async (prefix: string, days: number) => {
     const a = await partner(prefix);
     const { email } = await signupVia({ partnerCode: a.code });
-    const u = (await getUser(email))!;
+    const u = (await userAt(email))!;
     await saveUser({ ...u, referredBy: { ...u.referredBy!, at: new Date(Date.now() - days * 864e5).toISOString() } });
     return { a, email };
   };
@@ -762,7 +776,7 @@ describe("rule 404: every payment's commission follows the first payment day; a 
     const rows = (await ledger(a.user.email)).filter((r) => r.kind === "commission" && !r.voidedAt);
     expect(rows.length).toBe(2);
     expect(balances(await ledger(a.user.email)).earned).toBe((toH(commissionSar(254)) + toH(commissionSar(299))) / 100);
-    expect((await getUser(email))!.firstPaidOn).toBe(day(-20));
+    expect((await userAt(email))!.firstPaidOn).toBe(day(-20));
   });
 
   it("voiding the first payment moves the first payment day: a later one past the 30 days loses its commission", async () => {
@@ -790,12 +804,12 @@ describe("rule 404: every payment's commission follows the first payment day; a 
 
   it("a ledger row lost halfway is restored by the next payment, and every ledger row has its payment", async () => {
     const a = await partner("heal");
-    const { email } = await signupVia({ partnerCode: a.code });
+    const { email, id } = await signupVia({ partnerCode: a.code });
     const { payment } = await body<Rec>(record(email, { amountSar: 254, plan: "starter", date: day() }));
     await db.hdel(`partner:ledger:${a.user.email}`, `c:${payment.id}`);
     await record(email, { amountSar: 299, plan: "starter", date: day() });
     const rows = await ledger(a.user.email);
-    expect(rows.map((r) => r.id).sort()).toEqual(Object.keys(await db.hgetall(`payments:${email}`)).sort());
+    expect(rows.map((r) => r.id).sort()).toEqual(Object.keys(await db.hgetall(`payments:${id}`)).sort());
     expect(balances(rows).earned).toBe((toH(commissionSar(254)) + toH(commissionSar(299))) / 100);
   });
 });
@@ -886,7 +900,7 @@ describe("rule 407: a partner sees a random label, and the ledger never holds a 
   it("the label comes from the attribution's random ref, not from the address", async () => {
     const a = await partner("lbl");
     const { email } = await signupVia({ partnerCode: a.code });
-    const u = (await getUser(email))!;
+    const u = (await userAt(email))!;
     expect(u.referredBy!.ref).toMatch(/^[a-f0-9]{12}$/);
     expect(customerLabel(u)).toBe(`C-${u.referredBy!.ref!.slice(0, 6).toUpperCase()}`);
     expect(customerLabel({ ...u, referredBy: { ...u.referredBy!, ref: "abcdef000000" } })).not.toBe(customerLabel(u));
@@ -894,11 +908,11 @@ describe("rule 407: a partner sees a random label, and the ledger never holds a 
 
   it("commission rows carry the label only; after the customer's account is deleted the console shows no address", async () => {
     const a = await partner("lbw");
-    const { email } = await signupVia({ partnerCode: a.code });
+    const { email, id } = await signupVia({ partnerCode: a.code });
     await record(email, { amountSar: 254, plan: "starter", date: day() });
     expect(JSON.stringify(await ledger(a.user.email))).not.toContain(email);
     expect((await listPartners()).find((p) => p.email === a.user.email)!.commissions[0].customer, "a current referral is shown to the founder").toBe(email);
-    await wipeAccount(email);
+    await wipeAccount(id);
     const after = (await listPartners()).find((p) => p.email === a.user.email)!;
     expect(after.commissions[0].customer).toBeNull();
     expect(JSON.stringify(after)).not.toContain(email);
@@ -999,11 +1013,11 @@ describe("rule 410: the early-partner offer ends 7 days after the trial's last d
     at("2096-10-12T09:00:00.000Z"); // the trial ended 8 days ago
     await signIn(late.email);
     expect(await html(BillingPage)).not.toContain("data-offer");
-    expect((await getUser(late.email))!.firstMonthOffer, "no fallback for a trial past its last day").toBeUndefined();
+    expect((await getUser(acct(late)))!.firstMonthOffer, "no fallback for a trial past its last day").toBeUndefined();
     at("2096-10-10T09:00:00.000Z"); // ended 6 days ago: still within the 7 days
     await signIn(inside.email);
     expect(await html(BillingPage)).toContain(`data-offer="early"`);
-    expect((await getUser(inside.email))!.firstMonthOffer?.kind).toBe("early");
+    expect((await getUser(acct(inside)))!.firstMonthOffer?.kind).toBe("early");
   });
 
   it("a payment dated on or before the last day still uses it (consumed); one dated after does not", async () => {
@@ -1012,15 +1026,15 @@ describe("rule 410: the early-partner offer ends 7 days after the trial's last d
     const a = await newUser("used");
     const b = await newUser("missed");
     at("2096-10-04T05:00:00.000Z");
-    for (const x of [a, b]) expect(await grantEarlyOffer(x.email, (y) => earlyOfferDue(y))).toBe(true);
+    for (const x of [a, b]) expect(await grantEarlyOffer(acct(x), (y) => earlyOfferDue(y))).toBe(true);
     at("2096-10-13T09:00:00.000Z"); // after the offer's last day, the founder records what arrived
     const pa = await body<{ payment: { offer?: string } }>(record(a.email, { amountSar: firstMonthPriceSar("starter"), plan: "starter", date: "2096-10-11" }));
     expect(pa.payment.offer, "money that arrived on the last day").toBe("early");
-    expect((await getUser(a.email))!.firstMonthOffer?.usedAt).toBeTruthy();
+    expect((await getUser(acct(a)))!.firstMonthOffer?.usedAt).toBeTruthy();
     expect(await view(a.email)).toMatchObject({ open: false, expired: false });
     const pb = await body<{ payment: { offer?: string } }>(record(b.email, { amountSar: PLAN_PRICE_SAR.starter, plan: "starter", date: "2096-10-12" }));
     expect(pb.payment.offer, "money that arrived after it ended").toBeUndefined();
-    expect((await getUser(b.email))!.firstMonthOffer?.usedAt).toBeUndefined();
+    expect((await getUser(acct(b)))!.firstMonthOffer?.usedAt).toBeUndefined();
   });
 
   it("a partner code replaces an unused early offer, running or ended: one offer, the code's, with no end date", async () => {
@@ -1030,11 +1044,11 @@ describe("rule 410: the early-partner offer ends 7 days after the trial's last d
     const ended = await newUser("ended");
     const running = await newUser("running");
     at("2096-10-04T05:00:00.000Z");
-    for (const x of [ended, running]) expect(await grantEarlyOffer(x.email, (y) => earlyOfferDue(y))).toBe(true);
+    for (const x of [ended, running]) expect(await grantEarlyOffer(acct(x), (y) => earlyOfferDue(y))).toBe(true);
     const claim = async (email: string) => { await signIn(email); return body(codeRoute.POST(json("/api/partner/code", "POST", { code: a.code }))); };
     at("2096-10-08T09:00:00.000Z"); // still inside the early offer's 7 days
     expect(await claim(running.email)).toMatchObject({ ok: true });
-    expect((await getUser(running.email))!.firstMonthOffer?.kind, "the code's offer, not the early one").toBe("partner");
+    expect((await getUser(acct(running)))!.firstMonthOffer?.kind, "the code's offer, not the early one").toBe("partner");
     let page = await html(BillingPage);
     expect(page).toContain(`data-offer="partner"`);
     expect(page, "a partner code's offer has no end date").not.toContain("The offer ends on");
@@ -1046,7 +1060,7 @@ describe("rule 410: the early-partner offer ends 7 days after the trial's last d
     expect(paid.payment.commission?.sar).toBe(commissionSar(firstMonthPriceSar("starter")));
     at("2096-10-12T09:00:00.000Z"); // the early offer ended on 2096-10-11
     expect(await claim(ended.email)).toMatchObject({ ok: true });
-    expect((await getUser(ended.email))!.firstMonthOffer?.kind).toBe("partner");
+    expect((await getUser(acct(ended)))!.firstMonthOffer?.kind).toBe("partner");
     page = await html(BillingPage);
     expect(page).toContain(`data-offer="partner"`);
     expect(page).not.toContain("The offer ends on");
@@ -1468,8 +1482,8 @@ describe("rule 419: signup looks up a partner code only after Turnstile", () => 
     expect([wrong.res.status, (await body(wrong.res)).error]).toEqual([400, "captcha_failed"]);
     expect([right.res.status, (await body(right.res)).error]).toEqual([400, "captcha_failed"]);
     expect(codeLookups(get), "a script cannot learn which codes exist without passing Turnstile").toBe(0);
-    expect(await getUser(wrong.email)).toBeNull();
-    expect(await getUser(right.email)).toBeNull();
+    expect(await userAt(wrong.email)).toBeNull();
+    expect(await userAt(right.email)).toBeNull();
   });
 
   it("after a passed check a wrong code is still refused before the account exists, and a partner's code attributes", async () => {
@@ -1478,10 +1492,10 @@ describe("rule 419: signup looks up a partner code only after Turnstile", () => 
     vi.spyOn(globalThis, "fetch").mockImplementation(async () => new Response(JSON.stringify({ success: true }), { status: 200, headers: { "content-type": "application/json" } }));
     const wrong = await signupVia({ partnerCode: "NOSUCHCODE9", turnstile: "good-token" });
     expect([wrong.res.status, (await body(wrong.res)).error]).toEqual([400, "bad_partner_code"]);
-    expect(await getUser(wrong.email)).toBeNull();
+    expect(await userAt(wrong.email)).toBeNull();
     const right = await signupVia({ partnerCode: a.code, turnstile: "good-token" });
     expect(await body(right.res)).toMatchObject({ ok: true, partner: true });
-    expect((await getUser(right.email))!.referredBy).toMatchObject({ partner: a.user.email, code: a.code, via: "code" });
+    expect((await userAt(right.email))!.referredBy).toMatchObject({ partner: a.user.email, code: a.code, via: "code" });
   });
 
   it("the route checks Turnstile before the partner code", () => {

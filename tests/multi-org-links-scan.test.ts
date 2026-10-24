@@ -1,17 +1,20 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { appHrefFor } from "@/lib/ws-href";
 import { MULTI_ORG } from "@/lib/multi-org";
 import { wsHandle } from "@/lib/ws-handle";
 import { PERSON_PAGES, appHref, inWorkspace } from "@/lib/ws-path";
+
+vi.mock("@/lib/multi-org", async (orig) => ({ ...(await orig<typeof import("@/lib/multi-org")>()), MULTI_ORG: false }));
 
 /**
  * Rule 2113, link half (multi-workspace M2, docs/specs/2026-10-18-multi-org.md section 7 "Links"): every link to a
  * workspace page is made by `appHref` (src/lib/ws-path.ts) through `useAppLink` in client components, `pageHref` (src/lib/page-href.ts) in
  * pages and `appHrefFor` for links made from an account (src/lib/ws-href.ts), so a page under `w/{handle}` never links
  * out of its workspace. A raw `/{lang}/app…` string may name only a person-level page (`PERSON_PAGES`). With
- * `MULTI_ORG` off (this file does not turn it on) every builder gives today's string.
+ * `MULTI_ORG` off (this file turns it off, rule 3814: the switch is on since the enable release) every builder gives
+ * today's string; tests/multi-org-brand-url.test.ts and tests/brand-url-server-links.test.ts cover it on.
  */
 
 function walk(dir: string): string[] {

@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { readFileSync } from "fs";
 import { newMember, newUser, signIn, signOut } from "./helpers/session";
-import { currentUser, getUser, saveUser } from "@/lib/auth";
+import { currentUser, getUser, saveUser, acct } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { wipeAccount } from "@/lib/account";
 import { cardKey, stopRenewals } from "@/lib/billing";
@@ -34,26 +34,31 @@ async function seed(l: string, sub: string) {
 
 describe("rule 1954: deleting an account removes the two-step, address-change, Google and device records of every login", () => {
   it("owner and member keys are gone and neither session opens anything", async () => {
-    // No shadow memberships: this pins persons who hold nothing else, so the deletion takes both logins (multi-org M1).
+    // No shadow memberships: the owner and the member hold nothing else. The owner goes with the account (reconciliation 7).
+    // With `MULTI_ORG` on the member's person and login outlive their last membership (rule 2126, tests/multi-org-lifecycle.test.ts:
+    // `forgetPersonIfAlone` does nothing), so the member's own records stay and its session opens no workspace; the person's
+    // deletion is the M3 flow, not the account's.
     const owner = await newUser("wipe", { shadow: false });
     const m = await newMember(owner, "member", "m", { shadow: false });
     await Promise.all([seed(owner.email, "gOwnerSub1"), seed(m.email, "gMemberSub1")]);
     await signIn(m.email);
     expect(await currentUser()).not.toBeNull();
-    await wipeAccount(owner.email);
-    const left = await db.mget<unknown>([...packKeys(owner.email, "gOwnerSub1"), ...packKeys(m.email, "gMemberSub1")]);
+    await wipeAccount(acct(owner));
+    const left = await db.mget<unknown>(packKeys(owner.email, "gOwnerSub1"));
     expect(left.filter((v) => v !== null && v !== undefined)).toEqual([]);
+    const kept = await db.mget<unknown>(packKeys(m.email, "gMemberSub1"));
+    expect(kept.filter((v) => v !== null && v !== undefined).length, "the member's person keeps its own login records").toBeGreaterThan(0);
     expect(await currentUser()).toBeNull();
-    expect(await getUser(owner.email)).toBeNull();
+    expect(await getUser(acct(owner))).toBeNull();
   });
 
   it("every brand's notification choices go, not only the default brand's", async () => {
     const owner = await newUser("wipe");
-    await saveBrands(owner.email, [{ id: "default", name: "", createdAt: new Date().toISOString(), status: "active" }, { id: "b2wipe", name: "Second", createdAt: new Date().toISOString(), status: "active" }]);
-    const added = scopeFor(owner.email, "b2wipe");
-    await Promise.all([db.set(profileKey(owner.email), { email: true }), db.set(profileKey(added), { email: false })]);
-    await wipeAccount(owner.email);
-    expect(await db.mget<unknown>([profileKey(owner.email), profileKey(added)])).toEqual([null, null]);
+    await saveBrands(acct(owner), [{ id: "default", name: "", createdAt: new Date().toISOString(), status: "active" }, { id: "b2wipe", name: "Second", createdAt: new Date().toISOString(), status: "active" }]);
+    const added = scopeFor(acct(owner), "b2wipe");
+    await Promise.all([db.set(profileKey(acct(owner)), { email: true }), db.set(profileKey(added), { email: false })]);
+    await wipeAccount(acct(owner));
+    expect(await db.mget<unknown>([profileKey(acct(owner)), profileKey(added)])).toEqual([null, null]);
   });
 
   it("a stored Google id that is not a plain id is never turned into a key", () => {
@@ -65,11 +70,11 @@ describe("rule 1954: deleting an account removes the two-step, address-change, G
 describe("rule 1955: deletion first turns renewal off and drops the saved card, under the account lock", () => {
   it("stopRenewals turns autoRenew off and deletes the card", async () => {
     const u = await newUser("wipe");
-    await saveUser({ ...(await getUser(u.email))!, billing: billing(true) });
-    await db.set(cardKey(u.email), { token: "tok_test", brand: "visa", last4: "4242" });
-    await stopRenewals(u.email);
-    expect((await getUser(u.email))!.billing!.autoRenew).toBe(false);
-    expect(await db.get(cardKey(u.email))).toBeNull();
+    await saveUser({ ...(await getUser(acct(u)))!, billing: billing(true) });
+    await db.set(cardKey(acct(u)), { token: "tok_test", brand: "visa", last4: "4242" });
+    await stopRenewals(acct(u));
+    expect((await getUser(acct(u)))!.billing!.autoRenew).toBe(false);
+    expect(await db.get(cardKey(acct(u)))).toBeNull();
   });
 
   it("a card left behind by an account record already gone is still deleted", async () => {
@@ -81,9 +86,9 @@ describe("rule 1955: deletion first turns renewal off and drops the saved card, 
 
   it("a caller already inside the account lock (the address move) drops the card without waiting on the lock again", async () => {
     const u = await newUser("wipe");
-    await db.set(cardKey(u.email), { token: "tok_test" });
-    await withUserLock(u.email, async () => { await stopRenewals(u.email, { userLocked: true }); });
-    expect(await db.get(cardKey(u.email))).toBeNull();
+    await db.set(cardKey(acct(u)), { token: "tok_test" });
+    await withUserLock(acct(u), async () => { await stopRenewals(acct(u), { userLocked: true }); });
+    expect(await db.get(cardKey(acct(u)))).toBeNull();
     expect(read("src/lib/verify-email.ts")).toContain("await wipeAccount(id, { userLocked: true, loginLocked: true, teamLocked: true, ...(pk === \"skipped\" ? { keepPasskeys: true } : {}) });");
   });
 
@@ -93,10 +98,10 @@ describe("rule 1955: deletion first turns renewal off and drops the saved card, 
     expect(body.indexOf("await stopRenewals(e, opts);")).toBeGreaterThan(0);
     expect(body.indexOf("await stopRenewals(e, opts);")).toBeLessThan(body.indexOf("db.smembers(membersKey(e))"));
     const u = await newUser("wipe");
-    await saveUser({ ...(await getUser(u.email))!, billing: billing(true) });
-    await db.set(cardKey(u.email), { token: "tok_test" });
-    await wipeAccount(u.email);
-    expect(await db.get(cardKey(u.email))).toBeNull();
+    await saveUser({ ...(await getUser(acct(u)))!, billing: billing(true) });
+    await db.set(cardKey(acct(u)), { token: "tok_test" });
+    await wipeAccount(acct(u));
+    expect(await db.get(cardKey(acct(u)))).toBeNull();
   });
 });
 

@@ -1,7 +1,7 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
-import { getUser, type User } from "@/lib/auth";
+import { acct, getUser, type User } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { base32, fromBase32, hotp, looksLikeRecovery, newRecoveryCode, newTotpSecret, otpauthUri, recoveryHash, totpMatch, totpStep } from "@/lib/totp";
 import { ADMIN_2FA_COOKIE, CODE_TRIES_ALL, CODE_TRIES_PER_IP, ENROLMENT_KEY, PENDING_KEY, STEP_UP_IDLE, STEP_UP_MAX, openSecret, sealSecret, type Enrolment } from "@/lib/admin-2fa";
@@ -127,7 +127,7 @@ describe("rollout never locks the founder out (rule 1373)", () => {
   it("before enrolment every write works on the key alone, and the status says not enrolled", async () => {
     expect(await status()).toEqual({ ok: true, enrolled: false, at: null, stepUp: false });
     expect((await addCredit(customer.email)).status).toBe(200);
-    expect((await getUser(customer.email))!.credits).toBe(customer.credits + 1);
+    expect((await getUser(acct(customer)))!.credits).toBe(customer.credits + 1);
   });
   it("a started setup enforces nothing until a code confirms it, and lapses after 15 minutes", async () => {
     expect((await call({ action: "start" })).status).toBe(200);
@@ -189,7 +189,7 @@ describe("after enrolment every founder write needs the second factor (rule 1376
       wishlist.POST(json("/api/admin/wishlist", "POST", { action: "promote", title: { ar: "عنوان", en: "Title" } }, h())),
     ]);
     for (const r of res) expect([r.status, (await r.json()).error]).toEqual([403, "second_factor"]);
-    expect((await getUser(customer.email))!.credits).toBe(customer.credits);
+    expect((await getUser(acct(customer)))!.credits).toBe(customer.credits);
   });
   it("every POST, PUT, PATCH and DELETE under /api/admin calls the gate, except the key form, impersonation stop, the 2FA route and the staff sign-in steps", () => {
     const files: string[] = [];

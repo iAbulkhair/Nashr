@@ -183,7 +183,7 @@ export async function routineLastRuns(scope: string): Promise<Partial<Record<Rou
  */
 export async function dueRoutines(users: User[], now: Date = new Date()): Promise<{ user: User; id: RoutineId }[]> {
   const groups = await pmap(users, async (u) => {
-    const scope = u.scope ?? u.email;
+    const scope = u.scope ?? acct(u);
     const sched = await getSchedule(scope);
     const on = ROUTINES.filter((r) => routineOn(sched, r.id));
     if (!on.length) return [];
@@ -211,7 +211,7 @@ const routineNote = (r: Routine) =>
 export async function runRoutine(user: User, id: RoutineId, deadline?: number, opts: { resume?: boolean } = {}): Promise<string> {
   const r = ROUTINES.find((x) => x.id === id);
   if (!r) return "unknown_routine";
-  const scope = user.scope ?? user.email;
+  const scope = user.scope ?? acct(user);
   const [brand, sched, last] = await Promise.all([getBrand(scope), getSchedule(scope), db.get<string>(lastKey(scope, id))]);
   if (!brand) return "no_brand";
   if (!routineOn(sched, id)) return "off";

@@ -1,8 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { handleOf } from "@/lib/ws-handle";
 import { readFileSync } from "node:fs";
 import { json, newUser, settle, signIn } from "./helpers/session";
 import { claudeOn } from "./helpers/model";
-import { getUser, saveUser, type User } from "@/lib/auth";
+import { getUser, saveUser, type User, acct } from "@/lib/auth";
 import { agentSpendFor } from "@/lib/credits";
 import { db } from "@/lib/db";
 import { saveGov } from "@/lib/governance";
@@ -43,11 +44,12 @@ const item = (id: string, over: Partial<Task> = {}): Task => ({ id, type: "socia
 async function owner(prefix: string, routines: Partial<Record<RoutineId, boolean>> = {}): Promise<User> {
   const u = await newUser(prefix);
   const all = { ...Object.fromEntries(ROUTINE_IDS.map((id) => [id, false])), ...routines } as Record<RoutineId, boolean>;
-  await Promise.all([db.set(`brand:${u.email}`, brand), saveSchedule(u.email, { routines: all })]);
-  return (await getUser(u.email))!;
+  await Promise.all([db.set(`brand:${acct(u)}`, brand), saveSchedule(acct(u), { routines: all })]);
+  // As `runAsAccount` hands a job its user: the stored record with the scope of the brand it acts for (the default brand's is the account id).
+  return { ...(await getUser(acct(u)))!, scope: acct(u) };
 }
-const credits = async (email: string) => (await getUser(email))!.credits;
-const spend = async (email: string, scope = email) => agentSpendFor((await getUser(email))!, scope);
+const credits = async (id: string) => (await getUser(id))!.credits;
+const spend = async (id: string, scope = id) => agentSpendFor((await getUser(id))!, scope);
 const allOn = Object.fromEntries(ROUTINE_IDS.map((id) => [id, true])) as Record<RoutineId, boolean>;
 
 type Params = { system: string | { text: string }[]; messages: { role: string; content: unknown }[]; output_config?: { format?: unknown } };
@@ -98,16 +100,17 @@ describe("the routine registry (rule 111)", () => {
   });
 
   it("every routine is on by default, on added brands too, and the owner's off stays off (rule 1486)", async () => {
-    const u = await newUser("rt-default");
-    expect((await getSchedule(u.email)).routines).toBeUndefined();
-    await db.set(`brand:${u.email}`, brand);
-    for (const id of ROUTINE_IDS) expect(routineOn(await getSchedule(u.email), id), id).toBe(true);
+    const u = { ...(await newUser("rt-default")), scope: "" };
+    u.scope = acct(u);
+    expect((await getSchedule(acct(u))).routines).toBeUndefined();
+    await db.set(`brand:${acct(u)}`, brand);
+    for (const id of ROUTINE_IDS) expect(routineOn(await getSchedule(acct(u)), id), id).toBe(true);
     expect((await dueRoutines([u])).map((x) => x.id).sort()).toEqual([...ROUTINE_IDS].sort());
     // An added brand's routines are on too (unlike its Sunday plan, rule 247).
-    const added = scopeFor(u.email, "b2");
+    const added = scopeFor(acct(u), "b2");
     for (const id of ROUTINE_IDS) expect(routineOn(await getSchedule(added), id), id).toBe(true);
     // The owner's explicit off is kept, and only that routine is off.
-    await saveSchedule(u.email, { routines: { razan_cash_forecast: false } });
+    await saveSchedule(acct(u), { routines: { razan_cash_forecast: false } });
     expect(await runRoutine(u, "razan_cash_forecast")).toBe("off");
     expect((await dueRoutines([u])).map((x) => x.id)).not.toContain("razan_cash_forecast");
     expect((await dueRoutines([u])).length).toBe(ROUTINE_IDS.length - 1);
@@ -124,52 +127,52 @@ describe("the runner refuses before any charge (rule 112)", () => {
     const seen = sdk({ state: "paused" });
     const u = await owner("rt-paused", allOn);
     // Every gate would pass: a fresh store sync, recent activity and decisions.
-    await db.set(`storesales:${u.email}`, snap(new Date().toISOString()));
+    await db.set(`storesales:${acct(u)}`, snap(new Date().toISOString()));
     const done = [item("a1"), item("a2"), item("a3")];
-    await Promise.all(done.map((t) => saveTask(u.email, t, true)));
-    await recordDecisions(u.email, done.map((t) => decisionOf(t, "approve", new Date().toISOString())));
+    await Promise.all(done.map((t) => saveTask(acct(u), t, true)));
+    await recordDecisions(acct(u), done.map((t) => decisionOf(t, "approve", new Date().toISOString())));
     const { runRoutine: run } = await load();
     for (const id of ROUTINE_IDS) expect(await run(u, id), id).toBe("retry:paused");
     expect(seen.made).toBe(0);
-    expect(await credits(u.email)).toBe(50);
-    expect(await spend(u.email)).toEqual({});
-    expect((await listTasks(u.email)).filter((t) => t.source === "scheduled")).toEqual([]);
-    for (const id of ROUTINE_IDS) expect(await db.get(`routinelock:${u.email}:${id}`)).toBeNull();
+    expect(await credits(acct(u))).toBe(50);
+    expect(await spend(acct(u))).toEqual({});
+    expect((await listTasks(acct(u))).filter((t) => t.source === "scheduled")).toEqual([]);
+    for (const id of ROUTINE_IDS) expect(await db.get(`routinelock:${acct(u)}:${id}`)).toBeNull();
   });
 
   it("without a model key the output would be placeholders, so every routine answers skip:mock and charges nothing", async () => {
     vi.stubEnv("ANTHROPIC_API_KEY", "");
     const u = await owner("rt-mock", allOn);
-    await db.set(`storesales:${u.email}`, snap(new Date().toISOString()));
+    await db.set(`storesales:${acct(u)}`, snap(new Date().toISOString()));
     for (const id of ROUTINE_IDS) {
       const r = await runRoutine(u, id);
       expect(r, id).toBe("skip:mock");
       expect(r.startsWith("retry"), "final for the day, not left open").toBe(false);
     }
-    expect(await credits(u.email)).toBe(50);
-    expect(await listTasks(u.email)).toEqual([]);
+    expect(await credits(acct(u))).toBe(50);
+    expect(await listTasks(acct(u))).toEqual([]);
   });
 
   it("no brand, an ended trial and a held lock charge nothing either", async () => {
     const seen = sdk();
     const { runRoutine: run } = await load();
     const bare = await newUser("rt-nobrand");
-    await saveSchedule(bare.email, { routines: allOn });
+    await saveSchedule(acct(bare), { routines: allOn });
     expect(await run(bare, "dana_weekly_report")).toBe("no_brand");
 
     const u = await owner("rt-trial", { dana_weekly_report: true });
-    await saveTask(u.email, item("x1"), true);
+    await saveTask(acct(u), item("x1"), true);
     const ended = { ...u, trialEnds: ago(1) };
     await saveUser(ended);
     expect(await run(ended, "dana_weekly_report")).toBe("trial_over");
 
     const v = await owner("rt-lock", { dana_weekly_report: true });
-    await saveTask(v.email, item("x2"), true);
-    await db.lock(`routinelock:${v.email}:dana_weekly_report`, 300);
+    await saveTask(acct(v), item("x2"), true);
+    await db.lock(`routinelock:${acct(v)}:dana_weekly_report`, 300);
     expect(await run(v, "dana_weekly_report")).toBe("retry:locked");
     expect(seen.made).toBe(0);
-    expect(await credits(u.email)).toBe(50);
-    expect(await credits(v.email)).toBe(50);
+    expect(await credits(acct(u))).toBe(50);
+    expect(await credits(acct(v))).toBe(50);
   });
 });
 
@@ -180,28 +183,28 @@ describe("a routine runs only on real input (rule 113)", () => {
     // Nothing at all; then only items created on their own; then only an owner's item older than 7 days.
     const quiet = await owner("rt-dana-quiet", { dana_weekly_report: true });
     expect(await run(quiet, "dana_weekly_report")).toBe("idle");
-    await saveTask(quiet.email, item("s1", { source: "scheduled", type: "weekly_plan" }), true);
+    await saveTask(acct(quiet), item("s1", { source: "scheduled", type: "weekly_plan" }), true);
     expect(await run(quiet, "dana_weekly_report"), "the routines must not keep each other busy").toBe("idle");
-    await saveTask(quiet.email, item("old", { createdAt: ago(10) }), true);
+    await saveTask(acct(quiet), item("old", { createdAt: ago(10) }), true);
     expect(await run(quiet, "dana_weekly_report")).toBe("idle");
     expect(seen.made).toBe(0);
-    expect(await credits(quiet.email)).toBe(50);
+    expect(await credits(acct(quiet))).toBe(50);
 
     const signals: Record<string, (u: User) => Promise<unknown>> = {
-      "an item the owner created": (u) => saveTask(u.email, item("n1"), true),
-      "a decision in the light index": (u) => saveTask(u.email, item("d1", { createdAt: ago(20), status: "approved", decidedAt: new Date().toISOString() }), true),
-      "a decision record on an older item": (u) => recordDecisions(u.email, [decisionOf(item("d2", { createdAt: ago(20) }), "reject", new Date().toISOString())]),
-      "a store sync": (u) => db.set(`storesales:${u.email}`, snap(ago(2))),
-      "an ad-account sync": (u) => db.set(`adsync:${u.email}:snapchat`, ago(1)),
+      "an item the owner created": (u) => saveTask(acct(u), item("n1"), true),
+      "a decision in the light index": (u) => saveTask(acct(u), item("d1", { createdAt: ago(20), status: "approved", decidedAt: new Date().toISOString() }), true),
+      "a decision record on an older item": (u) => recordDecisions(acct(u), [decisionOf(item("d2", { createdAt: ago(20) }), "reject", new Date().toISOString())]),
+      "a store sync": (u) => db.set(`storesales:${acct(u)}`, snap(ago(2))),
+      "an ad-account sync": (u) => db.set(`adsync:${acct(u)}:snapchat`, ago(1)),
       // Rule 736: a click on Refresh for the site or social results; the daily cron's reads of them never count.
-      "an owner's site or social refresh": (u) => markOwnerSync(u.email, new Date(Date.now() - 2 * DAY)),
+      "an owner's site or social refresh": (u) => markOwnerSync(acct(u), new Date(Date.now() - 2 * DAY)),
     };
     for (const [what, add] of Object.entries(signals)) {
       const u = await owner("rt-dana", { dana_weekly_report: true });
       await add(u);
       expect(await run(u, "dana_weekly_report"), what).toBe("ok:1");
-      expect(await credits(u.email), what).toBe(50 - TASK_COST.weekly_report);
-      expect(await spend(u.email), what).toEqual({ dana: TASK_COST.weekly_report });
+      expect(await credits(acct(u)), what).toBe(50 - TASK_COST.weekly_report);
+      expect(await spend(acct(u)), what).toEqual({ dana: TASK_COST.weekly_report });
     }
     await settle();
   });
@@ -210,17 +213,17 @@ describe("a routine runs only on real input (rule 113)", () => {
     sdk();
     const { runRoutine: run } = await load();
     const u = await owner("rt-save", { dana_weekly_report: true });
-    await saveTask(u.email, item("n1"), true);
+    await saveTask(acct(u), item("n1"), true);
     expect(await run(u, "dana_weekly_report")).toBe("ok:1");
-    const made = (await listTasks(u.email)).filter((t) => t.type === "weekly_report");
+    const made = (await listTasks(acct(u))).filter((t) => t.type === "weekly_report");
     expect(made).toHaveLength(1);
     expect(made[0]).toMatchObject({ source: "scheduled", brief: "dana_weekly_report", status: "pending" });
-    const last = await db.get<string>(`routinelast:${u.email}:dana_weekly_report`);
+    const last = await db.get<string>(`routinelast:${acct(u)}:dana_weekly_report`);
     expect(last && Date.now() - Date.parse(last)).toBeLessThan(60_000);
-    const notes = (await listNotifs(u.email)).filter((n) => n.agent === "dana");
+    const notes = (await listNotifs(acct(u))).filter((n) => n.agent === "dana");
     expect(notes).toHaveLength(1);
-    expect(notes[0]).toMatchObject({ kind: "pending", title: "التقرير الأسبوعي من دانة في صندوق الموافقة", href: "/ar/app/b/default" });
-    expect(await db.get(`notifseen:${u.email}:routine:${u.email}:dana_weekly_report:${periodOf("weekly")}`)).toBe(1);
+    expect(notes[0]).toMatchObject({ kind: "pending", title: "التقرير الأسبوعي من دانة في صندوق الموافقة", href: `/ar/app/w/${handleOf(u)}/b/default` });
+    expect(await db.get(`notifseen:${acct(u)}:routine:${acct(u)}:dana_weekly_report:${periodOf("weekly")}`)).toBe(1);
     await settle();
   });
 
@@ -229,19 +232,19 @@ describe("a routine runs only on real input (rule 113)", () => {
     const { runRoutine: run } = await load();
     const u = await owner("rt-cart", { noor_cart_recovery: true });
     expect(await run(u, "noor_cart_recovery")).toBe("no_data");
-    await db.set(`storesales:${u.email}`, snap(ago(9), { carts: { count: 0, read: 0, value: {}, top: [] } }));
+    await db.set(`storesales:${acct(u)}`, snap(ago(9), { carts: { count: 0, read: 0, value: {}, top: [] } }));
     expect(await run(u, "noor_cart_recovery"), "a sync with no carts left is nothing to recover").toBe("no_data");
     // Last run 8 days ago (an earlier week), after the sync 9 days ago: nothing new since.
-    await db.set(`storesales:${u.email}`, snap(ago(9)));
-    await db.set(`routinelast:${u.email}:noor_cart_recovery`, ago(8));
+    await db.set(`storesales:${acct(u)}`, snap(ago(9)));
+    await db.set(`routinelast:${acct(u)}:noor_cart_recovery`, ago(8));
     expect(await run(u, "noor_cart_recovery")).toBe("idle");
     expect(seen.made).toBe(0);
-    expect(await credits(u.email)).toBe(50);
-    await db.set(`storesales:${u.email}`, snap(ago(1)));
+    expect(await credits(acct(u))).toBe(50);
+    await db.set(`storesales:${acct(u)}`, snap(ago(1)));
     // The full batch of five a cart-recovery run asks for.
     expect(await run(u, "noor_cart_recovery")).toBe("ok:5");
     expect(seen.prompts.at(-1)).toContain("<cart_data>");
-    expect(await spend(u.email)).toEqual({ noor: 3 });
+    expect(await spend(acct(u))).toEqual({ noor: 3 });
     await settle();
   });
 
@@ -250,15 +253,15 @@ describe("a routine runs only on real input (rule 113)", () => {
     const { runRoutine: run } = await load();
     const u = await owner("rt-cash", { razan_cash_forecast: true });
     expect(await run(u, "razan_cash_forecast")).toBe("no_data");
-    await db.set(`storesales:${u.email}`, snap(ago(40)));
+    await db.set(`storesales:${acct(u)}`, snap(ago(40)));
     expect(await run(u, "razan_cash_forecast")).toBe("no_data");
     expect(seen.made).toBe(0);
-    await db.set(`storesales:${u.email}`, snap(ago(10)));
+    await db.set(`storesales:${acct(u)}`, snap(ago(10)));
     expect(await run(u, "razan_cash_forecast")).toBe("ok:1");
     const prompt = seen.prompts.at(-1)!;
     expect(prompt).toContain("STORE DATA");
     expect(prompt).toContain("<store_data>");
-    expect(await spend(u.email)).toEqual({ razan: 4 });
+    expect(await spend(acct(u))).toEqual({ razan: 4 });
     await settle();
   });
 
@@ -269,14 +272,14 @@ describe("a routine runs only on real input (rule 113)", () => {
     const now = new Date().toISOString();
     const a = item("m1", { createdAt: ago(40) }), b = item("m2", { createdAt: ago(40) });
     // Three records, two items: approved, reopened and approved again is still one item. One record is too old.
-    await recordDecisions(u.email, [decisionOf(a, "approve", ago(3)), decisionOf(a, "reopen", ago(2)), decisionOf(a, "approve", now), decisionOf(b, "reject", now), decisionOf(item("m0"), "approve", ago(31))]);
+    await recordDecisions(acct(u), [decisionOf(a, "approve", ago(3)), decisionOf(a, "reopen", ago(2)), decisionOf(a, "approve", now), decisionOf(b, "reject", now), decisionOf(item("m0"), "approve", ago(31))]);
     expect(await run(u, "majed_monthly_review")).toBe("idle");
     expect(seen.made).toBe(0);
     // A third item, decided before decision records existed: only the light index knows.
-    await saveTask(u.email, item("m3", { createdAt: ago(5), status: "approved", decidedAt: ago(4) }), true);
+    await saveTask(acct(u), item("m3", { createdAt: ago(5), status: "approved", decidedAt: ago(4) }), true);
     expect(await run(u, "majed_monthly_review")).toBe("ok:1");
     expect(seen.prompts.at(-1)).toContain("WORKSPACE DATA");
-    expect(await spend(u.email)).toEqual({ majed: 5 });
+    expect(await spend(acct(u))).toEqual({ majed: 5 });
     await settle();
   });
 });
@@ -286,12 +289,12 @@ describe("once per period, inside the weekly cap and the agent's cap (rule 114)"
     sdk();
     const { runRoutine: run } = await load();
     const u = await owner("rt-once", { dana_weekly_report: true, razan_cash_forecast: true });
-    await Promise.all([saveTask(u.email, item("n1"), true), db.set(`storesales:${u.email}`, snap(ago(1)))]);
+    await Promise.all([saveTask(acct(u), item("n1"), true), db.set(`storesales:${acct(u)}`, snap(ago(1)))]);
     expect(await run(u, "dana_weekly_report")).toBe("ok:1");
     expect(await run(u, "dana_weekly_report")).toBe("already_this_period");
     expect(await run(u, "razan_cash_forecast")).toBe("ok:1");
     expect(await run(u, "razan_cash_forecast")).toBe("already_this_period");
-    expect(await credits(u.email)).toBe(50 - TASK_COST.weekly_report - TASK_COST.cash_forecast);
+    expect(await credits(acct(u))).toBe(50 - TASK_COST.weekly_report - TASK_COST.cash_forecast);
     expect(await dueRoutines([u])).toEqual([]);
     await settle();
   });
@@ -301,15 +304,15 @@ describe("once per period, inside the weekly cap and the agent's cap (rule 114)"
     const { runRoutine: run } = await load();
     const { db: store } = await import("@/lib/db");
     const u = await owner("rt-race", { dana_weekly_report: true });
-    await saveTask(u.email, item("n1"), true);
+    await saveTask(acct(u), item("n1"), true);
     // Another invocation (a chain hop) completes the routine just before this one takes the lock.
     const lock = store.lock.bind(store);
-    const spy = vi.spyOn(store, "lock").mockImplementationOnce(async (key, ttl) => { await store.set(`routinelast:${u.email}:dana_weekly_report`, new Date().toISOString()); return lock(key, ttl); });
+    const spy = vi.spyOn(store, "lock").mockImplementationOnce(async (key, ttl) => { await store.set(`routinelast:${acct(u)}:dana_weekly_report`, new Date().toISOString()); return lock(key, ttl); });
     expect(await run(u, "dana_weekly_report")).toBe("already_this_period");
     spy.mockRestore();
     expect(seen.made).toBe(0);
-    expect(await credits(u.email)).toBe(50);
-    expect(await store.lock(`routinelock:${u.email}:dana_weekly_report`, 1), "the lock was released").toBe(true);
+    expect(await credits(acct(u))).toBe(50);
+    expect(await store.lock(`routinelock:${acct(u)}:dana_weekly_report`, 1), "the lock was released").toBe(true);
   });
 
   it("the period is the UTC week from Sunday or the UTC month", () => {
@@ -329,16 +332,16 @@ describe("once per period, inside the weekly cap and the agent's cap (rule 114)"
     const seen = sdk();
     const { runRoutine: run } = await load();
     const u = await owner("rt-cap", { noor_cart_recovery: true });
-    await db.set(`storesales:${u.email}`, snap(ago(1)));
+    await db.set(`storesales:${acct(u)}`, snap(ago(1)));
     // A cart-recovery batch is 5 items.
-    await saveGov(u.email, { weeklyCap: 4 });
+    await saveGov(acct(u), { weeklyCap: 4 });
     expect(await run(u, "noor_cart_recovery")).toBe("cap_reached");
-    await Promise.all([1, 2, 3].map((n) => saveTask(u.email, item(`s${n}`, { source: "scheduled" }), true)));
-    await saveGov(u.email, { weeklyCap: 7 });
+    await Promise.all([1, 2, 3].map((n) => saveTask(acct(u), item(`s${n}`, { source: "scheduled" }), true)));
+    await saveGov(acct(u), { weeklyCap: 7 });
     expect(await run(u, "noor_cart_recovery"), "3 + 5 is over 7").toBe("cap_reached");
     expect(seen.made).toBe(0);
-    expect(await credits(u.email)).toBe(50);
-    await saveGov(u.email, { weeklyCap: 8 });
+    expect(await credits(acct(u))).toBe(50);
+    await saveGov(acct(u), { weeklyCap: 8 });
     expect(await run(u, "noor_cart_recovery")).toBe("ok:5");
     await settle();
   });
@@ -347,33 +350,33 @@ describe("once per period, inside the weekly cap and the agent's cap (rule 114)"
     const seen = sdk();
     const { runRoutine: run } = await load();
     const u = await owner("rt-agentcap", { dana_weekly_report: true });
-    await saveTask(u.email, item("n1"), true);
-    await saveGov(u.email, { agentCaps: { dana: 1 } });
+    await saveTask(acct(u), item("n1"), true);
+    await saveGov(acct(u), { agentCaps: { dana: 1 } });
     expect(await run(u, "dana_weekly_report")).toBe("agent_cap");
-    expect(await credits(u.email)).toBe(50);
-    expect(await spend(u.email)).toEqual({});
-    await saveGov(u.email, { agentCaps: { dana: null } });
-    await saveUser({ ...(await getUser(u.email))!, credits: 1 });
+    expect(await credits(acct(u))).toBe(50);
+    expect(await spend(acct(u))).toEqual({});
+    await saveGov(acct(u), { agentCaps: { dana: null } });
+    await saveUser({ ...(await getUser(acct(u)))!, credits: 1 });
     expect(await run(u, "dana_weekly_report")).toBe("no_credits");
-    expect(await credits(u.email)).toBe(1);
+    expect(await credits(acct(u))).toBe(1);
     expect(seen.made).toBe(0);
-    expect(await db.get(`routinelast:${u.email}:dana_weekly_report`)).toBeNull();
-    expect(await tries(u.email, "dana_weekly_report"), "a refused charge is not an attempt").toBe(0);
+    expect(await db.get(`routinelast:${acct(u)}:dana_weekly_report`)).toBeNull();
+    expect(await tries(acct(u), "dana_weekly_report"), "a refused charge is not an attempt").toBe(0);
   });
 
   it("a failed generation gives back the credits and the agent's count, records no run and releases the lock", async () => {
     sdk({ genFails: true });
     const { runRoutine: run } = await load();
     const u = await owner("rt-fail", { dana_weekly_report: true });
-    await saveTask(u.email, item("n1"), true);
+    await saveTask(acct(u), item("n1"), true);
     await expect(run(u, "dana_weekly_report")).rejects.toThrow("model down");
-    expect(await credits(u.email)).toBe(50);
-    expect(await spend(u.email)).toEqual({ dana: 0 });
-    expect(await db.get(`routinelast:${u.email}:dana_weekly_report`)).toBeNull();
-    expect(await db.lock(`routinelock:${u.email}:dana_weekly_report`, 1)).toBe(true);
-    expect((await listTasks(u.email)).filter((t) => t.type === "weekly_report")).toEqual([]);
-    expect(await tries(u.email, "dana_weekly_report"), "a refunded charge is not left behind").toBe(0);
-    expect(await db.get(`routinehold:${u.email}:dana_weekly_report`)).toBeNull();
+    expect(await credits(acct(u))).toBe(50);
+    expect(await spend(acct(u))).toEqual({ dana: 0 });
+    expect(await db.get(`routinelast:${acct(u)}:dana_weekly_report`)).toBeNull();
+    expect(await db.lock(`routinelock:${acct(u)}:dana_weekly_report`, 1)).toBe(true);
+    expect((await listTasks(acct(u))).filter((t) => t.type === "weekly_report")).toEqual([]);
+    expect(await tries(acct(u), "dana_weekly_report"), "a refunded charge is not left behind").toBe(0);
+    expect(await db.get(`routinehold:${acct(u)}:dana_weekly_report`)).toBeNull();
   });
 
   it("two routines of one brand started together cannot both pass a weekly cap that fits one batch", async () => {
@@ -381,18 +384,18 @@ describe("once per period, inside the weekly cap and the agent's cap (rule 114)"
     const { runRoutine: run } = await load();
     const u = await owner("rt-cap-race", { dana_weekly_report: true, razan_cash_forecast: true });
     // A fresh store sync passes both gates; each batch is one item, and the cap fits one.
-    await db.set(`storesales:${u.email}`, snap(ago(1)));
-    await saveGov(u.email, { weeklyCap: 1 });
+    await db.set(`storesales:${acct(u)}`, snap(ago(1)));
+    await saveGov(acct(u), { weeklyCap: 1 });
     const out = await Promise.all([run(u, "dana_weekly_report"), run(u, "razan_cash_forecast")]);
     expect([...out].sort()).toEqual(["cap_reached", "ok:1"]);
-    expect((await listTasks(u.email)).filter((t) => t.source === "scheduled")).toHaveLength(1);
+    expect((await listTasks(acct(u))).filter((t) => t.source === "scheduled")).toHaveLength(1);
     expect(seen.prompts).toHaveLength(1);
     const won = out[0] === "ok:1" ? "dana" : "razan";
     const cost = TASK_COST[won === "dana" ? "weekly_report" : "cash_forecast"];
-    expect(await spend(u.email)).toEqual({ [won]: cost });
-    expect(await credits(u.email)).toBe(50 - cost);
-    for (const id of ROUTINE_IDS) expect(await db.get(`routinehold:${u.email}:${id}`), id).toBeNull();
-    expect(await db.get(`routinecap:${u.email}`)).toBeNull();
+    expect(await spend(acct(u))).toEqual({ [won]: cost });
+    expect(await credits(acct(u))).toBe(50 - cost);
+    for (const id of ROUTINE_IDS) expect(await db.get(`routinehold:${acct(u)}:${id}`), id).toBeNull();
+    expect(await db.get(`routinecap:${acct(u)}`)).toBeNull();
     await settle();
   });
 
@@ -401,26 +404,26 @@ describe("once per period, inside the weekly cap and the agent's cap (rule 114)"
     const seen = sdk({ hang });
     const { runRoutine: run } = await load();
     const u = await owner("rt-killed", { dana_weekly_report: true });
-    await saveTask(u.email, item("n1"), true);
+    await saveTask(acct(u), item("n1"), true);
     // Day 1: the cron starts the run, the generation outlives the function, and the platform ends it. Nothing is refunded
     // or saved and no last run is recorded; the lock and the hold expire before the next day's cron.
     void run(u, "dana_weekly_report");
     await vi.waitFor(() => expect(seen.prompts).toHaveLength(1));
-    await Promise.all([db.unlock(`routinelock:${u.email}:dana_weekly_report`), db.del(`routinehold:${u.email}:dana_weekly_report`)]);
-    expect(await credits(u.email)).toBe(50 - TASK_COST.weekly_report);
+    await Promise.all([db.unlock(`routinelock:${acct(u)}:dana_weekly_report`), db.del(`routinehold:${acct(u)}:dana_weekly_report`)]);
+    expect(await credits(acct(u))).toBe(50 - TASK_COST.weekly_report);
     // Day 2: the receipt is a killed run's. The cron does not run it again: it is held for the owner, charged nothing.
     const { routineClaim, periodOf } = await import("@/lib/routines");
-    const claim = routineClaim(u.email, "dana_weekly_report", periodOf("weekly"));
+    const claim = routineClaim(acct(u), "dana_weekly_report", periodOf("weekly"));
     await db.set(`runrec:${claim}`, { state: "started", at: new Date(Date.now() - 11 * 60e3).toISOString() });
     hang.on = false;
     expect(await run(u, "dana_weekly_report")).toBe("held");
     expect(await run(u, "dana_weekly_report"), "still held, never run by the cron").toBe("held");
     expect(seen.prompts, "no second generation").toHaveLength(1);
-    expect(await credits(u.email)).toBe(50 - TASK_COST.weekly_report);
+    expect(await credits(acct(u))).toBe(50 - TASK_COST.weekly_report);
     // The owner's Run: on the same claim, so the day-1 charge is reused, never taken twice.
     expect(await run(u, "dana_weekly_report", undefined, { resume: true })).toMatch(/^ok:/);
-    expect(await credits(u.email)).toBe(50 - TASK_COST.weekly_report);
-    expect(await spend(u.email)).toEqual({ dana: TASK_COST.weekly_report });
+    expect(await credits(acct(u))).toBe(50 - TASK_COST.weekly_report);
+    expect(await spend(acct(u))).toEqual({ dana: TASK_COST.weekly_report });
     expect(await run(u, "dana_weekly_report", undefined, { resume: true }), "nothing left to resume").toBe("already_this_period");
   });
 
@@ -433,21 +436,21 @@ describe("the owner's switches and the cron (rule 115)", () => {
     await signIn(a.email);
     const put = async (body: unknown) => { const res = await scheduleRoute.PUT(json("/api/schedule", "PUT", body)); expect(res.status).toBe(200); return ((await res.json()) as { schedule: { routines?: unknown } }).schedule; };
     // Parsed from text so "__proto__" is an own key, as it is in a request body.
-    const hostile = JSON.parse(`{"routines": {"dana_weekly_report": true, "constructor": true, "__proto__": true, "bogus": true, "razan_cash_forecast": "yes"}, "scope": "${b.email}", "email": "${b.email}"}`);
+    const hostile = JSON.parse(`{"routines": {"dana_weekly_report": true, "constructor": true, "__proto__": true, "bogus": true, "razan_cash_forecast": "yes"}, "scope": "${acct(b)}", "email": "${b.email}"}`);
     expect((await put(hostile)).routines).toEqual({ dana_weekly_report: true });
     expect((await put({ routines: { majed_monthly_review: true } })).routines).toEqual({ dana_weekly_report: true, majed_monthly_review: true });
     expect((await put({ routines: { dana_weekly_report: false }, weeklyPlan: false })).routines).toEqual({ dana_weekly_report: false, majed_monthly_review: true });
     expect((await put(null)).routines, "a null body changes nothing").toEqual({ dana_weekly_report: false, majed_monthly_review: true });
     expect((await put({ routines: ["dana_weekly_report"] })).routines).toEqual({ dana_weekly_report: false, majed_monthly_review: true });
-    expect((await getSchedule(a.email)).weeklyPlan).toBe(false);
-    expect((await getSchedule(b.email)).routines).toBeUndefined();
+    expect((await getSchedule(acct(a))).weeklyPlan).toBe(false);
+    expect((await getSchedule(acct(b))).routines).toBeUndefined();
 
-    await saveUser({ ...(await getUser(a.email))!, plan: "agency" });
-    const second = await addBrand((await getUser(a.email))!, "Second");
+    await saveUser({ ...(await getUser(acct(a)))!, plan: "agency" });
+    const second = await addBrand((await getUser(acct(a)))!, "Second");
     if ("error" in second) throw new Error(second.error);
     expect((await put({ routines: { noor_cart_recovery: true } })).routines).toEqual({ noor_cart_recovery: true });
-    expect((await getSchedule(scopeFor(a.email, second.id))).routines).toEqual({ noor_cart_recovery: true });
-    expect((await getSchedule(a.email)).routines).toEqual({ dana_weekly_report: false, majed_monthly_review: true });
+    expect((await getSchedule(scopeFor(acct(a), second.id))).routines).toEqual({ noor_cart_recovery: true });
+    expect((await getSchedule(acct(a))).routines).toEqual({ dana_weekly_report: false, majed_monthly_review: true });
   });
 
   it("the cron route needs the exact bearer secret", async () => {
@@ -464,49 +467,49 @@ describe("the owner's switches and the cron (rule 115)", () => {
     const on = await owner("rt-cron-on", { dana_weekly_report: true, noor_cart_recovery: false });
     const off = await owner("rt-cron-off");
     const ran = await owner("rt-cron-ran", { razan_cash_forecast: true, majed_monthly_review: true });
-    await db.set(`routinelast:${ran.email}:razan_cash_forecast`, new Date().toISOString());
-    await db.set(`routinelast:${ran.email}:majed_monthly_review`, ago(40)); // last month: due again
+    await db.set(`routinelast:${acct(ran)}:razan_cash_forecast`, new Date().toISOString());
+    await db.set(`routinelast:${acct(ran)}:majed_monthly_review`, ago(40)); // last month: due again
     const multi = await owner("rt-cron-brand");
     await saveUser({ ...multi, plan: "agency" });
-    const second = await addBrand((await getUser(multi.email))!, "Second");
+    const second = await addBrand((await getUser(acct(multi)))!, "Second");
     if ("error" in second) throw new Error(second.error);
-    const scope = scopeFor(multi.email, second.id);
+    const scope = scopeFor(acct(multi), second.id);
     await Promise.all([db.set(`brand:${scope}`, brand), saveSchedule(scope, { routines: { ...Object.fromEntries(ROUTINE_IDS.map((id) => [id, false])), noor_cart_recovery: true } })]);
 
     const res = await cronRoutines.GET(new Request("https://nashr.test/api/cron/routines", { headers: { authorization: "Bearer cron-secret-abcdef" } }));
     expect(res.status).toBe(200);
     const report = (await res.json()) as { job: string; results: Record<string, string> };
     expect(report.job).toBe("routines");
-    const mine = Object.fromEntries(Object.entries(report.results).filter(([k]) => [on, off, ran, multi].some((u) => k.startsWith(u.email))));
-    expect(mine).toEqual({ [`${on.email}:dana_weekly_report`]: "skip:mock", [`${ran.email}:majed_monthly_review`]: "skip:mock", [`${scope}:noor_cart_recovery`]: "skip:mock" });
+    const mine = Object.fromEntries(Object.entries(report.results).filter(([k]) => [on, off, ran, multi].some((u) => k.startsWith(acct(u)))));
+    expect(mine).toEqual({ [`${acct(on)}:dana_weekly_report`]: "skip:mock", [`${acct(ran)}:majed_monthly_review`]: "skip:mock", [`${scope}:noor_cart_recovery`]: "skip:mock" });
   });
 });
 
 describe("data blocks and deletion (rules 113, 115)", () => {
   it("statsFor gives the cash forecast STORE DATA only, and the strategy review WORKSPACE DATA plus STORE DATA when synced", async () => {
     const u = await newUser("rt-stats");
-    expect(await statsFor("cash_forecast", u.email)).toBe("");
-    const plain = await statsFor("strategy_review", u.email);
+    expect(await statsFor("cash_forecast", acct(u))).toBe("");
+    const plain = await statsFor("strategy_review", acct(u));
     expect(plain).toContain("WORKSPACE DATA");
     expect(plain).not.toContain("STORE DATA");
-    await db.set(`storesales:${u.email}`, snap(ago(1)));
-    const cash = await statsFor("cash_forecast", u.email);
+    await db.set(`storesales:${acct(u)}`, snap(ago(1)));
+    const cash = await statsFor("cash_forecast", acct(u));
     expect(cash).toContain("STORE DATA (the owner's connected store");
     expect(cash).toContain("<store_data>");
     expect(cash).not.toContain("WORKSPACE DATA");
-    const review = await statsFor("strategy_review", u.email);
+    const review = await statsFor("strategy_review", acct(u));
     expect(review).toContain("WORKSPACE DATA");
     expect(review).toContain("<store_data>");
     // The rest of Razan's and Majed's work is unchanged.
-    for (const t of ["pricing_review", "unit_economics", "okrs", "decision_memo"] as const) expect(await statsFor(t, u.email), t).toBe("");
+    for (const t of ["pricing_review", "unit_economics", "okrs", "decision_memo"] as const) expect(await statsFor(t, acct(u)), t).toBe("");
   });
 
   it("wipeAccount deletes every routine's keys and run notices in every brand", async () => {
     const u = await owner("rt-wipe", allOn);
     await saveUser({ ...u, plan: "agency" });
-    const second = await addBrand((await getUser(u.email))!, "Second");
+    const second = await addBrand((await getUser(acct(u)))!, "Second");
     if ("error" in second) throw new Error(second.error);
-    const scopes = [u.email, scopeFor(u.email, second.id)];
+    const scopes = [acct(u), scopeFor(acct(u), second.id)];
     const keys = scopes.flatMap((s) => routineKeys(s));
     // Per brand: the cap lock, and per routine its last run, lock, hold, and for two periods the attempt count and the run
     // receipt (rule 2476).
@@ -515,22 +518,22 @@ describe("data blocks and deletion (rules 113, 115)", () => {
       expect(keys).toEqual(expect.arrayContaining([`routinecap:${s}`, `routinehold:${s}:noor_cart_recovery`, `routinetry:${s}:razan_cash_forecast:${periodOf("monthly")}`, `routinetry:${s}:dana_weekly_report:${periodOf("weekly")}`, `runrec:routine:${s}:dana_weekly_report:${periodOf("weekly")}`]));
     }
     // The run notices name the brand and live 8 or 35 days: a new account at the same address must get its own.
-    const seen = scopes.flatMap((s) => ROUTINES.map((r) => `notifseen:${u.email}:routine:${s}:${r.id}:${periodOf(r.cadence)}`));
+    const seen = scopes.flatMap((s) => ROUTINES.map((r) => `notifseen:${acct(u)}:routine:${s}:${r.id}:${periodOf(r.cadence)}`));
     await Promise.all([...keys, ...seen].map((k) => db.set(k, new Date().toISOString())));
-    await wipeAccount(u.email);
+    await wipeAccount(acct(u));
     for (const k of [...keys, ...seen]) expect(await db.get(k), k).toBeNull();
   });
 
   it("wipeAccount deletes the owner's refresh mark in every brand (rules 736, 747)", async () => {
     const u = await owner("rt-ownersync");
     await saveUser({ ...u, plan: "agency" });
-    const second = await addBrand((await getUser(u.email))!, "Second");
+    const second = await addBrand((await getUser(acct(u)))!, "Second");
     if ("error" in second) throw new Error(second.error);
-    const scopes = [u.email, scopeFor(u.email, second.id)];
+    const scopes = [acct(u), scopeFor(acct(u), second.id)];
     expect(scopes.map(OWNER_SYNC_KEY)).toEqual(scopes.map((s) => `ownersync:${s}`));
     await Promise.all(scopes.map((s) => markOwnerSync(s)));
     for (const s of scopes) expect(await db.get(OWNER_SYNC_KEY(s)), s).not.toBeNull();
-    await wipeAccount(u.email);
+    await wipeAccount(acct(u));
     for (const s of scopes) expect(await db.get(OWNER_SYNC_KEY(s)), s).toBeNull();
   });
 });

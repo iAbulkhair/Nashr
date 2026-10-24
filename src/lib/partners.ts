@@ -321,7 +321,14 @@ async function settle(e: string, u: User, all: Record<string, Payment>, now: str
   const firstPaidOn = windowStartDay(all);
   let decide: (p: Payment) => { ok: true } | { ok: false; reason: NotCounted } = () => ({ ok: false, reason: "no_partner" });
   if (at && firstPaidOn) {
-    const [partner, sameTeam] = await Promise.all([getPartner(at.partner), Promise.all([onRoster(e, at.partner), onRoster(at.partner, e)]).then((x) => x.some(Boolean))]);
+    // The same check as `claimPartnerCode` (rule 3820): the partner's person on this account's roster, or this account's
+    // owner on the roster of the partner's own account, found through its login; the partner's address names no account.
+    const theirs = await getLogin(at.partner);
+    const partnerAccount = theirs?.kind === "owner" ? acct(theirs.user) : null;
+    const [partner, sameTeam] = await Promise.all([
+      getPartner(at.partner),
+      Promise.all([onRoster(e, theirs?.pid ?? at.partner), partnerAccount ? onRoster(partnerAccount, ownerOf(u)) : false]).then((x) => x.some(Boolean)),
+    ]);
     decide = (p) => commissionDecision({ customer: e, attribution: at, partnerExists: !!partner, sameTeam, firstPaidOn, paymentDate: p.date });
   }
   // A pack's refund its payment does not carry yet (a refund that stopped between its two writes, rule 465) is copied
@@ -695,7 +702,8 @@ export async function approvePartner(input: { email: unknown; name?: unknown; co
     return partner;
   });
   if (typeof res === "string") return { ok: false, error: res };
-  if (login?.kind === "owner") await withUserLock(email, async (u) => { u.partnerCode = code; await saveUser(u); });
+  // The owner's account by its id (rule 3813): with `OPAQUE_IDS` on an account is `user:{a_…}`, never `user:{address}`.
+  if (login?.kind === "owner") await withUserLock(acct(login.user), async (u) => { u.partnerCode = code; await saveUser(u); });
   return { ok: true, partner: res };
 }
 

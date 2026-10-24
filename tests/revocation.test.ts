@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { createHash, randomBytes } from "crypto";
 import { jar, json, newUser, signIn, signOut } from "./helpers/session";
-import { createSession, currentUser, getUser, saveUser, sessionRecord } from "@/lib/auth";
+import { createSession, currentUser, getUser, saveUser, sessionRecord, acct } from "@/lib/auth";
 import { charge } from "@/lib/credits";
 import { createMcpToken, userFromBearer } from "@/lib/mcp";
 import { issueCode, issueTokens, listGrants, redeemCode, registerClient, rotateRefresh } from "@/lib/oauth";
@@ -49,13 +49,13 @@ describe("sessions end when the password changes", () => {
     const legacy = randomBytes(32).toString("hex");
     // Legacy sessions only exist for accounts from before 2026-09-18, which carry no creation stamp in sessionsAfter
     // (createUser now sets one, so a re-registered address never inherits an old session).
-    await saveUser({ ...(await getUser(u.email))!, sessionsAfter: undefined });
+    await saveUser({ ...(await getUser(acct(u)))!, sessionsAfter: undefined });
     await db.set(`session:${legacy}`, u.email); // the format written before 2026-09-18
     jar().set("thakeen_session", legacy);
     expect((await currentUser())!.email).toBe(u.email); // legacy sessions keep working until a password change
-    const personal = await createMcpToken(u.email);
+    const personal = await createMcpToken(acct(u));
     const client = await registerClient({ redirect_uris: ["https://claude.example/cb"], client_name: "Claude" });
-    const oauth = await issueTokens(u.email, client.client_id, "noor");
+    const oauth = await issueTokens(acct(u), client.client_id, "noor");
     expect(await userFromBearer(bearer(oauth.access_token))).not.toBeNull();
 
     signOut();
@@ -70,7 +70,7 @@ describe("sessions end when the password changes", () => {
     expect(await userFromBearer(bearer(personal))).toBeNull();
     expect(await userFromBearer(bearer(oauth.access_token))).toBeNull();
     expect(await rotateRefresh(oauth.refresh_token, client.client_id)).toBeNull();
-    expect(await listGrants(u.email)).toHaveLength(0);
+    expect(await listGrants(acct(u))).toHaveLength(0);
   });
   it("saving the new password does not undo a credit charge made meanwhile", async () => {
     const u = await newUser("sess");
@@ -81,14 +81,14 @@ describe("sessions end when the password changes", () => {
     // The lost update happens when the charge commits after the request has read the record and before it saves,
     // so the charge is fired from the request's own first read of that record, and the stale snapshot is returned
     // to the caller exactly as a real concurrent request would have seen it.
-    const userKey = `user:${u.email}`;
+    const userKey = `user:${acct(u)}`;
     let fired = false;
     const realGet = db.get.bind(db);
     const spy = vi.spyOn(db, "get").mockImplementation(async <T,>(key: string) => {
       const before = await realGet<T>(key);
       if (key === userKey && !fired) {
         fired = true;
-        await charge(u.email, 10); // commits 50 -> 40 while the handler still holds the 50 it just read
+        await charge(acct(u), 10); // commits 50 -> 40 while the handler still holds the 50 it just read
       }
       return before;
     });
@@ -100,7 +100,7 @@ describe("sessions end when the password changes", () => {
     }
 
     expect(fired, "the charge must have raced the request, or this test proves nothing").toBe(true);
-    expect((await getUser(u.email))!.credits, "the password write must not roll the balance back to 50").toBe(40);
+    expect((await getUser(acct(u)))!.credits, "the password write must not roll the balance back to 50").toBe(40);
   });
 });
 
@@ -108,8 +108,8 @@ describe("connected apps (OAuth grants)", () => {
   it("lists apps without their tokens, revokes one at once, and never reaches another account's grant", async () => {
     const a = await newUser("grant"), b = await newUser("grant");
     const client = await registerClient({ redirect_uris: ["https://claude.example/cb"], client_name: "Claude" });
-    const ta = await issueTokens(a.email, client.client_id, "noor");
-    const tb = await issueTokens(b.email, client.client_id, "noor");
+    const ta = await issueTokens(acct(a), client.client_id, "noor");
+    const tb = await issueTokens(acct(b), client.client_id, "noor");
 
     await signIn(a.email);
     const list = (await (await grantsRoute.GET()).json()) as { grants: Record<string, string>[] };
@@ -118,7 +118,7 @@ describe("connected apps (OAuth grants)", () => {
     expect(JSON.stringify(list)).not.toContain(ta.access_token);
     expect(JSON.stringify(list)).not.toContain(ta.refresh_token);
 
-    const idOfB = (await listGrants(b.email))[0].id;
+    const idOfB = (await listGrants(acct(b)))[0].id;
     expect((await grantsRoute.DELETE(json(`/api/mcp/grants?id=${idOfB}`, "DELETE"))).status).toBe(404);
     expect(await userFromBearer(bearer(tb.access_token))).not.toBeNull();
 
@@ -134,12 +134,12 @@ describe("connected apps (OAuth grants)", () => {
   it("refreshing keeps one grant and kills the previous access token", async () => {
     const u = await newUser("grant");
     const client = await registerClient({ redirect_uris: ["https://claude.example/cb"] });
-    const first = await issueTokens(u.email, client.client_id, "noor");
+    const first = await issueTokens(acct(u), client.client_id, "noor");
     const second = (await rotateRefresh(first.refresh_token, client.client_id))!;
     expect(await userFromBearer(bearer(first.access_token))).toBeNull();
     expect(await userFromBearer(bearer(second.access_token))).not.toBeNull();
     expect(await rotateRefresh(first.refresh_token, client.client_id)).toBeNull(); // single use
-    expect(await listGrants(u.email)).toHaveLength(1);
+    expect(await listGrants(acct(u))).toHaveLength(1);
   });
   it("PKCE and the registered redirect are required, a code works once, and unknown scopes are never written", async () => {
     const u = await newUser("grant");

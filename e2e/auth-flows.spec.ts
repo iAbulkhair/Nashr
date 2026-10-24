@@ -1,5 +1,5 @@
 import type { Page } from "@playwright/test";
-import { test, expect, open, formAlert, fillWhenReady } from "./fixtures/app";
+import { test, expect, open, appPath, formAlert, fillWhenReady } from "./fixtures/app";
 import { OWNER, SECOND, signUpOrLogIn, simulatedIp } from "./fixtures/accounts";
 
 /**
@@ -83,7 +83,7 @@ test.describe("signup", () => {
     await page.getByRole("button", { name: "Confirm" }).click();
 
     // The old /app/chat path answers a 307 to the brand path (rule 891); a fresh account's brand is "default".
-    await page.waitForURL("**/en/app/b/default/start?url=roastery.example");
+    await page.waitForURL((u) => appPath(u) === "/en/app/b/default/start" && u.search === "?url=roastery.example");
     await playToLaunch(page);
     await expect(page.getByRole("note")).toContainText("Check this link before Noor starts");
     await expect(page.getByRole("textbox", { name: /Website or store URL/ })).toHaveValue("roastery.example");
@@ -98,7 +98,7 @@ test.describe("signup", () => {
     expect((await req.response())?.status()).toBe(200);
     expect(onboardCalls.slice(0, 2)).toEqual(["POST /api/onboard/confirm", "POST /api/onboard"]);
     // Let the run finish (the thread moves to the plain chat URL on `done`), so the stream is not cut off mid-way.
-    await page.waitForURL(/\/en\/app\/(b\/default\/)?chat$/, { timeout: 30_000 });
+    await page.waitForURL((u) => /^\/en\/app\/(b\/default\/)?chat$/.test(appPath(u)), { timeout: 30_000 });
   });
 
   test("an invalid address never leaves the first step", async ({ page }) => {
@@ -188,7 +188,7 @@ test.describe("login", () => {
 
     // No brand file on this account, so the inbox hands off to the first-login game. That redirect is the proof the
     // session was established.
-    await page.waitForURL("**/en/app/b/default/start");
+    await page.waitForURL((u) => appPath(u) === "/en/app/b/default/start");
     await expect(page.getByRole("heading", { level: 1 })).toContainText("The Thakeen Dictionary");
   });
 
@@ -225,7 +225,7 @@ test.describe("login", () => {
     const authed = await signedIn.newPage();
     await authed.goto("/en/app/login", { waitUntil: "domcontentloaded" });
     // `/en/app` goes on to the last chosen brand's inbox (rule 891).
-    expect(new URL(authed.url()).pathname).toBe("/en/app/b/default");
+    expect(appPath(authed.url())).toBe("/en/app/b/default");
     await signedIn.close();
     void page;
   });
@@ -245,7 +245,7 @@ test.describe("a shared onboarding link", () => {
     page.on("request", (r) => { const path = new URL(r.url()).pathname; if (path.startsWith("/api/onboard")) onboardCalls.push(`${r.method()} ${path}`); });
 
     await open(page, "/en/app/chat?onboard=attacker.example");
-    await page.waitForURL("**/en/app/b/default/start?url=attacker.example");
+    await page.waitForURL((u) => appPath(u) === "/en/app/b/default/start" && u.search === "?url=attacker.example");
     await playToLaunch(page);
     await expect(page.getByRole("note")).toContainText("Check this link before Noor starts");
     await expect(page.getByRole("textbox", { name: /Website or store URL/ })).toHaveValue("attacker.example");
