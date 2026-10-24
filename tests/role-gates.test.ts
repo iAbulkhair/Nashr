@@ -57,7 +57,7 @@ import * as catalogRoute from "@/app/api/catalog/route";
 
 // ── Part one: the route-to-role map ──────────────────────────────────────────────────────────────────────────────────
 
-type Role = "owner" | "admin" | "member";
+type Role = "owner" | "admin" | "member" | "viewer";
 /**
  * public: no session (rate limited per IP when it writes). public-read: a GET, HEAD or OPTIONS with no session that
  * serves only public metadata, a static list or a CORS preflight, and writes nothing. bearer: the MCP token.
@@ -66,7 +66,7 @@ type Role = "owner" | "admin" | "member";
  * unverified-session: the email-verification routes, called by an owner who `currentUser` still reads as signed out (rule 751): the handler must read `currentUserUnverified` and be rate limited (allow).
  * admin-console: the founder console. cron: the CRON_SECRET bearer. owner / admin / member: a session, and at least
  * that role, checked with forbid()/can() for the listed actions of src/lib/roles.ts (a bare "member" needs only the
- * session).
+ * session, so a Viewer passes it too: only writes a Viewer may make are bare, rule 3752, `VIEWER_WRITES`).
  */
 type Gate = "public" | "public-read" | "cron" | "admin-console" | "bearer" | "unverified-session" | "person-session" | "member" | { role: Role; actions: Action[] };
 const g = (role: Role, ...actions: Action[]): Gate => ({ role, actions });
@@ -165,7 +165,10 @@ const ROUTE_ROLES: Record<string, Gate> = {
   "POST /api/partner/code": g("owner", "billing"),
   "DELETE /api/account": g("owner", "account.delete"),
   "PUT /api/profile": g("owner", "profile.account", "brand.write", "profile.self"),
-  "PATCH /api/team/member": g("owner", "team.role"),
+  // Role (owner), brand scope and approve toggle (admin, `team.access`), monthly credit cap (owner): rules 3750-3771.
+  "PATCH /api/team/member": g("owner", "team.role", "team.access", "team.cap"),
+  // The approval policy (rule 3762): the owner only.
+  "PATCH /api/team": g("owner", "team.policy"),
   "POST /api/billing/chat-overflow": g("owner", "billing"), // how the account's credits are spent once chat runs out
   // The model picks (plan Task 6): a conversation's by any login, the active brand's by an admin, the China-hosting
   // confirmation by the owner only. One handler serves all three, like PATCH /api/tasks/[id].
@@ -174,7 +177,7 @@ const ROUTE_ROLES: Record<string, Gate> = {
   "POST /api/billing/renewal": g("owner", "billing.pay"), // the online subscription's renewal and saved card
 
   // Admin and owner (some handlers also serve a member-level action, listed with it, or member-level names such as
-  // non-core files, which need no action of their own).
+  // non-core files, which need the Editor-level `files.write`).
   "PUT /api/brand": g("admin", "brand.write"),
   "POST /api/brand/proposals/[id]": g("admin", "brand.write"),
   // Agent instructions of the brand workspace (agent skills portal, rule 949).
@@ -199,11 +202,11 @@ const ROUTE_ROLES: Record<string, Gate> = {
   "POST /api/onboard/plan": g("admin", "onboard"),
   "PUT /api/schedule": g("admin", "schedule.write"),
   "POST /api/publish/[id]": g("admin", "publish"),
-  "PATCH /api/tasks/[id]": g("admin", "publish", "drafts"),
+  "PATCH /api/tasks/[id]": g("admin", "approve", "drafts", "comment"),
   // Line notes on a draft (rule 2490): any member who may edit sends them; the item stays pending.
   "POST /api/tasks/[id]/revise": g("member", "drafts"),
-  "PUT /api/files": g("admin", "files.core.write"),
-  "DELETE /api/files": g("admin", "files.core.delete"),
+  "PUT /api/files": g("admin", "files.core.write", "files.write"),
+  "DELETE /api/files": g("admin", "files.core.delete", "files.write"),
   "POST /api/performance": g("admin", "performance.import"),
   "DELETE /api/performance": g("admin", "performance.delete"),
   "POST /api/team/invite": g("admin", "team.invite.member"),
@@ -221,17 +224,17 @@ const ROUTE_ROLES: Record<string, Gate> = {
   "PUT /api/secretary/series/[seriesId]/keep": g("admin", "todo.write", "todo.close"),
 
   // Every member of the account.
-  "PATCH /api/account": g("member", "password.change"),
+  "PATCH /api/account": g("viewer", "password.change"),
   // Sign out other devices (rule 1150): the caller's own sessions only, never while impersonating.
-  "POST /api/account/sessions": g("member", "sessions.revoke"),
+  "POST /api/account/sessions": g("viewer", "sessions.revoke"),
   // One device out of the login's own list (rule 1939).
-  "DELETE /api/account/sessions": g("member", "sessions.revoke"),
+  "DELETE /api/account/sessions": g("viewer", "sessions.revoke"),
   // The login's own two-step sign-in (rules 1930-1937).
-  "POST /api/account/2fa": g("member", "mfa.manage"),
+  "POST /api/account/2fa": g("viewer", "mfa.manage"),
   // The login's own passkeys (customer passkeys, rule 2412): member-level, refused while impersonating.
-  "POST /api/account/passkeys": g("member", "passkeys.manage"),
-  "POST /api/account/email": g("member", "email.change"),
-  "POST /api/account/google": g("member", "google.manage"),
+  "POST /api/account/passkeys": g("viewer", "passkeys.manage"),
+  "POST /api/account/email": g("viewer", "email.change"),
+  "POST /api/account/google": g("viewer", "google.manage"),
   // Notification preferences per type and channel (rule 1145): the account's settings, owner only.
   "PUT /api/notifications/prefs": g("owner", "profile.account"),
   "PUT /api/notifications/digest": g("owner", "profile.account"),
@@ -239,21 +242,22 @@ const ROUTE_ROLES: Record<string, Gate> = {
   "POST /api/push": "member",
   "DELETE /api/push": "member",
   "POST /api/push/seen": "member",
-  "POST /api/team/leave": g("member", "team.leave"),
+  "POST /api/team/leave": g("viewer", "team.leave"),
   // Multi-workspace M3 (rules 2128, 2750): the owner's own session offers or withdraws the account's ownership.
   "POST /api/team/transfer": g("owner", "team.transfer"),
   "DELETE /api/team/transfer": g("owner", "team.transfer"),
-  "POST /api/chat": "member",
-  "POST /api/chat/feedback": "member",
-  "POST /api/conversations": "member",
-  "PATCH /api/conversations": "member",
-  "DELETE /api/conversations": "member",
-  "POST /api/generate": "member",
-  "POST /api/integrations": "member",
+  // An Editor (stored "member") and up, never a Viewer (rule 3752): agent runs, credit spend and workspace writes.
+  "POST /api/chat": g("member", "chat"),
+  "POST /api/chat/feedback": g("member", "feedback"),
+  "POST /api/conversations": g("member", "conversations"),
+  "PATCH /api/conversations": g("member", "conversations"),
+  "DELETE /api/conversations": g("member", "conversations"),
+  "POST /api/generate": g("member", "generate"),
+  "POST /api/integrations": g("member", "integrations.request"),
   "POST /api/notifications": "member",
-  "POST /api/schedule": "member", // run now: an explicit request, charged like generate
-  "POST /api/tasks/[id]/image": "member",
-  "POST /api/tasks/[id]/video": "member",
+  "POST /api/schedule": g("member", "generate"), // run now: an explicit request, charged like generate
+  "POST /api/tasks/[id]/image": g("member", "images"),
+  "POST /api/tasks/[id]/video": g("member", "images"),
   "POST /api/wishlist/suggest": "member",
   "POST /api/wishlist/vote": "member",
   "POST /api/secretary": g("member", "todo.write"),
@@ -269,8 +273,8 @@ const ROUTE_ROLES: Record<string, Gate> = {
   // Saving or dismissing an absence Reem proposed in chat: the same role as marking a contact away on the page.
   "POST /api/secretary/away/proposals/[id]": g("member", "todo.write"),
   // One's own private calendar feed link: any member manages their own, refused while a founder impersonates (rule 533).
-  "POST /api/secretary/feed": g("member", "feed.manage"),
-  "DELETE /api/secretary/feed": g("member", "feed.manage"),
+  "POST /api/secretary/feed": g("viewer", "feed.manage"),
+  "DELETE /api/secretary/feed": g("viewer", "feed.manage"),
   // One's own booking links (Reem B2a): the same, with their own action (rule 596).
   "POST /api/secretary/booking": g("member", "booking.manage"),
   "DELETE /api/secretary/booking": g("member", "booking.manage"),
@@ -312,7 +316,7 @@ const READS: Record<string, Gate> = {
   "GET /api/referral/share": g("owner", "referral"),
   // A partner link: sets the 30-day partner cookie for a valid code, so it is a public write with a rate limit (rule 391).
   "GET /p/[code]": "public",
-  "GET /api/team": g("member", "team.view"),
+  "GET /api/team": g("viewer", "team.view"),
   // Multi-workspace M2: the person's own workspaces (handles, names and roles only).
   "GET /api/workspaces": "person-session",
   "GET /api/workspaces/invites": "person-session", // M3 inbox (rule 2753): the person's own verified address only
@@ -320,23 +324,23 @@ const READS: Record<string, Gate> = {
   "GET /api/team/log": g("admin", "team.log.view"),
   // The account's AI usage by person, brand, agent, model and day: requests only (rule 2907).
   "GET /api/usage": g("admin", "usage.view"),
-  "GET /api/profile": g("member", "read"),
+  "GET /api/profile": g("viewer", "read"),
   // The owner's own data download (rule 1320): owner only, refused while impersonating, rate limited.
   "GET /api/account/export": g("owner", "account.export"),
   // The login's own two-step status and device list (rules 1930, 1938): a session, nothing written.
   "GET /api/account/2fa": "member",
   // The passkey list (rule 2412): refused while impersonating, so no founder reads a customer's passkeys.
-  "GET /api/account/passkeys": g("member", "passkeys.manage"),
+  "GET /api/account/passkeys": g("viewer", "passkeys.manage"),
   "GET /api/auth/google/start": "public",
   "GET /api/auth/google/callback": "public",
-  "GET /api/account/email": g("member", "email.change"),
-  "GET /api/account/google": g("member", "google.manage"),
+  "GET /api/account/email": g("viewer", "email.change"),
+  "GET /api/account/google": g("viewer", "google.manage"),
   "GET /api/account/sessions": "member",
   // The Paymob return page's poll (rule 1155): the caller's own last checkout and plan, owner only.
   "GET /api/billing/status": g("owner", "billing"),
-  "GET /api/activity": g("member", "read"),
-  "GET /api/activity/export": g("member", "read"),
-  "GET /api/handoffs/[id]": g("member", "read"),
+  "GET /api/activity": g("viewer", "read"),
+  "GET /api/activity/export": g("viewer", "read"),
+  "GET /api/handoffs/[id]": g("viewer", "read"),
   "GET /api/media/[jobId]": "member",
   // Our media files (rules 1754-1758): a signed-in member of the workspace that holds the file, or a short signed link
   // minted at hand-off; both checked inside, everything else is the same 404. Rate limited per IP first, so "public".
@@ -404,15 +408,15 @@ const READS: Record<string, Gate> = {
   "GET /api/tasks": "member",
   "GET /api/tasks/[id]/pptx": "member",
   "GET /api/secretary": "member",
-  "GET /api/secretary/walk": g("member", "read"),
-  "GET /api/secretary/away": g("member", "read"),
-  "GET /api/secretary/calendar": g("member", "read"),
+  "GET /api/secretary/walk": g("viewer", "read"),
+  "GET /api/secretary/away": g("viewer", "read"),
+  "GET /api/secretary/calendar": g("viewer", "read"),
   "GET /api/secretary/calendar-link": g("owner", "calendar.link"),
   "GET /api/secretary/calendar-link/calendars": g("owner", "calendar.link"),
-  "GET /api/secretary/series/[seriesId]/export": g("member", "read"),
-  "GET /api/secretary/feed": g("member", "read"),
-  "GET /api/secretary/booking": g("member", "read"),
-  "GET /api/secretary/meeting/[id]": g("member", "read"),
+  "GET /api/secretary/series/[seriesId]/export": g("viewer", "read"),
+  "GET /api/secretary/feed": g("viewer", "read"),
+  "GET /api/secretary/booking": g("viewer", "read"),
+  "GET /api/secretary/meeting/[id]": g("viewer", "read"),
 
   "GET /api/mcp": "public-read",
   "GET /api/secretary/feed/[token]": "public-read", // the token in the path is the credential; rate limited per IP and per link
@@ -506,7 +510,7 @@ function parse(file: string, source: string): Handler[] {
   return found.map(({ m, end }) => ({ key: `${m[1]} ${routeOf(file)}`, method: m[1], file, body: source.slice(m.index!, end), shared }));
 }
 const handlers = (): Handler[] => walk(APP).flatMap((file) => parse(file, readFileSync(file, "utf8")));
-const RANK: Record<Role, number> = { member: 1, admin: 2, owner: 3 };
+const RANK: Record<Role, number> = { viewer: 0, member: 1, admin: 2, owner: 3 };
 /** A refusal that is RETURNED: `const no = forbid(u, …); if (no) return no;` or `if (!can(u, …)) return …`. A bare call proves nothing. */
 const RETURNED_GUARD = /const\s+(\w+)\s*=\s*forbid\([^;]*\);\s*if\s*\(\s*\1\s*\)\s*return\s+\1\b|if\s*\(\s*!can\([^;]*?\)\s*\)\s*return\b/;
 const WRITES = /\bdb\.(?:set|del|lpush|ltrim|lrem|sadd|srem|hset|hdel|incrby|lock)\(|\bsave[A-Z]\w*\(|\bcreateSession\(/;
@@ -576,6 +580,12 @@ describe("every API handler has a declared gate (fail closed)", () => {
     const hidden = walk(APP).filter((f) => new RegExp(`export\\s*\\{[^}]*\\b(?:${METHODS})\\b[^}]*\\}`).test(readFileSync(f, "utf8")));
     expect(hidden).toEqual([]);
   });
+  it("rule 3752: a write that needs only the session is one a Viewer may make; every other names an action", () => {
+    // A Viewer's own browser push subscription, the bell's read marks and the product wishlist: nothing of the workspace.
+    const VIEWER_WRITES = new Set(["POST /api/push", "DELETE /api/push", "POST /api/push/seen", "POST /api/notifications", "POST /api/wishlist/suggest", "POST /api/wishlist/vote"]);
+    const bare = Object.entries(ROUTE_ROLES).filter(([, gate]) => gate === "member").map(([k]) => k);
+    expect(bare.filter((k) => !VIEWER_WRITES.has(k))).toEqual([]);
+  });
   it("each handler checks what its declared gate needs", () => {
     const bad = all.flatMap((h) => { const gate = declared(h); return gate ? violations(h, gate).map((v) => `${h.key}: ${v}`) : []; });
     expect(bad).toEqual([]);
@@ -638,11 +648,11 @@ describe("every API handler has a declared gate (fail closed)", () => {
     ].join("\n");
     const hs = Object.fromEntries(parse(file, source).map((h) => [h.method, h]));
     expect(Object.keys(hs).sort()).toEqual(["DELETE", "GET", "PATCH", "POST", "PUT"]);
-    expect(violations(hs.GET, g("member", "read"))).toEqual([]);
+    expect(violations(hs.GET, g("viewer", "read"))).toEqual([]);
     // The wrapper's role is "read", so a gate that needs "brand.write" is not proven by it.
     expect(violations(hs.GET, g("admin", "brand.write"))).toEqual([expect.stringContaining('"brand.write"')]);
     expect(violations(hs.POST, "member")).toEqual([]);
-    expect(violations(hs.PUT, g("member", "read")), "no role option, no forbid").toEqual([expect.stringContaining("never returns the refusal"), expect.stringContaining('"read"')]);
+    expect(violations(hs.PUT, g("viewer", "read")), "no role option, no forbid").toEqual([expect.stringContaining("never returns the refusal"), expect.stringContaining('"read"')]);
     // A public handler is not a session read, whatever its body says; and it has no rate limit.
     expect(violations(hs.PATCH, "member")).toEqual(["no session read (currentUser)"]);
     expect(violations(hs.PATCH, "public")).toEqual(["public write without a rate limit (allow)"]);

@@ -13,15 +13,21 @@ import Scribble from "@/components/Scribble";
 import { useToast } from "@/components/ui/Toast";
 import { useAppLink } from "@/components/app/WorkspaceContext";
 
-type TeamRole = "admin" | "member";
-type Row = { email: string; name: string; role: Role; acceptedAt?: string; disabled?: "seats" };
-type PendingRow = { id: string; email: string; role: TeamRole; expiresAt: string; invitedBy: string };
+/** "member" is the Editor (rule 3751: stored under its old name until the contract release). */
+type TeamRole = "admin" | "member" | "viewer";
+/** Rules 3756, 3760, 3770: brand scope (absent = every brand), the approve toggle and the monthly cap, shown to managers. */
+type Access = { brands?: string[]; approves?: true; creditCap?: number; spent?: number };
+type Row = { email: string; name: string; role: Role; acceptedAt?: string; disabled?: "seats" } & Access;
+type PendingRow = { id: string; email: string; role: TeamRole; expiresAt: string; invitedBy: string; brands?: string[]; approves?: true };
 /** The GET /api/team body, which `teamView` in src/lib/team.ts builds (the page renders it on the server first). */
 export type TeamView = {
   you: { email: string; name: string; role: Role };
-  seats: { used: number; limit: number };
+  seats: { used: number; limit: number; freeViewers?: number; freeViewersLeft?: number };
   members: Row[];
   invites: PendingRow[];
+  /** Managers only: the account's active brands for the scope picker, and the approval policy (rule 3762). */
+  brands?: { id: string; name: string }[];
+  approvalRequired?: boolean;
   /** Owner and admin only (rule 1480): each person's decisions over the last 30 days, keyed by email. */
   approvals?: Record<string, { approved: number; rejected: number; edited: number; rate: number | null }>;
 };
@@ -33,7 +39,8 @@ export type TransferOffer = { email: string; expiresAt: string };
 
 const fill = (s: string, v: Record<string, string | number>) => s.replace(/\{(\w+)\}/g, (m, k: string) => (k in v ? String(v[k]) : m));
 const day = (iso?: string) => (iso ?? "").slice(0, 10);
-const ROLE_BADGE: Record<Role, string> = { owner: "badge badge-accent", admin: "badge badge-primary", member: "badge bg-foreground/10 text-foreground-muted" };
+const ROLE_BADGE: Record<Role, string> = { owner: "badge badge-accent", admin: "badge badge-primary", member: "badge bg-foreground/10 text-foreground-muted", viewer: "badge border border-foreground/20 text-foreground-muted" };
+const ROLE_ORDER: TeamRole[] = ["viewer", "member", "admin"];
 
 /** One JSON call. `ok` only when the server said `ok: true`; a network failure reads as a failed call, never as success. */
 async function call(url: string, method: string, body?: unknown): Promise<Result> {
@@ -58,6 +65,9 @@ export default function TeamPanel({ t, lang, initial, perms, mailOn = true, tran
   const [view, setView] = useState<TeamView>(initial);
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<TeamRole>("member");
+  // The new invite's brand scope (null = every brand) and approve toggle (rules 3756, 3760).
+  const [scope, setScope] = useState<string[] | null>(null);
+  const [approves, setApproves] = useState(false);
   const [busy, setBusy] = useState("");
   const [err, setErr] = useState("");
   const [link, setLink] = useState<{ email: string; url: string } | null>(null);
@@ -76,6 +86,11 @@ export default function TeamPanel({ t, lang, initial, perms, mailOn = true, tran
   const locked = busy !== "";
   const { used, limit } = view.seats;
   const full = used >= limit;
+  const freeLeft = view.seats.freeViewersLeft ?? 0;
+  // A viewer within the free viewers takes no seat (rule 3753), so a full plan still lets one be invited.
+  const blocked = full && !(role === "viewer" && freeLeft > 0);
+  const brands = view.brands ?? [];
+  const scoping = perms.access && brands.length > 1;
   const pct = Math.min(100, Math.round((used / Math.max(1, limit)) * 100));
 
   const errorCode = (r: Result) => r.status === 429 ? "rate_limited" : typeof r.j.error === "string" ? r.j.error : "failed";
@@ -113,8 +128,9 @@ export default function TeamPanel({ t, lang, initial, perms, mailOn = true, tran
     const to = email.trim();
     if (!to) return;
     setLink(null); setCopied(false);
-    await run("invite", () => call("/api/team/invite", "POST", { email: to, role, lang }), (r) => {
-      setEmail("");
+    const access = perms.access ? { ...(scoping && scope ? { brands: scope } : {}), ...(role !== "admin" && approves ? { approves: true } : {}) } : {};
+    await run("invite", () => call("/api/team/invite", "POST", { email: to, role, lang, ...access }), (r) => {
+      setEmail(""); setScope(null); setApproves(false);
       const shown = (r.j.invite as { email?: string } | undefined)?.email ?? to;
       if (r.j.emailed === true) toast.success(fill(T.sent, { email: shown })); // rule 2001
       else if (typeof r.j.link === "string" && r.j.link) {
@@ -127,6 +143,18 @@ export default function TeamPanel({ t, lang, initial, perms, mailOn = true, tran
   function changeRole(m: Row, next: TeamRole) {
     if (next === m.role) return;
     void run(`role:${m.email}`, () => call("/api/team/member", "PATCH", { email: m.email, role: next }));
+  }
+  function saveAccess(m: Row, next: { brands: string[] | null; approves: boolean; creditCap: number | null | undefined }) {
+    const body: Record<string, unknown> = { email: m.email };
+    if (perms.access) {
+      if (scoping) body.brands = next.brands;
+      if (m.role !== "admin") body.approves = next.approves;
+    }
+    if (perms.cap && next.creditCap !== undefined) body.creditCap = next.creditCap;
+    void run("access:" + m.email, () => call("/api/team/member", "PATCH", body), () => toast.success(T.saved));
+  }
+  function setPolicy(on: boolean) {
+    void run("policy", () => call("/api/team", "PATCH", { approvalRequired: on }));
   }
   async function remove(m: Row) {
     const label = m.name || m.email;
@@ -179,7 +207,8 @@ export default function TeamPanel({ t, lang, initial, perms, mailOn = true, tran
   }
 
   const canRemove = (m: Row) => m.role !== "owner" && m.email !== view.you.email && (m.role === "admin" ? perms.removeAdmin : perms.removeMember);
-  const canCancel = (inv: PendingRow) => perms.cancelInvite && (inv.role === "member" || perms.inviteAdmin);
+  const canCancel = (inv: PendingRow) => perms.cancelInvite && (inv.role !== "admin" || perms.inviteAdmin);
+  const scopeLabel = (ids?: string[]) => (!ids ? T.brandsAll : ids.length === 1 ? brands.find((b) => b.id === ids[0])?.name ?? ids[0] : fill(T.brandsSome, { n: ids.length }));
   const admins = view.members.filter((m) => m.role === "admin" && !m.disabled);
 
   return (
@@ -196,7 +225,20 @@ export default function TeamPanel({ t, lang, initial, perms, mailOn = true, tran
           <div className={`h-full rounded-full ${full ? "bg-lemon" : "bg-foreground"}`} style={{ width: `${pct}%` }} />
         </div>
         <p className="mt-2 text-xs text-foreground-muted">{T.seatsNote}</p>
+        {view.seats.freeViewers !== undefined && <p className="mt-1 text-xs text-foreground-muted" data-free-viewers>{fill(T.freeViewers, { left: freeLeft, total: view.seats.freeViewers })}</p>}
       </div>
+
+      {view.approvalRequired !== undefined && (
+        <div className="mt-4 card card-sm text-sm" data-approval-policy>
+          <label className={`flex items-start gap-3 ${perms.policy ? "cursor-pointer" : ""}`}>
+            <input type="checkbox" className="mt-1" checked={view.approvalRequired} disabled={!perms.policy || locked} onChange={(e) => setPolicy(e.target.checked)} />
+            <span>
+              <span className="font-medium">{T.policy}</span> <span className="text-xs text-foreground-muted">({view.approvalRequired ? T.policyOn : T.policyOff})</span>
+              <span className="mt-0.5 block text-xs text-foreground-muted">{T.policyHelp}</span>
+            </span>
+          </label>
+        </div>
+      )}
 
       {err && <p role="alert" className="mt-4 text-sm text-danger">{err}</p>}
 
@@ -221,6 +263,13 @@ export default function TeamPanel({ t, lang, initial, perms, mailOn = true, tran
                       <p className="clip text-xs text-foreground-muted" dir="ltr">{m.email}</p>
                       {m.acceptedAt && <p className="text-xs text-foreground-muted">{T.joined} <span className="font-mono" dir="ltr">{day(m.acceptedAt)}</span></p>}
                       {m.disabled && <p className="text-xs text-foreground-muted">{T.disabledHelp}</p>}
+                      {(perms.access || perms.cap) && m.role !== "owner" && (
+                        <p className="text-xs text-foreground-muted" data-access-summary>
+                          {T.brands}: {scopeLabel(m.brands)}
+                          {(m.role === "admin" || m.approves) && <> · {T.approves}</>}
+                          {typeof m.creditCap === "number" && <> · {T.cap}: <span className="tnum" dir="ltr">{m.spent ?? 0} / {m.creditCap}</span></>}
+                        </p>
+                      )}
                       {view.approvals?.[m.email] && (() => {
                         const s = view.approvals[m.email];
                         return <p className="text-xs text-foreground-muted" data-approvals>{lang === "ar" ? `آخر 30 يوماً: وافق على ${s.approved}، رفض ${s.rejected}، عدّل ${s.edited}${s.rate === null ? "" : ` · نسبة الموافقة ${s.rate}%`}` : `Last 30 days: approved ${s.approved}, rejected ${s.rejected}, edited ${s.edited}${s.rate === null ? "" : ` · approval rate ${s.rate}%`}`}</p>;
@@ -230,12 +279,14 @@ export default function TeamPanel({ t, lang, initial, perms, mailOn = true, tran
                   <div className="flex shrink-0 items-center gap-2">
                     {perms.changeRole && m.role !== "owner" && (
                       <select aria-label={fill(T.changeRole, { name: label })} value={m.role} disabled={locked} onChange={(e) => changeRole(m, e.target.value as TeamRole)} className="input w-auto py-1 text-xs">
-                        <option value="member">{T.roles.member}</option>
-                        <option value="admin">{T.roles.admin}</option>
+                        {ROLE_ORDER.map((r) => <option key={r} value={r}>{T.roles[r]}</option>)}
                       </select>
                     )}
                     {canRemove(m) && <button type="button" onClick={() => remove(m)} disabled={locked} className="btn btn-danger btn-xs">{busy === `remove:${m.email}` ? "…" : T.remove}</button>}
                   </div>
+                  {m.role !== "owner" && !you && (m.role === "admin" ? perms.changeRole || perms.cap : perms.access || perms.cap) && (
+                    <AccessEditor key={`${m.email}:${(m.brands ?? []).join(",")}:${m.approves ? 1 : 0}:${m.creditCap ?? ""}`} T={T} row={m} brands={brands} scoping={scoping && (m.role !== "admin" || perms.changeRole)} toggle={perms.access && m.role !== "admin"} cap={perms.cap} locked={locked} onSave={(next) => saveAccess(m, next)} />
+                  )}
                 </li>
               );
             })}
@@ -254,14 +305,26 @@ export default function TeamPanel({ t, lang, initial, perms, mailOn = true, tran
               <label className="grid gap-1 text-sm">
                 <span className="text-foreground-muted">{T.role}</span>
                 <select value={role} onChange={(e) => setRole(e.target.value as TeamRole)} className="input w-auto">
+                  {perms.inviteMember && <option value="viewer">{T.roles.viewer}</option>}
                   {perms.inviteMember && <option value="member">{T.roles.member}</option>}
                   {perms.inviteAdmin && <option value="admin">{T.roles.admin}</option>}
                 </select>
               </label>
-              <button disabled={locked || full} className="btn btn-primary btn-sm">{busy === "invite" ? T.sending : mailOn ? T.send : T.createLink}</button>
+              <button disabled={locked || blocked} className="btn btn-primary btn-sm">{busy === "invite" ? T.sending : mailOn ? T.send : T.createLink}</button>
             </form>
             <p className="mt-2 text-xs text-foreground-muted">{T.roleHelp[role]}</p>
-            {full && <p className="mt-2 text-sm text-danger">{perms.inviteAdmin ? T.seatsFull : T.seatsFullAsk}</p>}
+            {perms.access && (scoping || role !== "admin") && (
+              <div className="mt-3 grid gap-2 text-sm" data-invite-access>
+                {scoping && <BrandPicker T={T} brands={brands} value={scope} onChange={setScope} disabled={locked} />}
+                {role !== "admin" && (
+                  <label className="flex items-start gap-2">
+                    <input type="checkbox" className="mt-1" checked={approves} disabled={locked} onChange={(e) => setApproves(e.target.checked)} />
+                    <span>{T.approves}<span className="block text-xs text-foreground-muted">{T.approvesHelp}</span></span>
+                  </label>
+                )}
+              </div>
+            )}
+            {blocked && <p className="mt-2 text-sm text-danger">{perms.inviteAdmin ? T.seatsFull : T.seatsFullAsk}</p>}
             {link && (
               <div className="mt-4 rounded-lg border border-foreground/30 bg-foreground/5 p-3">
                 <p className="text-sm font-medium">{T.linkTitle}</p>
@@ -287,7 +350,7 @@ export default function TeamPanel({ t, lang, initial, perms, mailOn = true, tran
                 {view.invites.map((inv) => (
                   <li key={inv.id} className="flex flex-wrap items-center justify-between gap-3 py-3">
                     <div className="min-w-0">
-                      <p className="flex flex-wrap items-center gap-2"><span className="clip font-medium" dir="ltr">{inv.email}</span><span className={ROLE_BADGE[inv.role]}>{T.roles[inv.role]}</span></p>
+                      <p className="flex flex-wrap items-center gap-2"><span className="clip font-medium" dir="ltr">{inv.email}</span><span className={ROLE_BADGE[inv.role]}>{T.roles[inv.role]}</span>{(perms.access && (inv.brands || inv.approves)) && <span className="text-xs text-foreground-muted">{scopeLabel(inv.brands)}{inv.approves ? ` · ${T.approves}` : ""}</span>}</p>
                       <p className="mt-0.5 text-xs text-foreground-muted">{T.expires} <span className="font-mono" dir="ltr">{day(inv.expiresAt)}</span> · {T.invitedBy} <span dir="ltr">{inv.invitedBy}</span></p>
                     </div>
                     {canCancel(inv) && <button type="button" onClick={() => cancel(inv)} disabled={locked} className="btn btn-danger btn-xs">{busy === `cancel:${inv.id}` ? "…" : T.cancel}</button>}
@@ -367,5 +430,73 @@ export default function TeamPanel({ t, lang, initial, perms, mailOn = true, tran
       </div>
       {confirmDialog}
     </div>
+  );
+}
+
+type TeamDict = AppDict["team"];
+
+/** The brand scope: every brand, or a chosen few of the account's own (rule 3756). The server keeps only its own ids. */
+function BrandPicker({ T, brands, value, onChange, disabled }: { T: TeamDict; brands: { id: string; name: string }[]; value: string[] | null; onChange: (v: string[] | null) => void; disabled: boolean }) {
+  const all = value === null;
+  return (
+    <fieldset className="grid gap-1" data-brand-picker>
+      <legend className="text-foreground-muted">{T.brands}</legend>
+      <label className="flex items-center gap-2">
+        <input type="checkbox" checked={all} disabled={disabled} onChange={(e) => onChange(e.target.checked ? null : brands.slice(0, 1).map((b) => b.id))} />
+        {T.brandsAll}
+      </label>
+      {!all && (
+        <div className="flex flex-wrap gap-x-4 gap-y-1 ps-6">
+          {brands.map((b) => (
+            <label key={b.id} className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={value.includes(b.id)}
+                disabled={disabled || (value.length === 1 && value[0] === b.id)}
+                onChange={(e) => onChange(e.target.checked ? [...value, b.id] : value.filter((x) => x !== b.id))}
+              />
+              <span dir="auto">{b.name}</span>
+            </label>
+          ))}
+        </div>
+      )}
+    </fieldset>
+  );
+}
+
+/** One person's access, edited in place: brand scope, the approve toggle and the owner's monthly credit cap. */
+function AccessEditor({ T, row, brands, scoping, toggle, cap, locked, onSave }: {
+  T: TeamDict; row: Row; brands: { id: string; name: string }[]; scoping: boolean; toggle: boolean; cap: boolean; locked: boolean;
+  onSave: (next: { brands: string[] | null; approves: boolean; creditCap: number | null | undefined }) => void;
+}) {
+  const [scope, setScope] = useState<string[] | null>(row.brands ?? null);
+  const [approves, setApproves] = useState(row.approves === true);
+  const [limit, setLimit] = useState(typeof row.creditCap === "number" ? String(row.creditCap) : "");
+  if (!scoping && !toggle && !cap) return null;
+  const parsed = limit.trim() === "" ? null : Number(limit);
+  const capOk = parsed === null || (Number.isInteger(parsed) && parsed >= 0 && parsed <= 10_000_000);
+  return (
+    <details className="w-full rounded-lg bg-foreground/5 px-3 py-2 text-sm" data-access-editor>
+      <summary className="cursor-pointer text-xs font-medium">{T.access}</summary>
+      <div className="mt-2 grid gap-3">
+        {scoping && <BrandPicker T={T} brands={brands} value={scope} onChange={setScope} disabled={locked} />}
+        {toggle && (
+          <label className="flex items-start gap-2">
+            <input type="checkbox" className="mt-1" checked={approves} disabled={locked} onChange={(e) => setApproves(e.target.checked)} />
+            <span>{T.approves}<span className="block text-xs text-foreground-muted">{T.approvesHelp}</span></span>
+          </label>
+        )}
+        {cap && (
+          <label className="grid max-w-xs gap-1">
+            <span>{T.cap}</span>
+            <input type="number" inputMode="numeric" min={0} max={10_000_000} step={1} dir="ltr" placeholder={T.capNone} value={limit} disabled={locked} onChange={(e) => setLimit(e.target.value)} className="input" aria-invalid={!capOk} />
+            <span className="text-xs text-foreground-muted">{T.capHelp}{typeof row.spent === "number" ? ` · ${fill(T.spent, { n: row.spent })}` : ""}</span>
+          </label>
+        )}
+        <div>
+          <button type="button" className="btn btn-primary btn-xs" disabled={locked || !capOk} onClick={() => onSave({ brands: scope, approves, creditCap: cap ? parsed : undefined })}>{T.save}</button>
+        </div>
+      </div>
+    </details>
   );
 }

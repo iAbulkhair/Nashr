@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { forbid } from "@/lib/roles";
 import { currentUser, isAdmin } from "@/lib/auth";
 import { CAPS, db, pushCapped } from "@/lib/db";
 import { INTEGRATIONS } from "@/lib/integrations";
@@ -25,6 +26,9 @@ const LISTED = new Map(INTEGRATIONS.map((i) => [i.id, i.name]));
 export async function POST(req: Request) {
   const u = await currentUser();
   if (!u) return NextResponse.json({ ok: false }, { status: 401 });
+  // A Viewer reads and comments only: no agent runs, no credits spent (rule 3752).
+  const no = forbid(u, "integrations.request");
+  if (no) return no;
   const b = (await req.json().catch(() => ({}))) as { id?: unknown; name?: unknown };
   const id = typeof b.id === "string" ? b.id : "";
   const listed = LISTED.get(id);

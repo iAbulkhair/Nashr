@@ -1,4 +1,5 @@
 import { track } from "@/lib/track";
+import { forbid } from "@/lib/roles";
 import { NextResponse } from "next/server";
 import { currentUser, sc, trialOver } from "@/lib/auth";
 import { chat, chatRefusedText, type ChatRefused } from "@/lib/chat";
@@ -46,6 +47,9 @@ export async function POST(req: Request) {
   const deadline = deadlineFor(maxDuration);
   const u = await currentUser();
   if (!u) return NextResponse.json({ ok: false }, { status: 401 });
+  // A Viewer reads and comments only: no agent runs, no credits spent (rule 3752).
+  const no = forbid(u, "chat");
+  if (no) return no;
   const b = (await req.json().catch(() => ({}))) as { text?: string; conv?: string; agent?: string; stream?: boolean };
   const text = (b.text ?? "").trim().slice(0, 4000);
   if (!text) return NextResponse.json({ ok: false, error: "empty" }, { status: 400 });

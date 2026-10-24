@@ -65,6 +65,8 @@ describe("rule 2030: each builder returns the bytes of its old template", () => 
     [wsKey.fileProposalDone(S, "ab12"), `fileprop-done:${S}:ab12`],
     [wsKey.fileProposalClaim(S, "ab12"), `fileprop-claim:${S}:ab12`],
     [wsKey.dailyMail(S, "2026-10-22"), `dailymail:${S}:2026-10-22`],
+    // The auto-assign turn counter (rule 3764): a new key, written first under the registry.
+    [wsKey.assignTurn(S), `assignturn:${S}`],
     [wsKey.fileProposals(S), `fileprops:${S}`],
     [wsKey.keyCheckBucket(D, "hour"), `keycheck:hour:${E}`],
     [wsKey.connectStartBucket(D), `connectstart:${E}`],

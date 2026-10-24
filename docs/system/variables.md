@@ -202,6 +202,7 @@ Keep the pair once set: a new pair makes every device subscribed with the old pu
 
 - Mail, logs and tooling (2026-10-16, rules 1960-1979, branch only) added no variable. `.env.example` at the root lists every name in this file with an empty value (rule 1977; a test holds the two lists equal). Without `RESEND_API_KEY` off a production deploy, mail now goes to the console provider (`src/lib/mail-provider.ts`), which keeps the message in memory and logs only the recipient's domain and sizes; on a production deploy nothing is sent, as before. The logger drops debug lines when `isProductionDeploy()` says so and reads no variable itself.
 - Ops agent (2026-10-20, rules 2380-2390, branch only) added five names (section 5b), not yet in the totals above: `OPS_AGENT_TOKEN`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_WEBHOOK_SECRET` and `OPS_GITHUB_TOKEN` are secrets, `TELEGRAM_CHAT_ID` is not. All five fail closed when unset.
+- Customer roles (2026-10-23, rules 3750-3789, branch `claude/m3-customer-roles-b97625`) added no variable. The free viewers (3), the comment limits (1,000 characters, 50 kept) and the cap bounds are code (`FREE_VIEWERS` in `src/lib/team.ts`, the tasks route, `MembershipRow` in `src/lib/stored.ts`); the conversion script `scripts/editor-role.ts` reads only the app's own `KV_REST_API_URL` and `KV_REST_API_TOKEN`.
 
 ## 7. Release script inputs (2026-10-08, rule 676)
 

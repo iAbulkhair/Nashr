@@ -30,8 +30,8 @@ import { lastActive } from "./track";
  * the brand files, tasks and conversations (the account's sheet already shows those to staff with the same gate).
  */
 
-export type WorkspaceMember = { email: string; name: string; role: "admin" | "member"; invitedBy: string; acceptedAt: string; paused: boolean; lastSignInAt: string | null; alsoIn: number };
-export type WorkspaceInvite = { email: string; role: "admin" | "member"; invitedBy: string; createdAt: string; expiresAt: string };
+export type WorkspaceMember = { email: string; name: string; role: "admin" | "member" | "viewer"; invitedBy: string; acceptedAt: string; paused: boolean; lastSignInAt: string | null; alsoIn: number };
+export type WorkspaceInvite = { email: string; role: "admin" | "member" | "viewer"; invitedBy: string; createdAt: string; expiresAt: string };
 /**
  * `limits` (rule 2460): the brand's agent tool authority (src/lib/tool-authority.ts) as its restrictions only, each agent
  * and capability that is `ask` or `off`; empty means every agent may do everything. Read from the brand's own stored

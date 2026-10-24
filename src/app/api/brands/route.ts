@@ -16,6 +16,8 @@ const choose = (u: User, id: string) => {
   const who = brandChooser(u);
   return setActiveBrandIn(who.pid, who.aid, id, who.homeLogin);
 };
+/** Rule 3757: a member narrowed to some brands sees and switches to those only; everyone else to every brand. */
+const allowed = (u: User, id: string) => !u.actor?.brands || u.actor.brands.includes(id);
 /** The cap refusal as the route answers it: 402, the cap and the plan, nothing written (rule 1391). */
 const overCap = (u: User, r: BrandLimit) => NextResponse.json({ ok: false, error: r.error, cap: r.cap, plan: u.plan }, { status: 402 });
 
@@ -28,7 +30,7 @@ const overCap = (u: User, r: BrandLimit) => NextResponse.json({ ok: false, error
 export async function GET() {
   const u = await currentUser();
   if (!u) return NextResponse.json({ ok: false }, { status: 401 });
-  const rows = await listBrands(acct(u));
+  const rows = (await listBrands(acct(u))).filter((b) => allowed(u, b.id));
   // One brand-file read per brand, side by side: an awaited loop cost one Redis round trip each.
   const files = await pmap(rows, (b) => getBrand(scopeFor(acct(u), b.id)));
   const enriched = rows.map((b, i) => ({ ...b, name: b.name || files[i]?.name || (b.id === "default" ? u.email : "…"), hasBrandFile: !!files[i] }));
@@ -67,7 +69,7 @@ export async function POST(req: Request) {
   if (b.action === "switch") {
     // Only to an active brand: an archived one has no pages (`b/[brand]` answers 404 for it, rule 886) and the session
     // would fall back to "default" anyway, so the choice is refused and nothing is written (rule 892).
-    if (target.status !== "active") return NextResponse.json({ ok: false, error: "not_found" }, { status: 404 });
+    if (target.status !== "active" || !allowed(u, target.id)) return NextResponse.json({ ok: false, error: "not_found" }, { status: 404 });
     await choose(u, target.id);
     return NextResponse.json({ ok: true });
   }
