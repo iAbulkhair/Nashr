@@ -339,6 +339,11 @@ export const globalKey = {
   /** set: every account id (`acct(u)`: in R1 the owner's first address). */
   usersAll: () => "users:all",
   /**
+   * json `{ at, rows }`: the founder console's customers list, one aggregate per account id (numbers and the display name
+   * only), rebuilt when older than five minutes or on demand (src/lib/admin-workspaces.ts, rule 3724). Expires in an hour.
+   */
+  workspaceAgg: () => "admin:wsagg",
+  /**
    * json `RunReceipt`: one paid scheduled run's receipt (src/lib/run-receipt.ts, rules 2476-2479), keyed by its claim
    * (`weekly:{scope}:{week}`, `routine:{scope}:{id}:{period}`), which code builds from the caller's own scope.
    */
