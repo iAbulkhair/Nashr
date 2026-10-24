@@ -3,13 +3,13 @@ import { db } from "./db";
 import { getUser, normalizeEmail, normalizePhone, saveUser, trialOver, type User } from "./auth";
 import { monthKey, withUserLock } from "./credits";
 import { setMonthly } from "./topups";
-import { INTERVAL_MONTHS, MAX_SEAT_OVERRIDE, PLAN_PRICE_SAR, SELF_SERVE_PLANS, allowanceOf, extraSeatsLine, firstMonthPriceSar, isTopupPack, readInterval, topupPriceSar, topupsSold, vatHalalasOf, yearlyOffered, yearlyPriceSar, type BillingInterval, type SelfServePlan } from "./pricing";
+import { INTERVAL_MONTHS, MAX_SEAT_OVERRIDE, PLAN_PRICE_SAR, SELF_SERVE_PLANS, allowanceOf, extraSeatsLine, extraSeatsSold, firstMonthPriceSar, paidExtraSeats, isTopupPack, readInterval, topupPriceSar, topupsSold, vatHalalasOf, yearlyOffered, yearlyPriceSar, type BillingInterval, type SelfServePlan } from "./pricing";
 import { ksaDay } from "./partner-rules";
 import { addPaidTopup, openOffer, paymentsKey, unusedOffer, recordPayment, voidPaidTopup, voidPayment, type Payment } from "./partners";
 import { enforceSeats, isTeamLockTimeout, settleExtraSeats } from "./team";
 import { appOrigin } from "./origin";
 import { invoiceForPayment } from "./invoice";
-import { GRACE_DAYS, addDays, addMonths, billingInterval, billingLocked, intentOutdatesOwner, paymobRenewalDue, type Billing } from "./billing-state";
+import { GRACE_DAYS, addDays, addMonths, billingInterval, billingLocked, intentOutdatesOwner, paymobRenewalDue, seatMonthsLeft, type Billing } from "./billing-state";
 import { PaymentDeclined, PaymentError, paymentProvider, type CardTokenEvent, type PaymentProvider, type PaymentTxn, type ProviderName } from "./payments";
 import { adminAudit } from "./admin-audit";
 import { claimOnPayment, endOnRefund, foundingOfferOpen, freePlaces, lockedBaseHalalas, type ClaimOutcome } from "./founding";
@@ -70,9 +70,14 @@ export const lastCheckoutKey = (email: string) => `paymob:last:${email}`;
 const lastKeyOf = (p: ProviderName, email: string) => (p === "geidea" ? accountKey.payLast(email) : lastCheckoutKey(email));
 const LAST_TTL = 86400;
 /** Keys that belong to one account and leave with it (src/lib/account.ts `wipeAccount`), Geidea's included (rule 3914). */
-export const paymobAccountKeys = (email: string) => [cardKey(email), lastCheckoutKey(email), accountKey.payCard(email), accountKey.payLast(email)];
+export const paymobAccountKeys = (email: string) => [cardKey(email), lastCheckoutKey(email), accountKey.payCard(email), accountKey.payLast(email), accountKey.paySeatLock(email), accountKey.paySeatWait(email)];
 
-export type IntentKind = "plan" | "topup" | "renewal";
+/**
+ * "seat" (rule 4042): one extra seat bought during a paid year, charged on the saved card for the months left. Expand: an
+ * older build reading a seat intent prices it as a plan of `plan` (its `priceFor` falls to the plan branch), the amounts
+ * differ and the callback records a mismatch, so nothing is applied; this build is the only one that writes the kind.
+ */
+export type IntentKind = "plan" | "topup" | "renewal" | "seat";
 /** What we asked Paymob to charge, stored before the call. The only source of the account and the amount for a callback. */
 export type PayIntent = {
   ref: string;
@@ -111,6 +116,13 @@ export type PayIntent = {
    * (expand): an intent without it reads as 0 seats, so its amount check is the plan alone, as before.
    */
   extraSeats?: number;
+  /**
+   * A seat intent (rule 4042): the months it pays for (`seatMonthsLeft` when it was priced) and the subscription's
+   * `paidThrough` then; the seat is granted only while the subscription still ends that day (rule 4046). Optional
+   * (expand): only seat intents carry them, and an older build ignores them.
+   */
+  seatMonths?: number;
+  seatThrough?: string;
   createdAt: string;
   by: string;
   orderId?: number | string;
@@ -155,11 +167,23 @@ const isSelfServe = (v: unknown): v is SelfServePlan => typeof v === "string" &&
  * A renewal also charges its paid extra seats (`item.extraSeats`, rule 3372): seats × EXTRA_SEAT_MONTHLY_SAR for each
  * month of the period on top of the plan (a year of a seat is 12 monthly charges, no free months; the lock never applies
  * to seats), VAT on the sum. A plan checkout or a pack never carries seats.
+ *
+ * A seat bought during a paid year (`kind` "seat", rule 4042): `item.extraSeats` seats (at least one) for `item.seatMonths`
+ * months (1 to 36) at EXTRA_SEAT_MONTHLY_SAR each, VAT on the sum, for a plan that sells seats. No offer, no lock, no
+ * period of its own: anything else is null.
  */
-export function priceFor(kind: IntentKind, item: { plan?: unknown; credits?: unknown; interval?: unknown; extraSeats?: unknown }, offer = false, lockedBaseHalalas?: number): { baseHalalas: number; vatHalalas: number; amountCents: number } | null {
+export function priceFor(kind: IntentKind, item: { plan?: unknown; credits?: unknown; interval?: unknown; extraSeats?: unknown; seatMonths?: unknown }, offer = false, lockedBaseHalalas?: number): { baseHalalas: number; vatHalalas: number; amountCents: number } | null {
   const interval = readInterval(item.interval);
   if (interval === null) return null;
   let sar: number;
+  if (kind === "seat") {
+    const seats = seatsOf(item.extraSeats);
+    const months = item.seatMonths;
+    if (offer || interval !== "month" || !isSelfServe(item.plan) || !extraSeatsSold(item.plan) || !seats || !Number.isSafeInteger(months) || (months as number) < 1 || (months as number) > 36) return null;
+    const baseHalalas = extraSeatsLine(seats).baseHalalas * (months as number);
+    const vatHalalas = vatOf(baseHalalas);
+    return { baseHalalas, vatHalalas, amountCents: baseHalalas + vatHalalas };
+  }
   if (kind === "topup") {
     if (interval !== "month" || !isTopupPack(item.credits)) return null;
     sar = topupPriceSar(item.credits);
@@ -298,6 +322,7 @@ async function applyPaid(intent: PayIntent, txnId: TxnId, paymentId: string, pro
     const r = await addPaidTopup(intentAccount(intent), { credits: intent.credits!, paidSar: baseSar, paidOn: today, ref: `${provider}:${txnId}`, paymentId }, provider);
     return r.ok ? { ok: true, already: r.already, payment: r.payment ?? undefined } : { ok: false, error: r.error };
   }
+  if (intent.kind === "seat") return applySeat(intent, txnId, paymentId, provider, today);
   const plan = intent.plan!;
   const cardRead = await db.get<SavedCard>(cardKeyOf(provider, intentAccount(intent)));
   const id = String(txnId);
@@ -381,6 +406,35 @@ async function applyPaid(intent: PayIntent, txnId: TxnId, paymentId: string, pro
   if (!rec.ok) return { ok: false, error: rec.error };
   // `already` is the payment record's own: the plan step of a retry after a busy answer is "already", but its payment
   // is recorded (and `paymob_paid` logged) only now, once.
+  return { ok: true, already: !!rec.already, payment: rec.payment };
+}
+
+/**
+ * A paid seat intent (rules 4043, 4046): one more paid extra seat, under the account lock, idempotent on the transaction
+ * id, and nothing else: the plan, `paidThrough`, the interval and the credits stay as they are. Only for the subscription
+ * the seat was priced against (same provider and plan, not locked, still paid through `seatThrough`, no owner change
+ * since); anything else is "unapplied" for a refund. Recorded through `recordPayment` like a renewal, so a partner's
+ * commission follows the same rules as the seats a renewal charges (rule 4048). Fitting seats (`enforceSeats`) is not
+ * run: one more seat never pauses anyone, and resuming a paused member here would take the seat the owner just bought.
+ */
+async function applySeat(intent: PayIntent, txnId: TxnId, paymentId: string, provider: ProviderName, today: string): Promise<Applied> {
+  const id = String(txnId);
+  const step = await withUserLock(intentAccount(intent), async (u): Promise<"already" | "granted" | "seat_changed"> => {
+    const b = u.billing;
+    if (b?.txns?.includes(id)) return "already";
+    if (!b || billingLocked(b) || b.provider !== provider || b.plan !== intent.plan || u.plan !== intent.plan || !extraSeatsSold(u.plan)) return "seat_changed";
+    if (b.paidThrough !== intent.seatThrough || intentOutdatesOwner(u, intent.createdAt)) return "seat_changed";
+    const next = paidExtraSeats(u) + seatsOf(intent.extraSeats);
+    if (!seatsOf(intent.extraSeats) || next > MAX_SEAT_OVERRIDE) return "seat_changed";
+    u.extraSeats = next;
+    u.billing = { ...b, txns: keepTxns(b.txns, id) };
+    await saveUser(u);
+    logger.info("billing: yearly seat granted", { aid: intentAccount(intent), extraSeats: next, months: intent.seatMonths });
+    return "granted";
+  });
+  if (step === "seat_changed") return { ok: false, error: "seat_changed" };
+  const rec = await recordPayment(intentAccount(intent), { id: paymentId, amountSar: intent.baseHalalas / 100, plan: intent.plan!, date: today, reference: `${provider}:${txnId}` }, provider);
+  if (!rec.ok) return { ok: false, error: rec.error };
   return { ok: true, already: !!rec.already, payment: rec.payment };
 }
 
@@ -758,6 +812,193 @@ async function chargeSavedCard(p: PaymentProvider, saved: NonNullable<PaymentPro
 }
 
 /**
+ * How one extra seat bought now is paid (rules 4040-4041, 4049):
+ * - "renewal": the seat is usable now and first charged at the next renewal, as before (rule 3370). A monthly plan, a plan
+ *   with no online subscription (a hand plan: the founder invoices it, rule 3377), and a yearly one already due.
+ * - "now": an active yearly subscription paid past today: the months left of the paid year (`seatMonthsLeft`) are charged
+ *   now on the saved card, `priceFor("seat")`, before the seat exists.
+ * - "blocked": yearly, but no saved-card charge for it: the provider has none (Geidea without `GEIDEA_MIT=1`), the
+ *   subscription is another provider's (`no_saved_charge`: the owner contacts us), or renewal is off or no card is saved
+ *   (`no_card`: the owner turns renewal on with a card on the billing page). No seat is sold online then.
+ */
+export type SeatBlock = "no_card" | "no_saved_charge";
+export type SeatCharge = { mode: "renewal" } | { mode: "now"; months: number; baseHalalas: number; vatHalalas: number; amountCents: number } | { mode: "blocked"; reason: SeatBlock };
+export async function seatCharge(u: Pick<User, "id" | "email" | "billing" | "plan">, today = ksaDay()): Promise<SeatCharge> {
+  const b = u.billing;
+  if (!b || billingLocked(b) || billingInterval(b) !== "year") return { mode: "renewal" };
+  const months = seatMonthsLeft(b, today);
+  if (months === 0) return { mode: "renewal" };
+  const p = paymentProvider();
+  if (!p || !p.savedCard || b.provider !== p.name) return { mode: "blocked", reason: "no_saved_charge" };
+  if (!b.autoRenew || !(await db.get<SavedCard>(cardKeyOf(p.name, acct(u))))) return { mode: "blocked", reason: "no_card" };
+  const price = priceFor("seat", { plan: b.plan, extraSeats: 1, seatMonths: months });
+  return price ? { mode: "now", months, ...price } : { mode: "blocked", reason: "no_saved_charge" };
+}
+
+export type SeatChargeError = "seat_busy" | "seat_pending" | "seat_declined" | "seat_failed" | "seat_changed";
+const SEAT_LOCK_S = 120;
+const SEAT_WAIT_S = 2 * 86400;
+
+/**
+ * Rules 4043-4045: charge one seat for `months` on the account's saved card, with no team or account lock held across
+ * the provider calls (each may take its 15 s timeout; `lock:user` lives 10 s). One seat charge per account at a time
+ * (`pay:seatlock`), and none while an earlier one was sent without an answer (`pay:seatwait`, until its intent settles),
+ * so a retried or doubled click never charges twice. Right before the charge the account lock re-reads the subscription
+ * and the card (as rule 1956 does for a renewal). The answer goes through `applyTransaction`, the same path as a
+ * callback, which grants the seat (`applySeat`); a paid charge whose seat cannot be granted is refunded at once.
+ * `by` is the address of the owner who confirmed.
+ */
+export async function chargeSeat(u: User, by: string, months: number, today = ksaDay()): Promise<{ ok: true; txnId: TxnId } | { ok: false; error: SeatChargeError }> {
+  const p = paymentProvider();
+  const saved = p?.savedCard;
+  const aid = acct(u);
+  if (!p || !saved) return { ok: false, error: "seat_changed" };
+  if (!(await db.lock(accountKey.paySeatLock(aid), SEAT_LOCK_S))) return { ok: false, error: "seat_busy" };
+  try {
+    const waiting = await db.get<string>(accountKey.paySeatWait(aid));
+    if (typeof waiting === "string") {
+      const prev = await db.get<PayIntent>(intentKey(waiting));
+      if (prev?.status === "open") return { ok: false, error: "seat_pending" };
+      await db.del(accountKey.paySeatWait(aid));
+    }
+    const b = u.billing;
+    const card = await db.get<SavedCard>(cardKeyOf(p.name, aid));
+    const price = b ? priceFor("seat", { plan: b.plan, extraSeats: 1, seatMonths: months }) : null;
+    if (!b || !card || !price || b.provider !== p.name) return { ok: false, error: "seat_changed" };
+    const geidea = p.name === "geidea";
+    const ref = geidea ? randomUUID() : newRef();
+    const intent: PayIntent = {
+      ref, email: aid, acct: aid, billingEmail: u.email, kind: "seat", plan: b.plan, extraSeats: 1, seatMonths: months, seatThrough: b.paidThrough,
+      ...price, currency: "SAR", offer: false, createdAt: new Date().toISOString(), by: normalizeEmail(by), status: "open",
+      ...(geidea ? { provider: "geidea" as const, ...(card.agreementId ? { agreementId: card.agreementId } : {}) } : {}),
+    };
+    const failIntent = (extra: Partial<PayIntent> = {}) => Promise.all([db.set(intentKey(ref), { ...intent, ...extra, status: "failed" }, DAYS_400), unopen(ref)]);
+    await Promise.all([db.set(intentKey(ref), intent, DAYS_400), ...(geidea ? [db.zadd(globalKey.payOpen(), Date.now(), ref)] : [])]);
+    const label = `Thakeen extra seat, ${months} month${months === 1 ? "" : "s"}`;
+    let paymentKey: string | null;
+    let orderId: number | string | null;
+    try {
+      const it = await saved.prepare({
+        amountCents: price.amountCents,
+        item: { name: label, description: `${label} of the paid year${price.vatHalalas ? " (incl. VAT)" : ""}` },
+        billing: { ...billingName(u), email: u.email, phone: normalizePhone(u.phone ?? "") || "NA" },
+        reference: ref,
+        notificationUrl: `${appOrigin()}/api/billing/${p.name}/webhook`,
+        redirectionUrl: `${appOrigin()}${appHrefFor(u, u.lang, "/settings/members")}`,
+        expirationS: 3600,
+        lang: u.lang === "en" ? "en" : "ar",
+      }, { token: card.token, agreementId: card.agreementId ?? null });
+      paymentKey = it.paymentKey;
+      orderId = it.orderId;
+      if (typeof orderId === "number") await Promise.all([db.set(intentKey(ref), { ...intent, orderId }, DAYS_400), db.set(orderKey(orderId), ref, DAYS_400)]);
+    } catch (e) {
+      await failIntent();
+      logger.error(`${p.name} seat charge`, { error: e instanceof PaymentError ? e.message : "error" });
+      return { ok: false, error: "seat_failed" };
+    }
+    const withOrder = orderId !== null ? { orderId } : {};
+    if (!paymentKey) {
+      await failIntent(withOrder);
+      return { ok: false, error: "seat_failed" };
+    }
+    // The subscription and the card as they are right before the charge, under the account lock (no write).
+    let still: boolean;
+    try {
+      still = await withUserLock(aid, async (x) => {
+        const xb = x.billing;
+        return !!xb && !billingLocked(xb) && xb.provider === p.name && xb.autoRenew && xb.plan === b.plan && xb.paidThrough === b.paidThrough && !!(await db.get(cardKeyOf(p.name, aid)));
+      });
+    } catch (e) {
+      if (!(e instanceof Error && (e.message === "user_lock_timeout" || e.message === "user_not_found"))) throw e;
+      still = false;
+    }
+    if (!still) {
+      await failIntent(withOrder);
+      return { ok: false, error: "seat_changed" };
+    }
+    await db.set(accountKey.paySeatWait(aid), ref, SEAT_WAIT_S);
+    let txn: PaymentTxn | null;
+    try {
+      txn = await saved.charge(paymentKey, card.token, card.agreementId ?? null);
+    } catch (cause) {
+      if (cause instanceof PaymentDeclined) {
+        await Promise.all([failIntent(withOrder), db.del(accountKey.paySeatWait(aid))]);
+        return { ok: false, error: "seat_declined" };
+      }
+      // Sent and no answer: the card may have been charged. The intent stays open and `pay:seatwait` holds it, so its
+      // callback (or Geidea's reconciliation) still grants the seat, and no second seat is charged meanwhile.
+      logger.error(`${p.name} seat charge`, { error: cause instanceof PaymentError ? cause.message : "error" });
+      return { ok: false, error: "seat_pending" };
+    }
+    if (!txn || txn.pending) return { ok: false, error: "seat_pending" };
+    if (orderId === null ? !!txn.ref && txn.ref !== ref : txn.orderId !== null && txn.orderId !== orderId) return { ok: false, error: "seat_pending" };
+    let r: CallbackResult;
+    try {
+      r = await applyTransaction(p, { ...txn, ref: txn.ref ?? ref });
+    } catch (e) {
+      logger.error(`${p.name} seat apply`, { error: e instanceof Error ? e.message : "error" });
+      return { ok: false, error: "seat_pending" };
+    }
+    if (r.status === 503) return { ok: false, error: "seat_pending" };
+    await db.del(accountKey.paySeatWait(aid));
+    if (txn.success && (r.result === "paid" || r.result === "already")) return { ok: true, txnId: txn.id };
+    if (txn.success && r.result === "unapplied") {
+      // Rule 4046: paid, but the subscription moved while the card was charged: the money goes back now.
+      await refundSeatCharge(aid, txn.id, "seat_changed");
+      return { ok: false, error: "seat_changed" };
+    }
+    return { ok: false, error: "seat_declined" };
+  } finally {
+    await db.unlock(accountKey.paySeatLock(aid));
+  }
+}
+
+/** The founder console's refunds and the seat refund share one guard: the provider refund runs at most once per transaction. */
+async function refundOnce(pp: PaymentProvider, txnId: TxnId, amountCents: number, by: string): Promise<{ ok: true; already: boolean } | { ok: false; error: "busy" | "paymob_refund_failed" }> {
+  if (await db.get(refundedKey(txnId))) return { ok: true, already: true };
+  if (!(await db.lock(refundLockKey(txnId), 60))) return { ok: false, error: "busy" };
+  try {
+    if (await db.get(refundedKey(txnId))) return { ok: true, already: true };
+    try {
+      await pp.refund(txnId, amountCents);
+    } catch (err) {
+      logger.error(`${pp.name} refund`, { error: err instanceof PaymentError ? err.message : "error" });
+      return { ok: false, error: "paymob_refund_failed" };
+    }
+    await db.set(refundedKey(txnId), JSON.stringify({ at: new Date().toISOString(), by }), DAYS_400);
+    return { ok: true, already: false };
+  } finally {
+    await db.unlock(refundLockKey(txnId));
+  }
+}
+
+/** Who the audit log names for a seat charge refunded by the product itself (rules 4046-4047), not by the founder. */
+export const SEAT_REFUND_BY = "system:seat";
+
+/**
+ * Rules 4046-4047: refund a seat charge of the account `aid` in full through the provider, once, and void its payment
+ * when one was recorded (a partner's commission on it goes with it, `voidPayment`). The seat itself is the caller's: the
+ * invite path lowers it first (`returnPaidSeat` in src/lib/team.ts); a seat that was never granted has nothing to lower.
+ * Logged either way; a refund the provider refused is logged for the founder to make from the console. True when refunded.
+ */
+export async function refundSeatCharge(aid: string, txnId: TxnId, why: string): Promise<boolean> {
+  const pp = paymentProvider();
+  const rec = await db.get<TxnRecord>(txnKey(txnId));
+  if (!pp || !rec || rec.kind !== "seat" || (rec.acct ?? rec.email) !== aid) {
+    await log(aid, `seat_refund_failed txn:${txnId} reason:${why} error:not_found`, pp?.name ?? "paymob");
+    return false;
+  }
+  const r = await refundOnce(pp, txnId, rec.amountCents, SEAT_REFUND_BY);
+  if (!r.ok) {
+    await log(aid, `seat_refund_failed txn:${txnId} reason:${why} error:${r.error}`, pp.name);
+    return false;
+  }
+  const v = await voidPayment(aid, rec.paymentId, SEAT_REFUND_BY, `seat refunded: ${why}`);
+  await log(aid, `seat_refunded txn:${txnId} reason:${why} payment:${v.ok ? rec.paymentId : "none"}`, pp.name);
+  return true;
+}
+
+/**
  * Rule 1955: stop every future charge of an account that is being deleted, before anything else of it is touched.
  * Under the account lock, renewal turns off and the saved card token is deleted, so `chargeSavedCard` (which re-checks
  * both under the same lock right before it charges) can not charge it any more. An account record already gone still
@@ -915,25 +1156,18 @@ export async function refundPaymobPayment(email: string, id: unknown, by: string
   if (m && pp.name !== "paymob") return { ok: false, error: "not_paymob" };
   const rec = txnId ? await db.get<TxnRecord>(txnKey(txnId)) : null;
   if (!rec || (rec.acct ?? rec.email) !== e || rec.paymentId !== id) return { ok: false, error: "not_paymob" };
-  let alreadyRefunded = !!(await db.get(refundedKey(txnId)));
-  if (!alreadyRefunded) {
-    if (!(await db.lock(refundLockKey(txnId), 60))) return { ok: false, error: "busy" };
-    try {
-      alreadyRefunded = !!(await db.get(refundedKey(txnId)));
-      if (!alreadyRefunded) {
-        try {
-          await pp.refund(txnId, rec.amountCents);
-        } catch (err) {
-          logger.error(`${pp.name} refund`, { error: err instanceof PaymentError ? err.message : "error" });
-          return { ok: false, error: "paymob_refund_failed" };
-        }
-        await db.set(refundedKey(txnId), JSON.stringify({ at: new Date().toISOString(), by }), DAYS_400);
-      }
-    } finally {
-      await db.unlock(refundLockKey(txnId));
-    }
-  }
+  const once = await refundOnce(pp, txnId, rec.amountCents, by);
+  if (!once.ok) return once;
+  const alreadyRefunded = once.already;
   const why = typeof reason === "string" && reason.trim() ? reason : `${pp.name} refund`;
+  if (rec.kind === "seat") {
+    // Rule 4051: a seat bought mid-year is its own payment; refunding it never ends the plan or removes the card. The seat
+    // stays until the next renewal, which trims it when no one fills it (`settleExtraSeats`). An older build reads this
+    // kind as a plan payment and would end the plan: refund seat payments only from a build that has this line.
+    const sv = await voidPayment(e, id, by, why);
+    if (!sv.ok) return { ok: false, error: "not_found" };
+    return { ok: true, payment: sv.payment, alreadyRefunded, planEnded: false };
+  }
   if (p.topup || rec.kind === "topup") {
     const r = p.topup ? await voidPaidTopup(e, p.topup.lot, by, why) : null;
     if (r?.ok) return { ok: true, payment: r.payment ?? p, alreadyRefunded, planEnded: false };

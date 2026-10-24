@@ -82,6 +82,21 @@ export function addMonths(day: string, n: number, anchor?: number): string {
   return `${y}-${pad(mo + 1)}-${pad(Math.min(anchor ?? Number(m[3]), last))}`;
 }
 
+/** At most this many months are ever counted ahead (two yearly payments of one plan stack to 24, a month first to 25). */
+const SEAT_MONTHS_MAX = 36;
+
+/**
+ * Rule 4041: the months of the paid period still to run on `today`, for a seat bought mid-period. The months are the
+ * subscription's own, on its anchor day (`addMonths(paidThrough, -k, anchor)`), and a started month counts in full: on
+ * the anchor day itself the month starting that day counts and the one ending that day does not. 0 when the period is
+ * due (`paidThrough` today or before): the renewal then charges the seat for its whole period.
+ */
+export function seatMonthsLeft(b: Pick<Billing, "paidThrough" | "anchor">, today: string): number {
+  let n = 0;
+  while (n < SEAT_MONTHS_MAX && addMonths(b.paidThrough, -n, b.anchor) > today) n++;
+  return n;
+}
+
 /** The renewal is due: an active or past-due Paymob subscription whose paid month ends today or earlier (Riyadh days). */
 export const paymobRenewalDue = (b: Billing | null | undefined, today: string): b is Billing =>
   !!b && (b.provider === "paymob" || b.provider === "geidea") && (b.status === "active" || b.status === "past_due") && b.paidThrough <= today;

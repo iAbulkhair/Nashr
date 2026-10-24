@@ -10,6 +10,7 @@ import { revokeFeed, type LinkOwner } from "./feed-token";
 import { claimLogin, getAccount, getLogin, normalizeEmail, releaseLogin, saveUser, seatLimit, strongPassword, validEmail, type Actor, type User } from "./auth";
 import { billableExtraSeats, EXTRA_SEAT_MONTHLY_SAR, extraSeatsSold, includedSeats, MAX_SEAT_OVERRIDE, paidExtraSeats } from "./pricing";
 import { billingLocked } from "./billing-state";
+import type { SeatBlock, SeatCharge, SeatChargeError } from "./billing";
 import { acct, LoginIndex, OPAQUE_IDS } from "./account-id";
 import { can } from "./roles";
 import { personSpendFor } from "./credits";
@@ -122,13 +123,18 @@ export type PendingInvite = Invite & { id: string };
  * address is the owner or a member of THIS account (nothing outside the inviter's own team is revealed), and an invite
  * for an address that already signs in is accepted by signing in, never with a new password.
  */
-export type TeamError = "invalid_email" | "invalid_role" | "forbidden" | "unavailable" | "not_found" | "invalid" | "weak_password" | "invalid_name" | "already_member" | "signin_required" | "seats_full" | "busy";
+export type TeamError = "invalid_email" | "invalid_role" | "forbidden" | "unavailable" | "not_found" | "invalid" | "weak_password" | "invalid_name" | "already_member" | "signin_required" | "seats_full" | "busy" | SeatChargeError;
+/** What a seat bought now costs on a yearly subscription (rule 4040): the months left of the paid year, halalas. */
+export type SeatChargeView = { months: number; baseHalalas: number; totalHalalas: number };
 /**
  * Over the seat limit. `included`, `extra`, `unitSar` and `canBuy` (paid seats, rule 3369) are present only on the
  * answer of `createInvite`: what the owner's confirm step shows; the accept paths answer `used` and `limit` alone.
+ * On a yearly subscription `charge` is what the confirm charges now (rule 4040), and `blocked` why no seat is sold
+ * online (rule 4049, `canBuy` false then). Older pages ignore both (expand).
  */
-export type SeatsError = { ok: false; error: "seats"; used: number; limit: number; included?: number; extra?: number; unitSar?: number; canBuy?: boolean };
-export type TeamFail = { ok: false; error: TeamError } | SeatsError;
+export type SeatsError = { ok: false; error: "seats"; used: number; limit: number; included?: number; extra?: number; unitSar?: number; canBuy?: boolean; charge?: SeatChargeView; blocked?: SeatBlock };
+/** `refunded`: a seat charged in this request was refunded because the invite could not be made after all (rule 4047). */
+export type TeamFail = ({ ok: false; error: TeamError } | SeatsError) & { refunded?: true };
 
 export const INVITE_TTL_SECONDS = 7 * 24 * 3600;
 const TOKEN_RE = /^[a-f0-9]{64}$/;
@@ -631,7 +637,7 @@ export async function createInvite(
   rawRole: string,
   lang: string,
   access: { brands?: unknown; approves?: unknown } = {},
-  opts: { addSeat?: boolean } = {},
+  opts: { addSeat?: boolean; seatHalalas?: number } = {},
 ): Promise<{ ok: true; token: string; id: string; invite: Invite; seatAdded?: true } | TeamFail> {
   const role = teamRoleFrom(rawRole);
   if (!role) return fail("invalid_role");
@@ -647,7 +653,12 @@ export async function createInvite(
   const token = randomBytes(32).toString("hex");
   const id = inviteId(token);
   const aid = aidOf(owner);
-  return withTeamLock(aid, async () => {
+  type Made = { ok: true; token: string; id: string; invite: Invite; seatAdded?: true };
+  type ChargeFirst = { chargeNow: Extract<SeatCharge, { mode: "now" }>; account: User };
+  // Pass 1 checks and, when the seat is paid by the renewal, makes the invite; a yearly seat charged now (rule 4043)
+  // leaves the lock with `chargeNow`, the card is charged with no lock held, and pass 2 (`charged`) re-checks everything
+  // under the lock again, with the seat the payment granted now inside the limit.
+  const pass = (charged: boolean) => withTeamLock(aid, async (): Promise<Made | TeamFail | ChargeFirst> => {
     // Is the address taken? Through the login resolver (rule 1982), not by reading `user:{address}` as an account.
     const [taken, m, members, invites, fresh] = await Promise.all([getLogin(e), getMember(e), listMembers(aid), listInvites(aid), getAccount(aid)]);
     // The account re-read under the lock: one deleted while this request waited (`wipeAccount` holds `lock:team` until
@@ -663,13 +674,21 @@ export async function createInvite(
     const used = seatCount(members, invites);
     // The new invite counted with the rest: a viewer invite within the free viewers takes no seat (rule 3753).
     const needed = seatCount(members, [...invites, { role }]);
-    let seatAdded = false;
+    let seatAdded = charged;
     if (needed > limit) {
+      // Pass 2: the seat paid for in this request did not make room (another invite took it meanwhile): no invite.
+      if (charged) return seatsError(fresh, used, false);
       // Over the limit (rules 3366-3369): refused unless the owner's own session confirmed one paid seat in this request.
       // The flag alone is never enough: who acts, the plan, the billing state and "exactly one seat short" are checked
       // here, under lock:team, and again under lock:user before `extraSeats` moves.
       const buyable = seatBuyable({ ...fresh, actor }, needed, limit);
-      if (!opts.addSeat || !buyable) return seatsError(fresh, used, buyable);
+      const how = buyable ? await (await import("./billing")).seatCharge(fresh) : null;
+      const canBuy = buyable && how?.mode !== "blocked";
+      if (!opts.addSeat || !canBuy) return seatsError(fresh, used, canBuy, how);
+      // Rule 4050: charged only at the amount the owner's dialog showed (`seatHalalas`, incl. VAT). Any other amount (a
+      // stale page, a month that turned, a page from before this rule that shows no amount) answers the seats 409 again
+      // with today's `charge`, so the page asks again and nothing is charged.
+      if (how?.mode === "now") return opts.seatHalalas === how.amountCents ? { chargeNow: how, account: fresh } : seatsError(fresh, used, true, how);
       const added = await addPaidSeat(fresh, needed);
       if (added === "busy") return fail("busy");
       if (!added) return seatsError(fresh, used, false);
@@ -700,6 +719,52 @@ export async function createInvite(
     ]);
     return { ok: true as const, token, id, invite, ...(seatAdded ? { seatAdded: true as const } : {}) };
   });
+  const first = await pass(false);
+  if (!("chargeNow" in first)) return first;
+  const { chargeSeat } = await import("./billing");
+  const paid = await chargeSeat(first.account, actor.email, first.chargeNow.months);
+  if (!paid.ok) return fail(paid.error);
+  // Rule 4047: paid, and the seat is granted (`applySeat`). Anything that now stops the invite gives the seat back and
+  // refunds it, unless someone already fills it (then the payment stands for a seat in use).
+  const second = (await actorStillHolds(owner, actor)) ? await pass(true).catch((err: unknown) => (isTeamLockTimeout(err) ? fail("busy") : Promise.reject(err))) : fail("forbidden");
+  if ("chargeNow" in second || second.ok) return "chargeNow" in second ? fail("seat_changed") : second;
+  return (await returnPaidSeat(first.account, paid.txnId, second.error)) ? { ...second, refunded: true as const } : second;
+}
+
+/**
+ * Rule 4047: a seat charged now whose invite could not be made after all goes back: under `lock:team` then `lock:user`
+ * (rule 2139) `extraSeats` drops by one only while the team still fits in one seat fewer, then the charge is refunded
+ * in full (`refundSeatCharge`). A seat someone took meanwhile stays, paid; a lock not had in time keeps the seat and logs it.
+ * An account deleted meanwhile has no seat to lower and is refunded. True when refunded.
+ */
+async function returnPaidSeat(account: User, txnId: number | string, why: string): Promise<boolean> {
+  const aid = aidOf(account);
+  const { withUserLock } = await import("./credits");
+  const { refundSeatCharge } = await import("./billing");
+  let lowered: boolean;
+  try {
+    lowered = await withTeamLock(aid, async () => {
+      const [members, invites] = await Promise.all([listMembers(aid), listInvites(aid)]);
+      const used = seatCount(members, invites);
+      return withUserLock(acct(account), async (cur) => {
+        const paid = paidExtraSeats(cur);
+        if (paid < 1 || used > seatLimit(cur) - 1) return false;
+        const { extraSeats: _old, ...rest } = cur;
+        void _old;
+        await saveUser(paid > 1 ? { ...rest, extraSeats: paid - 1 } : rest);
+        return true;
+      });
+    });
+  } catch (err) {
+    if (err instanceof Error && err.message === "user_not_found") lowered = true;
+    else if (isTeamLockTimeout(err) || (err instanceof Error && err.message === "user_lock_timeout")) lowered = false;
+    else throw err;
+  }
+  if (!lowered) {
+    log.error("team: paid seat kept after a failed invite", { aid, txn: String(txnId), why });
+    return false;
+  }
+  return refundSeatCharge(acct(account), txnId, why);
 }
 
 /**
@@ -712,9 +777,19 @@ function seatBuyable(u: User, needed: number, limit: number): boolean {
   return can(u, "billing.seats") && extraSeatsSold(u.plan) && !billingLocked(u.billing) && needed - limit === 1;
 }
 
-/** The 409 seats answer, with what the confirm step shows (rule 3369). `canBuy` only for the owner who could buy now. */
-function seatsError(u: User, used: number, canBuy: boolean): SeatsError {
-  return { ok: false, error: "seats", used, limit: seatLimit(u), included: includedSeats(u), extra: paidExtraSeats(u), unitSar: EXTRA_SEAT_MONTHLY_SAR, canBuy };
+/**
+ * The 409 seats answer, with what the confirm step shows (rule 3369). `canBuy` only for the owner who could buy now.
+ * `how` (rules 4040, 4049): on a yearly subscription the amount charged now, or why no seat is sold online.
+ */
+function seatsError(u: User, used: number, canBuy: boolean, how?: SeatCharge | null): SeatsError {
+  return { ok: false, error: "seats", used, limit: seatLimit(u), included: includedSeats(u), extra: paidExtraSeats(u), unitSar: EXTRA_SEAT_MONTHLY_SAR, canBuy, ...seatChargeView(how) };
+}
+
+/** The page's view of `seatCharge`: the amount of a seat charged now, or the reason none is sold online. */
+function seatChargeView(how: SeatCharge | null | undefined): { charge?: SeatChargeView; blocked?: SeatBlock } {
+  if (how?.mode === "now") return { charge: { months: how.months, baseHalalas: how.baseHalalas, totalHalalas: how.amountCents } };
+  if (how?.mode === "blocked") return { blocked: how.reason };
+  return {};
 }
 
 /**
@@ -1373,6 +1448,9 @@ export async function teamView(u: User) {
   const access = (m: MemberView) => (manage ? { ...(m.brands ? { brands: m.brands } : {}), ...(m.approves ? { approves: true as const } : {}), ...(typeof m.creditCap === "number" ? { creditCap: m.creditCap } : {}), ...(seesSpend ? { spent: personSpendFor(u, m.pid) } : {}) } : {});
   const used = seatCount(members, invites);
   const limit = seatLimit(u);
+  const mayBuy = can(u, "billing.seats") && extraSeatsSold(u.plan) && !billingLocked(u.billing) && used <= limit;
+  // Rules 4040, 4049: on a yearly subscription the price of a seat bought now, or why none is sold online.
+  const how = mayBuy ? await (await import("./billing")).seatCharge(u) : null;
   return {
     you: { email: a.email, name: a.name, role: a.role },
     // Paid seats (rule 3369): the included seats, the paid extras, the unit price, and whether this person may buy one.
@@ -1385,7 +1463,8 @@ export async function teamView(u: User) {
       included: includedSeats(u),
       extra: paidExtraSeats(u),
       unitSar: EXTRA_SEAT_MONTHLY_SAR,
-      canBuy: can(u, "billing.seats") && extraSeatsSold(u.plan) && !billingLocked(u.billing) && used <= limit,
+      canBuy: mayBuy && how?.mode !== "blocked",
+      ...seatChargeView(how),
     },
     members: [
       { email: u.email, name: u.name, role: "owner" as const },

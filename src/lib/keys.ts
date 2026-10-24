@@ -339,6 +339,10 @@ export const accountKey = {
   payLast: (email: string) => `pay:last:${email}`,
   /** marker: one Geidea renewal attempt for this account on this KSA day (rule 3910). */
   payAttempt: (email: string, day: string) => `pay:attempt:${email}:${day}`,
+  /** lock: one mid-year seat charge of this account in flight, both providers (rule 4044). 120 s, longer than the two provider calls. */
+  paySeatLock: (email: string) => `pay:seatlock:${email}`,
+  /** string: the reference of a mid-year seat charge sent and not yet answered (rule 4045); no new seat is charged until it settles. 2 days. */
+  paySeatWait: (email: string) => `pay:seatwait:${email}`,
 } as const;
 
 export const globalKey = {
