@@ -296,7 +296,7 @@ describe("invite, preview and accept", () => {
     expect(await db.get(`invite:${token}`), "the token itself is never a key").toBeNull();
 
     const view = (await (await team.GET()).json()) as { seats: { used: number; limit: number }; invites: { id: string }[] };
-    expect(view.seats).toEqual({ used: 2, limit: 3, freeViewers: 3, freeViewersLeft: 3 }); // no viewer yet (rule 3753)
+    expect(view.seats).toEqual({ used: 2, limit: 3, freeViewers: 3, freeViewersLeft: 3, included: 3, extra: 0, unitSar: 25, canBuy: false }); // no viewer yet (rule 3753)
     expect(view.invites.map((i) => i.id)).toEqual([body.invite.id]);
 
     signOut();
@@ -456,13 +456,13 @@ describe("invite, preview and accept", () => {
     await signIn(starter.email);
     const full = await inviteReq({ email: freshEmail(), role: "member" });
     expect(full.status).toBe(409);
-    expect(await full.json()).toEqual({ error: "seats", used: 1, limit: 1 });
+    expect(await full.json()).toEqual({ error: "seats", used: 1, limit: 1, included: 1, extra: 0, unitSar: 25, canBuy: true });
 
     const trial = await newUser("own");
     await signIn(trial.email);
     expect((await inviteReq({ email: freshEmail(), role: "member" })).status).toBe(200);
     expect((await inviteReq({ email: freshEmail(), role: "admin" })).status).toBe(200);
-    expect(await (await inviteReq({ email: freshEmail(), role: "member" })).json()).toEqual({ error: "seats", used: 3, limit: 3 });
+    expect(await (await inviteReq({ email: freshEmail(), role: "member" })).json()).toEqual({ error: "seats", used: 3, limit: 3, included: 3, extra: 0, unitSar: 25, canBuy: false });
   });
 
   it("an accept is re-checked against the seats at that moment", async () => {

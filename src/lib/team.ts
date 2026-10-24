@@ -7,7 +7,9 @@ import { pmap } from "./parallel";
 import { withNamedLock } from "./locks";
 import { revokeBook } from "./booking-token";
 import { revokeFeed, type LinkOwner } from "./feed-token";
-import { claimLogin, getAccount, getLogin, normalizeEmail, releaseLogin, seatLimit, strongPassword, validEmail, type Actor, type User } from "./auth";
+import { claimLogin, getAccount, getLogin, normalizeEmail, releaseLogin, saveUser, seatLimit, strongPassword, validEmail, type Actor, type User } from "./auth";
+import { billableExtraSeats, EXTRA_SEAT_MONTHLY_SAR, extraSeatsSold, includedSeats, MAX_SEAT_OVERRIDE, paidExtraSeats } from "./pricing";
+import { billingLocked } from "./billing-state";
 import { acct, LoginIndex, OPAQUE_IDS } from "./account-id";
 import { can } from "./roles";
 import { personSpendFor } from "./credits";
@@ -120,8 +122,12 @@ export type PendingInvite = Invite & { id: string };
  * address is the owner or a member of THIS account (nothing outside the inviter's own team is revealed), and an invite
  * for an address that already signs in is accepted by signing in, never with a new password.
  */
-export type TeamError = "invalid_email" | "invalid_role" | "forbidden" | "unavailable" | "not_found" | "invalid" | "weak_password" | "invalid_name" | "already_member" | "signin_required" | "seats_full";
-export type SeatsError = { ok: false; error: "seats"; used: number; limit: number };
+export type TeamError = "invalid_email" | "invalid_role" | "forbidden" | "unavailable" | "not_found" | "invalid" | "weak_password" | "invalid_name" | "already_member" | "signin_required" | "seats_full" | "busy";
+/**
+ * Over the seat limit. `included`, `extra`, `unitSar` and `canBuy` (paid seats, rule 3369) are present only on the
+ * answer of `createInvite`: what the owner's confirm step shows; the accept paths answer `used` and `limit` alone.
+ */
+export type SeatsError = { ok: false; error: "seats"; used: number; limit: number; included?: number; extra?: number; unitSar?: number; canBuy?: boolean };
 export type TeamFail = { ok: false; error: TeamError } | SeatsError;
 
 export const INVITE_TTL_SECONDS = 7 * 24 * 3600;
@@ -561,7 +567,7 @@ export async function peekInvites(owner: string): Promise<PendingInvite[]> {
   return (await readInvites(owner)).live;
 }
 
-/** Seats in use (rule 2118, per account): the owner, every membership not paused, and every unexpired invite. */
+/** Seats in use (rule 2118, per account): `seatCount` over the roster and the live invites, read now. */
 export async function seatsUsed(owner: string): Promise<number> {
   const [members, invites] = await Promise.all([listMembers(owner), listInvites(owner)]);
   return seatCount(members, invites);
@@ -625,7 +631,8 @@ export async function createInvite(
   rawRole: string,
   lang: string,
   access: { brands?: unknown; approves?: unknown } = {},
-): Promise<{ ok: true; token: string; id: string; invite: Invite } | TeamFail> {
+  opts: { addSeat?: boolean } = {},
+): Promise<{ ok: true; token: string; id: string; invite: Invite; seatAdded?: true } | TeamFail> {
   const role = teamRoleFrom(rawRole);
   if (!role) return fail("invalid_role");
   // Rules 3756, 3760: the brand scope and the approve toggle travel with the invite, checked like a later change.
@@ -655,7 +662,19 @@ export async function createInvite(
     const limit = seatLimit(fresh);
     const used = seatCount(members, invites);
     // The new invite counted with the rest: a viewer invite within the free viewers takes no seat (rule 3753).
-    if (seatCount(members, [...invites, { role }]) > limit) return { ok: false, error: "seats", used, limit } as SeatsError;
+    const needed = seatCount(members, [...invites, { role }]);
+    let seatAdded = false;
+    if (needed > limit) {
+      // Over the limit (rules 3366-3369): refused unless the owner's own session confirmed one paid seat in this request.
+      // The flag alone is never enough: who acts, the plan, the billing state and "exactly one seat short" are checked
+      // here, under lock:team, and again under lock:user before `extraSeats` moves.
+      const buyable = seatBuyable({ ...fresh, actor }, needed, limit);
+      if (!opts.addSeat || !buyable) return seatsError(fresh, used, buyable);
+      const added = await addPaidSeat(fresh, needed);
+      if (added === "busy") return fail("busy");
+      if (!added) return seatsError(fresh, used, false);
+      seatAdded = true;
+    }
     const now = new Date();
     const invite: Invite = {
       email: e,
@@ -679,7 +698,75 @@ export async function createInvite(
       MULTI_ORG ? db.sadd(accountKey.invitesFor(e), id).then(() => db.expire(accountKey.invitesFor(e), INVITE_TTL_SECONDS)) : null,
       logTeam(aid, { kind: "invited", actor: who(actor), target: { email: e }, role, via: "web" }, { teamLocked: true }),
     ]);
-    return { ok: true as const, token, id, invite };
+    return { ok: true as const, token, id, invite, ...(seatAdded ? { seatAdded: true as const } : {}) };
+  });
+}
+
+/**
+ * May this actor buy the one seat this invite needs (rule 3367)? The owner's own session (`billing.seats`: never an
+ * admin, the founder or a token), a plan that sells seats (`extraSeatsSold`: not a trial, not Agency), billing not
+ * locked, and exactly one seat short: a team already over its limit (a downgrade) is fitted by `enforceSeats`, never by
+ * buying several seats behind one click.
+ */
+function seatBuyable(u: User, needed: number, limit: number): boolean {
+  return can(u, "billing.seats") && extraSeatsSold(u.plan) && !billingLocked(u.billing) && needed - limit === 1;
+}
+
+/** The 409 seats answer, with what the confirm step shows (rule 3369). `canBuy` only for the owner who could buy now. */
+function seatsError(u: User, used: number, canBuy: boolean): SeatsError {
+  return { ok: false, error: "seats", used, limit: seatLimit(u), included: includedSeats(u), extra: paidExtraSeats(u), unitSar: EXTRA_SEAT_MONTHLY_SAR, canBuy };
+}
+
+/**
+ * Raise `extraSeats` by one under `lock:user` (the caller holds `lock:team:{aid}`, rule 2139 order). The account is
+ * re-read under the lock: when another write already made room the seat is not bought twice (true, nothing written);
+ * when the plan, billing or the count moved so that more than one seat is missing, nothing is bought (false). "busy"
+ * when the user lock was not had in time. Charged from the next renewal (`chargeSavedCard`), usable now (rule 3370).
+ */
+async function addPaidSeat(fresh: User, needed: number): Promise<boolean | "busy"> {
+  const { withUserLock } = await import("./credits");
+  try {
+    return await withUserLock(acct(fresh), async (cur) => {
+      const limit = seatLimit(cur);
+      if (needed <= limit) return true;
+      if (!extraSeatsSold(cur.plan) || billingLocked(cur.billing) || needed - limit !== 1) return false;
+      const next = paidExtraSeats(cur) + 1;
+      if (next > MAX_SEAT_OVERRIDE) return false;
+      await saveUser({ ...cur, extraSeats: next });
+      log.info("team: paid seat added", { aid: acct(cur), extraSeats: next });
+      return true;
+    });
+  } catch (e) {
+    if (e instanceof Error && e.message === "user_lock_timeout") return "busy";
+    throw e;
+  }
+}
+
+/**
+ * At renewal (rule 3371): lower the paid extra seats to what the team uses now, never raise them. extraSeats becomes
+ * min(stored, max(0, used − included)), used = `seatCount` (free viewers, rule 3753, never billed). A member who left or an
+ * invite cancelled during the period stops being charged here, at the next renewal; nothing is refunded mid-period.
+ * Takes lock:team:{aid} then lock:user (rule 2139). Returns the seats to charge for. Old records (no `extraSeats`) and
+ * plans that sell no seats return 0 and write nothing.
+ */
+export async function settleExtraSeats(owner: User | string): Promise<number> {
+  const aid = typeof owner === "string" ? aidFrom(normalizeEmail(owner)) : aidOf(owner);
+  return withTeamLock(aid, async () => {
+    const [o, members, invites] = await Promise.all([getAccount(aid), listMembers(aid), listInvites(aid)]);
+    if (!o || paidExtraSeats(o) === 0) return 0;
+    const used = seatCount(members, invites);
+    const { withUserLock } = await import("./credits");
+    return withUserLock(acct(o), async (cur) => {
+      const paid = paidExtraSeats(cur);
+      const keep = Math.min(paid, billableExtraSeats(used, includedSeats(cur)));
+      if (keep !== paid || (cur.extraSeats !== undefined && keep === 0)) {
+        const { extraSeats: _old, ...rest } = cur;
+        void _old;
+        await saveUser(keep > 0 ? { ...rest, extraSeats: keep } : rest);
+        log.info("team: paid seats settled at renewal", { aid: acct(cur), from: paid, to: keep });
+      }
+      return keep;
+    });
   });
 }
 
@@ -1284,9 +1371,22 @@ export async function teamView(u: User) {
   const seesSpend = can(u, "team.cap");
   // Scope, approve toggle and cap (rules 3756-3770) are shown to those who may change them; to the rest only roles.
   const access = (m: MemberView) => (manage ? { ...(m.brands ? { brands: m.brands } : {}), ...(m.approves ? { approves: true as const } : {}), ...(typeof m.creditCap === "number" ? { creditCap: m.creditCap } : {}), ...(seesSpend ? { spent: personSpendFor(u, m.pid) } : {}) } : {});
+  const used = seatCount(members, invites);
+  const limit = seatLimit(u);
   return {
     you: { email: a.email, name: a.name, role: a.role },
-    seats: { used: seatCount(members, invites), limit: seatLimit(u), freeViewers: FREE_VIEWERS, freeViewersLeft: freeViewersLeft(members, invites) },
+    // Paid seats (rule 3369): the included seats, the paid extras, the unit price, and whether this person may buy one.
+    // `canBuy` also needs the team at most full (`seatBuyable`'s "exactly one seat short" for the next invite).
+    seats: {
+      used,
+      limit,
+      freeViewers: FREE_VIEWERS,
+      freeViewersLeft: freeViewersLeft(members, invites),
+      included: includedSeats(u),
+      extra: paidExtraSeats(u),
+      unitSar: EXTRA_SEAT_MONTHLY_SAR,
+      canBuy: can(u, "billing.seats") && extraSeatsSold(u.plan) && !billingLocked(u.billing) && used <= limit,
+    },
     members: [
       { email: u.email, name: u.name, role: "owner" as const },
       ...members.map((m) => ({ email: m.email, name: m.name, role: m.role, acceptedAt: m.acceptedAt, ...(m.disabled ? { disabled: m.disabled } : {}), ...access(m) })),

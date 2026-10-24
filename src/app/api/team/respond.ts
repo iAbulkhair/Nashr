@@ -6,7 +6,12 @@ import type { TeamFail } from "@/lib/team";
  * docs/superpowers/specs/2026-09-29-teams-design.md §6). Not a route: no handler lives here.
  */
 export function teamFail(f: TeamFail): Response {
-  if (f.error === "seats") return Response.json({ error: "seats", used: f.used, limit: f.limit }, { status: 409 });
+  if (f.error === "seats") {
+    // The paid-seat fields (rule 3369) only when the invite path set them: the confirm step reads them.
+    const paid = f.canBuy !== undefined ? { included: f.included, extra: f.extra, unitSar: f.unitSar, canBuy: f.canBuy } : {};
+    return Response.json({ error: "seats", used: f.used, limit: f.limit, ...paid }, { status: 409 });
+  }
+  if (f.error === "busy") return busy();
   const status = f.error === "forbidden" ? 403 : f.error === "not_found" ? 404 : f.error === "unavailable" || f.error === "already_member" || f.error === "signin_required" ? 409 : 400;
   return Response.json({ error: f.error }, { status });
 }

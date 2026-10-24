@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createHash, createHmac, randomUUID } from "crypto";
 import { readFileSync } from "fs";
-import { jar, json, newUser, signIn } from "./helpers/session";
+import { jar, json, newMember, newUser, signIn } from "./helpers/session";
 import { acct, getUser, saveUser, type User } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { globalKey } from "@/lib/keys";
@@ -408,6 +408,17 @@ describe("rule 3910: saved-card renewals (MIT) only with GEIDEA_MIT=1, only on t
     expect(s.body).toMatchObject({ initiatedBy: "Merchant", cardOnFile: true, tokenId: ord.tokenId, agreementId: ord.agreementId });
     expect((await getUser(u.email))!.billing).toMatchObject({ status: "active" });
     expect(await payments(u)).toHaveLength(2);
+  });
+  it("a renewal with paid extra seats settles them and charges plan + seats × 25 + VAT (rule 3376)", async () => {
+    const { u, ord } = await subscribed({ GEIDEA_MIT: "1" });
+    await newMember(u, "member");
+    await saveUser({ ...(await getUser(u.email))!, extraSeats: 2 });
+    await due(u);
+    fake.pay = (s) => ({ status: 200, body: { responseCode: "000", order: order({ ref: String(s.body.merchantReferenceId), amount: s.body.amount, agreementId: String(ord.agreementId) }) } });
+    // Two seats were paid, one is still used: the settle trims to one, the amount is (29900 + 2500) × 1.15.
+    expect(await renewPaymob(acct(u))).toBe("geidea_renewed");
+    expect(fake.sessions.at(-1)!.body.amount).toBe(Number(toRiyals(37260)));
+    expect((await getUser(u.email))!).toMatchObject({ extraSeats: 1, billing: { status: "active" } });
   });
   it("without GEIDEA_MIT the due month goes past due for the owner to pay; nothing is charged", async () => {
     const { u } = await subscribed();

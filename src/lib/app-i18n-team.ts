@@ -13,6 +13,13 @@ export const arTeam = {
   team: {
     title: "الأعضاء", sub: "من يعمل معك في هذا الحساب. يتشاركون الكريدت والعلامات وصندوق الموافقة، ومالك الحساب وحده يدير الاشتراك.",
     seats: "المقاعد", seatsNote: "المالك يحتسب مقعداً، وكل دعوة معلّقة تحجز مقعداً حتى تُقبل أو تُلغى.", seatsFull: "كل المقاعد مستخدمة. ألغِ دعوة أو أزل شخصاً، أو رقِّ الخطة لمقاعد أكثر.", seatsFullAsk: "كل المقاعد مستخدمة. اطلب من مالك الحساب ترقية الخطة.", plans: "الخطط",
+    // Paid extra seats (rules 3366-3369): {price} is EXTRA_SEAT_MONTHLY_SAR from src/lib/pricing.ts, never typed here.
+    seatsPaid: "{included} مشمولة في الخطة، و{extra} إضافية مدفوعة.",
+    seatsFullBuy: "كل المقاعد مستخدمة. عند الدعوة يمكنك إضافة مقعد بـ{price} ريال شهرياً + ضريبة القيمة المضافة.",
+    addSeatTitle: "إضافة مقعد مدفوع",
+    addSeatConfirm: "كل المقاعد مستخدمة. دعوة {email} تضيف مقعداً بـ{price} ريال شهرياً + ضريبة القيمة المضافة. تستخدمه الآن، ويُحتسب من التجديد القادم. إن غادر الشخص أو أُلغيت الدعوة، يسقط المقعد من التجديد التالي، دون استرداد عن الشهر الجاري.",
+    addSeatYes: "أضف المقعد وادعُ",
+    seatAdded: "أُضيف مقعد مدفوع ({price} ريال شهرياً + الضريبة)، ويظهر في التجديد القادم.",
     people: "الأشخاص", you: "أنت", joined: "انضم في", roles: { owner: "المالك", admin: "مدير", member: "محرر", viewer: "مشاهد" },
     roleHelp: { admin: "المدير: يدير العلامات والتكاملات والمهام المجدولة والنشر، ويدعو أعضاء.", member: "المحرر: يدردش مع الفريق ويطلب المحتوى ويعدّل المسودات، ولا يغيّر الإعدادات.", viewer: "المشاهد: يقرأ التقارير والتقويم والمسودات ويعلّق عليها، ولا يكتب ولا يشغّل الوكلاء ولا يصرف كريدت. يعتمد فقط إن فُعّل له الاعتماد. أول 3 مشاهدين مجاناً." },
     /** Customer roles (rules 3750-3789): brand scope, the approve toggle, the monthly credit cap and the approval policy. */
@@ -198,6 +205,13 @@ export const enTeam: typeof arTeam = {
   team: {
     title: "Members", sub: "People who work in this account with you. They share its credits, brands and approval inbox; only the account owner manages the subscription.",
     seats: "Seats", seatsNote: "The owner takes a seat, and each pending invite holds one until it is accepted or cancelled.", seatsFull: "Every seat is in use. Cancel an invite, remove someone, or upgrade the plan for more seats.", seatsFullAsk: "Every seat is in use. Ask the account owner to upgrade the plan.", plans: "Plans",
+    // Paid extra seats (rules 3366-3369): {price} is EXTRA_SEAT_MONTHLY_SAR from src/lib/pricing.ts, never typed here.
+    seatsPaid: "{included} included in the plan, {extra} paid extra.",
+    seatsFullBuy: "Every seat is in use. When you invite, you can add a seat for {price} SAR/month + VAT.",
+    addSeatTitle: "Add a paid seat",
+    addSeatConfirm: "Every seat is in use. Inviting {email} adds a seat for {price} SAR/month + VAT. You can use it now; it is charged from your next renewal. If the person leaves or the invite is cancelled, the seat drops off at the following renewal, with no refund for the current month.",
+    addSeatYes: "Add the seat and invite",
+    seatAdded: "A paid seat was added ({price} SAR/month + VAT). It appears on your next renewal.",
     people: "People", you: "you", joined: "Joined", roles: { owner: "Owner", admin: "Admin", member: "Editor", viewer: "Viewer" },
     roleHelp: { admin: "Admin: manages brands, integrations, scheduled tasks and publishing, and invites members.", member: "Editor: chats with the team, asks for content and edits drafts; cannot change settings.", viewer: "Viewer: reads reports, the calendar and drafts and comments on them; no writes, no agent runs, no credits spent. Approves only when allowed to. The first 3 viewers are free." },
     /** Customer roles (rules 3750-3789): brand scope, the approve toggle, the monthly credit cap and the approval policy. */

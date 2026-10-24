@@ -271,7 +271,7 @@ describe("rules 2077, 2079-2082: the read-only workspace view", () => {
     const v = await res.json();
     expect(v.owner).toMatchObject({ email: owner.email, suspended: false, suspendedUntil: null });
     expect(v.owner.passHash).toBeUndefined();
-    expect(v.plan.seats).toEqual({ used: 4, limit: 5 });
+    expect(v.plan.seats).toEqual({ used: 4, limit: 5, included: 5, extra: 0 }); // included and extra: paid seats, rule 3375
     expect(v.plan.brands).toMatchObject({ cap: 3 });
     expect(v.plan.brands.active).toBeGreaterThanOrEqual(1);
     const byEmail = Object.fromEntries(v.members.map((m: { email: string }) => [m.email, m]));
