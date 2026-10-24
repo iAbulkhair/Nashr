@@ -626,11 +626,13 @@ describe("the locks close the races (a removal, a cancel, a plan change or a del
     await pause(200);
     await db.unlock(`lock:team:${acct(owner)}`);
     // Whichever takes the lock first, nothing survives: an accept before the wipe has its member deleted by it, and one
-    // after it finds no owner.
+    // after it finds no owner. With `MULTI_ORG` on, an accept that won keeps its `p_` person with no workspace (rules
+    // 2124, 2126; spec decision 10): the login, if any, opens no account.
     await Promise.all([accepting, wiping]);
     expect(await getMember(email)).toBeNull();
     expect(await db.smembers(`members:${acct(owner)}`)).toEqual([]);
-    expect(await getLogin(email)).toBeNull();
+    const login = await getLogin(email);
+    if (login) expect({ kind: login.kind, acct: login.acct, owner: login.kind === "member" ? login.owner : "owner" }).toEqual({ kind: "member", acct: null, owner: null });
   });
   it("demoting an admin drops the invites they sent, and the join page no longer previews one", async () => {
     const owner = await withPlan(await newUser("own"), "agency");

@@ -3,6 +3,9 @@ import { readFileSync } from "node:fs";
 import { db, seedForE2e } from "@/lib/db";
 import { routinesHeld } from "@/lib/routines";
 import { cronStatuses } from "@/lib/cron-heartbeat";
+import { getLogin, verifyPassword } from "@/lib/auth";
+import { MULTI_ORG } from "@/lib/multi-org";
+import { OPAQUE_IDS } from "@/lib/account-id";
 import { E2E_CRON_REPORT, HELD_ROUTINE, e2eSeed } from "../e2e/web-server";
 
 /**
@@ -43,7 +46,7 @@ describe("rule 2590: the seed is read only on the end-to-end server", () => {
 describe("rule 2591: the seed holds this month's Razan routine for the owner and stores a daily report", () => {
   it("the app's own readers see both", async () => {
     const owner = "e2e-seed-owner@test.example";
-    const seed = JSON.parse(e2eSeed(owner)) as Record<string, unknown>;
+    const seed = JSON.parse(e2eSeed({ email: owner, password: "seedpass123", name: "Seed Owner" })) as Record<string, unknown>;
     await Promise.all(Object.entries(seed).map(([k, v]) => db.set(k, v)));
     expect(await routinesHeld(owner)).toEqual({ [HELD_ROUTINE]: true });
     const daily = (await cronStatuses()).find((c) => c.job === "daily");
@@ -53,9 +56,25 @@ describe("rule 2591: the seed holds this month's Razan routine for the owner and
 });
 
 describe("rule 2592: the end-to-end server is started with the seed for the seeded owner", () => {
-  it("playwright.config.ts passes e2eSeed(OWNER.email) as E2E_SEED_KV", () => {
+  it("playwright.config.ts passes e2eSeed(OWNER) as E2E_SEED_KV", () => {
     const cfg = readFileSync("playwright.config.ts", "utf8");
     expect(cfg).toContain('import { OWNER } from "./e2e/fixtures/accounts";');
-    expect(cfg).toContain("E2E_SEED_KV: e2eSeed(OWNER.email)");
+    expect(cfg).toContain("E2E_SEED_KV: e2eSeed(OWNER)");
+  });
+});
+
+describe("rule 3827: with the switches on, the seeded owner is an account made before R2 enable and signs in", () => {
+  it("its id is its address, so the held routine is its own, and its password opens it", async () => {
+    expect(MULTI_ORG && OPAQUE_IDS).toBe(true);
+    const owner = { email: "e2e-seed-legacy@test.example", password: "seedpass123", name: "Seed Legacy" };
+    const seed = JSON.parse(e2eSeed(owner)) as Record<string, unknown>;
+    expect((seed[`user:${owner.email}`] as { id?: string }).id, "a legacy record: no id field").toBeUndefined();
+    await Promise.all(Object.entries(seed).map(([k, v]) => db.set(k, v)));
+    const login = await getLogin(owner.email);
+    expect(login?.kind).toBe("owner");
+    expect(login?.acct).toBe(owner.email);
+    expect(await verifyPassword(login!.person, owner.password)).toBe(true);
+    expect(await verifyPassword(login!.person, "wrong-pass")).toBe(false);
+    expect(await routinesHeld(owner.email)).toEqual({ [HELD_ROUTINE]: true });
   });
 });

@@ -14,7 +14,9 @@ import { moveUnverifiedAccount } from "@/lib/verify-email";
 import { MULTI_ORG } from "@/lib/multi-org";
 import { approvePartner } from "@/lib/partners";
 import { handleOf } from "@/lib/ws-handle";
-import { WS_HEADER } from "@/lib/ws-path";
+import { WS_HEADER, workspaceFree, workspaceMissing } from "@/lib/ws-path";
+import { NextRequest } from "next/server";
+import { proxy } from "@/proxy";
 import * as signupRoute from "@/app/api/auth/signup/route";
 
 /**
@@ -217,5 +219,48 @@ describe("rule 3822: no scope falls back to the sign-in address", () => {
       expect(src, f).not.toMatch(/\b(u|user)\.scope \?\? (u|user)\.email\b/);
       expect(src, f).toMatch(/\.scope \?\? acct\((u|user)\)/);
     }
+  });
+});
+
+describe("rule 3826: the Security page's writes need no workspace", () => {
+  const req = (path: string, method: string) =>
+    new NextRequest("https://thakeen.example" + path, { method, headers: { cookie: "thakeen_session=tok", "sec-fetch-site": "same-origin" } });
+
+  it("the proxy lets the password change and the passkey route through without a handle; deleting the account stays guarded", () => {
+    for (const [method, path] of [["PATCH", "/api/account"], ["POST", "/api/account/passkeys"], ["DELETE", "/api/account/passkeys"]]) {
+      expect(proxy(req(path, method)).status, `${method} ${path}`).not.toBe(409);
+    }
+    expect(proxy(req("/api/account", "DELETE")).status).toBe(409);
+    expect(workspaceMissing("PATCH", "/api/account/", true, null)).toBe(false);
+    for (const m of ["POST", "PUT", "DELETE"]) expect(workspaceMissing(m, "/api/account", true, null), m).toBe(true);
+  });
+
+  it("every write the Security page's cards send is outside the guard (the page is a person page: no handle)", () => {
+    const cards = ["SecuritySettings", "TwoStepSettings", "DeviceList", "GoogleLink", "PasskeySettings"].map((n) => `src/components/app/settings/${n}.tsx`);
+    expect(read("src/app/[lang]/app/settings/security/page.tsx")).toContain("SecuritySettings");
+    let writes = 0;
+    for (const f of cards) {
+      for (const m of read(f).matchAll(/fetch\("(\/api\/[^"?]*)"(?:, \{ method(?:: "([A-Z]+)")?)?/g)) {
+        const [, path, literal] = m;
+        if (!m[0].includes("method")) continue; // a GET
+        writes++;
+        if (literal) expect(workspaceMissing(literal, path, true, null), `${f}: ${literal} ${path}`).toBe(false);
+        else expect(workspaceFree(path), `${f}: ${path} (method from a variable)`).toBe(true);
+      }
+    }
+    expect(writes).toBeGreaterThanOrEqual(5);
+  });
+});
+
+describe("rule 3828: a sign-in lands in the app with a full load", () => {
+  it("log-in, a password reset and an invite accept assign the app's address; none pushes into it and refreshes", () => {
+    const auth = read("src/components/app/AuthForm.tsx");
+    const join = read("src/components/app/JoinForm.tsx");
+    // The log-in's `arrive` and the reset's success; the join form's accept.
+    expect(auth.match(/window\.location\.assign\(appHref\(lang\)\);/g)).toHaveLength(2);
+    expect(join.match(/window\.location\.assign\(appHref\(lang\)\);/g)).toHaveLength(1);
+    // A client push into the app followed by `refresh()` refetched a `/w/{handle}` page whose server redirect it could not
+    // follow, without end (a brand with no file: the start page).
+    for (const [f, src] of [["AuthForm", auth], ["JoinForm", join]] as const) expect(src, f).not.toMatch(/push\(appHref\(lang\)\);\s*\w+\.refresh\(\)/);
   });
 });

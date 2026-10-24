@@ -1,6 +1,5 @@
 "use client";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { Fragment, useEffect, useRef, useState } from "react";
 import type { AppDict } from "@/lib/app-i18n";
 import type { Lang } from "@/lib/i18n";
@@ -33,7 +32,6 @@ function parts(s: string, v: Record<string, React.ReactNode>) {
  */
 export default function JoinForm({ t, lang, signedInAs, person = null }: { t: AppDict; lang: Lang; signedInAs: string | null; person?: { email: string; verified: boolean } | null }) {
   const J = t.join;
-  const r = useRouter();
   const token = useRef("");
   const [phase, setPhase] = useState<Phase>(signedInAs && !person ? "signedIn" : "checking");
   const [preview, setPreview] = useState<Preview | null>(null);
@@ -114,9 +112,9 @@ export default function JoinForm({ t, lang, signedInAs, person = null }: { t: Ap
       const j = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
       if (res.ok && j.ok) {
         forgetInviteToken();
-        // The route set the session cookie; refreshing re-renders the layout with the app shell of the account just joined.
-        r.push(appHref(lang));
-        r.refresh();
+        // The route set the session cookie; a full load renders the app shell of the account just joined, in its workspace
+        // (rule 3828: a client push into a `/w/{handle}` page lost the segment on a server redirect).
+        window.location.assign(appHref(lang));
         return;
       }
       const code = res.status === 429 ? "rate_limited" : (j.error ?? "failed");
