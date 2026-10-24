@@ -14,6 +14,8 @@ import { activeProvider, paymentProvider } from "@/lib/payments";
 import { lastCheckout, paymentIdFor, reconcileOpenCheckouts, refundPaymobPayment, renewPaymob, setRenewal, type PayIntent } from "@/lib/billing";
 import { wipeAccount } from "@/lib/account";
 import { INTEGRATIONS } from "@/lib/integration-status";
+import { LEGAL } from "@/lib/legal";
+import { HELP } from "@/lib/help";
 import * as checkout from "@/app/api/billing/checkout/route";
 import * as webhook from "@/app/api/billing/geidea/webhook/route";
 import * as paymobHook from "@/app/api/billing/paymob/webhook/route";
@@ -522,5 +524,22 @@ describe("rule 3917: the console's integration row and the variable names", () =
     const vars = readFileSync("docs/system/variables.md", "utf8");
     for (const v of ["GEIDEA_PUBLIC_KEY", "GEIDEA_API_PASSWORD", "GEIDEA_MIT", "GEIDEA_LIVE"]) expect(vars).toContain(`\`${v}\``);
     expect(readFileSync(".env.example", "utf8")).toMatch(/^GEIDEA_API_PASSWORD=$/m);
+  });
+});
+
+describe("rule 3918: the privacy policy and the help name Geidea for card payments, and only what the code sends and keeps", () => {
+  const privacy = (lang: "ar" | "en") => LEGAL[lang].privacy.sections.flatMap((s) => s.p).join(" ");
+  const processors = HELP.flatMap((t) => t.items).find((i) => i.slug === "processors")!.a;
+  it("names Geidea before Paymob, with name, email and amount sent, the card entered on Geidea's page, and a token kept", () => {
+    expect(privacy("en")).toContain("Geidea processes card payments when online payment is offered: we send it your name, email and the order amount, you enter your card details on Geidea's page, not on Thakeen, and we keep only a token that does not reveal the card number, with the card's last four digits, brand and expiry, to renew the subscription; Paymob does this instead if we switch it on.");
+    expect(privacy("ar")).toContain("وGeidea لمعالجة الدفع بالبطاقة حين يُتاح الدفع الإلكتروني: نرسل إليها اسمك وبريدك وقيمة الطلب، وتُدخل بيانات بطاقتك في صفحة Geidea لا في ذكين، ونحفظ منها رمزاً لا يكشف رقم البطاقة مع آخر أربعة أرقام ونوعها وتاريخ انتهائها لتجديد الاشتراك؛ وPaymob بدلاً منها إن شغّلناها.");
+    expect(processors.en).toContain("Geidea (or Paymob)");
+    expect(processors.ar).toContain("Geidea (أو Paymob)");
+    expect(LEGAL.en.privacy.updated).toBe("Last updated: 2026-10-24");
+  });
+  it("matches the code: the session sends name and email and no phone (F4)", () => {
+    const src = readFileSync("src/lib/geidea.ts", "utf8");
+    expect(src).toContain("customer: { email: i.billing.email, firstName: i.billing.firstName, lastName: i.billing.lastName }");
+    expect(src).not.toMatch(/phoneNumber|customerPhone/);
   });
 });

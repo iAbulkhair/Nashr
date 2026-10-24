@@ -1810,3 +1810,13 @@ Geidea replaces Paymob (section 47) behind the same provider seam (section 85). 
 4. Daily job. The first hop of `/api/cron/daily` runs `reconcileOpenCheckouts`: refs in `pay:open` aged 20 minutes to two days are asked of Geidea and applied like a callback; older or settled ones leave the set. Then the renewal step charges a due month by saved card only with `GEIDEA_MIT=1` (a Merchant session, then `pay/token`); without it, and for a Paymob subscription, the month goes past due, then grace, then lock, and the owner pays from the billing page.
 5. Refunds. The founder's console refund (permissions row 130) refunds the whole order at Geidea, ends the plan and deletes the card. A refund made in Geidea's dashboard is only logged (`geidea_external_refund`).
 6. Release step: expand. New `pay:*` keys only; Paymob's keys, payment ids and log lines unchanged. Rollback: unset the two variables; open `pay:*` records expire or are ignored.
+7. Founder decisions, 2026-10-24 (spec section 10), all as built:
+   - Renewals by our own MIT (F1).
+   - Cards only at launch (F3).
+   - Name and email sent, no phone (F4).
+   - No partial refund for now (F5).
+   - A dashboard refund is only logged (F6).
+   - A second paid order is refunded by hand.
+   - An old Paymob subscription goes past due, then grace, then lock.
+   - Reconciliation runs in the daily job and on the return page.
+8. Privacy. The privacy policy (version 2026-10-24) and the help's processors answer name Geidea for card payments, with Paymob only if switched on instead (rule 3918).
