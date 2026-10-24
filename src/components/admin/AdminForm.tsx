@@ -46,6 +46,8 @@ export type ActionSpec<T extends object> = {
   /** Deletes, removes, voids, refunds or impersonates: the solid danger button and `role="alertdialog"`. */
   destructive?: boolean;
   reason?: boolean;
+  /** An example shown in the empty reason box; it is never sent. */
+  reasonPlaceholder?: string;
   parse: (v: FormValues) => Parsed<T>;
 };
 
@@ -172,7 +174,7 @@ function AdminFormDialog({ lang, spec, onAnswer }: { lang: "en" | "ar"; spec: Ac
       })}
       {spec.reason !== false && (
         <Field label={C.reason} hint={C.reasonHint}>
-          <Textarea name="reason" value={values.reason ?? ""} rows={2} maxLength={REASON_MAX} onChange={(e) => change("reason", e.target.value)} />
+          <Textarea name="reason" value={values.reason ?? ""} rows={2} maxLength={REASON_MAX} placeholder={spec.reasonPlaceholder} onChange={(e) => change("reason", e.target.value)} />
         </Field>
       )}
     </FormDialog>

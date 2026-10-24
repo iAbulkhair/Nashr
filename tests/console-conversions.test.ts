@@ -266,7 +266,7 @@ describe("rule 4106: the console card", () => {
   });
   it("shows the counts, says a second run writes nothing, and S1 offers no Apply", () => {
     const h = html({ report: report({}), clean: true, ms: 1234, applied: false });
-    expect(h).toContain("Ids to set");
+    expect(h).toContain("Account numbers to fill");
     expect(h).toContain("Took 1.2 s.");
     expect(h).toContain(CONVERSIONS_COPY.en.again);
     expect(html(undefined, "ar")).toContain(CONVERSIONS_COPY.ar.again);
@@ -280,6 +280,23 @@ describe("rule 4106: the console card", () => {
     expect(keys(CONVERSIONS_COPY.ar.counts)).toEqual(keys(CONVERSIONS_COPY.en.counts));
     expect(keys(CONVERSIONS_COPY.ar.errors)).toEqual(keys(CONVERSIONS_COPY.en.errors));
     for (const e of ["forbidden", "busy", "dry_run_first", "dry_run_only", "slow_down", "failed"]) expect(CONVERSIONS_COPY.en.errors[e], e).toBeTruthy();
+  });
+  it("speaks to the founder: no internal code as a label, what 0 means, what to do on a conflict, an audit-log reason with an example", () => {
+    for (const lang of ["en", "ar"] as const) {
+      const C = CONVERSIONS_COPY[lang];
+      const labels = [...Object.values(C.rows).map((r) => r.title), ...Object.values(C.counts), C.clean, C.notClean, C.dryRun];
+      for (const l of labels) expect(l, l).not.toMatch(/\b(R1|S1|orphan|index)|يتيم|فهرس|معرّف|p_|a_/i);
+      expect(C.reasonPlaceholder.length).toBeGreaterThanOrEqual(3);
+    }
+    expect(CONVERSIONS_COPY.en.again).toMatch(/shows 0, it is done: nothing is left to fill/);
+    expect(CONVERSIONS_COPY.ar.again).toContain("فالعمل انتهى");
+    expect(CONVERSIONS_COPY.en.applyHint).toMatch(/conflicts appear, stop and contact support or engineering/);
+    expect(CONVERSIONS_COPY.ar.applyHint).toContain("تواصل مع الدعم أو فريق التطوير");
+    expect(CONVERSIONS_COPY.en.applyMessage).toContain("audit log");
+    expect(CONVERSIONS_COPY.ar.applyMessage).toContain("سجل التدقيق");
+    // The code stays, small, beside the plain title.
+    expect(html(undefined, "ar")).toMatch(/أرقام الحسابات<span[^>]*text-xs[^>]*>R1<\/span>/);
+    expect(readFileSync("src/components/admin/AdminForm.tsx", "utf8")).toContain("placeholder={spec.reasonPlaceholder}");
   });
   it("the card is on the Integrations page", () => {
     expect(readFileSync("src/components/admin/IntegrationsPanel.tsx", "utf8")).toContain("<ConversionsCard lang={lang} />");

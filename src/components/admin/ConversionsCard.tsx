@@ -7,70 +7,79 @@ import Badge from "@/components/ui/Badge";
 
 /** The one-time data fills the card offers (rule 4106); the same names as src/lib/conversions/console.ts, client-safe. */
 const ROWS = [
-  { name: "account-ids", applies: true },
-  { name: "multi-org-index", applies: false },
+  { name: "account-ids", code: "R1", applies: true },
+  { name: "multi-org-index", code: "S1", applies: false },
 ] as const;
 type Name = (typeof ROWS)[number]["name"];
 
-/** The card's words (rule 4106); the same keys in both languages, Western digits in both. */
+/**
+ * The card's words (rule 4106), written for the founder, not for an engineer: no internal code as a label (the R1/S1
+ * code is shown small beside the title), the same keys in both languages, Western digits in both.
+ */
 export const CONVERSIONS_COPY = {
   en: {
     title: "One-time data fills",
-    what: "Fills records that accounts from before a release are missing, on the app's own store connection: no terminal and no store keys. Each run reads every account and shows counts only, never an address.",
+    what: "The system now knows each person and each workspace by a fixed number, not by their email. Like a national id next to a phone number: a changed email keeps its data, and one person can belong to several workspaces with one login. These fills give accounts made before the numbers existed their numbers. Each runs once and shows counts only, never an email.",
     rows: {
-      "account-ids": { title: "Account ids (R1)", what: "Gives each owner and member record its frozen id, and each sign-in address its login index. Needed before the multi-workspace switch-on." },
-      "multi-org-index": { title: "Workspace records (S1)", what: "Already applied on 2026-10-23. A dry run here only checks that nothing is missing; it cannot be applied from the console." },
+      "account-ids": { title: "Account numbers", what: "Gives each older account its fixed number and links each sign-in email to its owner. One run covers every account." },
+      "multi-org-index": { title: "Workspace lists", what: "Records which workspaces each person belongs to, so one login reaches all of them. Applied on 2026-10-23; the check here only confirms nothing is missing." },
     },
-    dryRun: "Dry run", apply: "Apply", running: "Running…",
-    clean: "Clean: nothing left alone", notClean: "Not clean: conflicts or orphans left alone",
-    applyHint: "Apply opens after a dry run in this view finds 0 conflicts and 0 orphans.",
-    again: "Running it a second time writes nothing: it only fills what is still missing.",
-    dryOnly: "Dry run only.",
-    applied: "Applied.", dry: "Dry run (nothing written).",
-    applyTitle: "Apply the account-id fill?",
-    applyMessage: "Writes the missing ids and login indexes found by the dry run. It never overwrites a record, and a second run writes nothing.",
+    dryRun: "Check (changes nothing)", apply: "Apply", running: "Running…",
+    clean: "No problems found", notClean: "Problems found: do not apply, contact engineering",
+    applyHint: "First press Check: it counts what is missing and changes nothing. If every line marked “must be 0” shows 0, Apply opens. If conflicts appear, stop and contact support or engineering.",
+    again: "When every “to fill” line shows 0, it is done: nothing is left to fill, and running it again changes nothing.",
+    dryOnly: "Check only: this one cannot be applied from here.",
+    applied: "Applied.", dry: "Check only: nothing was changed.",
+    applyTitle: "Give older accounts their numbers?",
+    applyMessage: "Writes the missing numbers and sign-in links the check found. It changes no existing data, and a second run writes nothing. The reason is a short note kept in the audit log, so anyone reviewing later knows why this ran.",
+    reasonPlaceholder: "Example: numbering the older accounts after workspaces went live",
     took: (ms: number) => `Took ${(ms / 1000).toFixed(1)} s.`,
     counts: {
-      accounts: "Accounts", missing: "Missing records", members: "Members", owners: "Owners", idsSet: "Ids to set", indexesSet: "Login indexes to set",
-      conflicts: "Conflicts", orphans: "Orphans", personsSet: "Persons to set", membershipsSet: "Memberships to set", orgsSet: "Workspace entries to set",
-      loginsSet: "Login indexes to set", paused: "Paused seats", personConflicts: "Person conflicts", loginConflicts: "Login conflicts",
-      ownerConflicts: "Owner conflicts", orphanRecords: "Orphan member records", orphanEntries: "Orphan roster entries", busy: "Busy (run again)",
+      accounts: "Accounts checked", missing: "Half-deleted accounts (left as they are)", members: "Team members", owners: "Account owners",
+      idsSet: "Account numbers to fill", indexesSet: "Sign-in links to fill", conflicts: "Conflicts (must be 0)", orphans: "Broken team entries (must be 0)",
+      personsSet: "People to fill", membershipsSet: "Memberships to fill", orgsSet: "Workspace lists to fill", loginsSet: "Sign-in links to fill",
+      paused: "Paused members (stay paused)", personConflicts: "Person conflicts (must be 0)", loginConflicts: "Sign-in conflicts (must be 0)",
+      ownerConflicts: "Owner conflicts (must be 0)", orphanRecords: "Members whose account is gone (must be 0)", orphanEntries: "Broken team entries (must be 0)",
+      busy: "Busy: run the check again",
     } as Record<string, string>,
     errors: {
       forbidden: "Only a console owner can run this.", read_only: "Only a console owner can run this.",
-      busy: "Another fill is running. Wait a minute, then try again.", dry_run_first: "Run a clean dry run first; it counts for 15 minutes.",
-      dry_run_only: "This fill runs as a dry run only.", slow_down: "Too many runs this hour. Try again later.",
-      failed: "The run stopped. Nothing is half-written that a second run does not finish.",
+      busy: "Another fill is running. Wait a minute, then try again.", dry_run_first: "Press Check first and make sure it finds no problems; it stays valid for 15 minutes.",
+      dry_run_only: "This one is check only.", slow_down: "Too many runs this hour. Try again later.",
+      failed: "The run stopped. Run it again to finish what is left; nothing is written twice.",
     } as Record<string, string>,
     unknownError: "The run did not finish. Try again.",
   },
   ar: {
     title: "تعبئة البيانات لمرة واحدة",
-    what: "تعبّي السجلات الناقصة في الحسابات القديمة من قبل الإصدار، عبر اتصال التطبيق نفسه بقاعدة البيانات: بدون طرفية وبدون مفاتيح. كل تشغيل يقرأ كل الحسابات ويعرض أعدادًا فقط، بدون أي عنوان بريد.",
+    what: "النظام صار يعرف كل شخص وكل مساحة عمل برقم ثابت، لا بالبريد. مثل رقم الهوية بجانب رقم الجوال: لو تغيّر البريد تبقى البيانات، والشخص الواحد ينتمي لأكثر من مساحة عمل بدخول واحد. هذه التعبئة تعطي الحسابات التي أُنشئت قبل الأرقام أرقامها. كل واحدة تشتغل مرة واحدة، وتعرض أعدادًا فقط بدون أي بريد.",
     rows: {
-      "account-ids": { title: "معرّفات الحسابات (R1)", what: "يعطي كل سجل مالك وعضو معرّفه الثابت، وكل عنوان دخول فهرسه. مطلوب قبل تشغيل تعدد مساحات العمل." },
-      "multi-org-index": { title: "سجلات مساحات العمل (S1)", what: "طُبّق في 2026-10-23. التشغيل التجريبي هنا يتأكد فقط أن لا شيء ناقص، ولا يمكن تطبيقه من لوحة التحكم." },
+      "account-ids": { title: "أرقام الحسابات", what: "يعطي كل حساب قديم رقمه الثابت، ويربط كل بريد دخول بصاحبه. تشغيل واحد يكفي لكل الحسابات." },
+      "multi-org-index": { title: "قوائم مساحات العمل", what: "يسجّل لكل شخص مساحات العمل التي ينتمي لها، ليدخلها كلها بدخول واحد. طُبّق في 2026-10-23، والفحص هنا يتأكد فقط أن لا شيء ناقص." },
     },
-    dryRun: "تشغيل تجريبي", apply: "تطبيق", running: "جارٍ التشغيل…",
-    clean: "نظيف: لا شيء متروك", notClean: "غير نظيف: فيه تعارضات أو سجلات يتيمة متروكة كما هي",
-    applyHint: "زر التطبيق يفتح بعد تشغيل تجريبي في هذه الصفحة يجد 0 تعارضات و0 سجلات يتيمة.",
-    again: "التشغيل مرة ثانية لا يكتب شيئًا: يعبّي فقط ما زال ناقصًا.",
-    dryOnly: "تشغيل تجريبي فقط.",
-    applied: "تم التطبيق.", dry: "تشغيل تجريبي (لم يُكتب شيء).",
-    applyTitle: "تطبيق تعبئة معرّفات الحسابات؟",
-    applyMessage: "يكتب المعرّفات وفهارس الدخول الناقصة التي وجدها التشغيل التجريبي. لا يكتب فوق أي سجل، والتشغيل الثاني لا يكتب شيئًا.",
+    dryRun: "فحص (بدون تغيير)", apply: "تطبيق", running: "جارٍ التشغيل…",
+    clean: "لا توجد مشاكل", notClean: "توجد مشاكل: لا تطبّق، وتواصل مع فريق التطوير",
+    applyHint: "اضغط «فحص» أولًا: يعدّ الناقص ولا يغيّر شيئًا. إذا ظهر 0 في كل سطر مكتوب عليه «يجب أن يكون 0» يفتح زر «تطبيق». إذا ظهرت تعارضات فتوقف وتواصل مع الدعم أو فريق التطوير.",
+    again: "إذا ظهر 0 في كل سطر «للتعبئة» فالعمل انتهى: لا شيء باقٍ للتعبئة، والتشغيل مرة ثانية لا يغيّر شيئًا.",
+    dryOnly: "فحص فقط: هذه لا تُطبّق من هنا.",
+    applied: "تم التطبيق.", dry: "فحص فقط: لم يتغيّر شيء.",
+    applyTitle: "إعطاء الحسابات القديمة أرقامها؟",
+    applyMessage: "يكتب الأرقام وروابط الدخول الناقصة التي وجدها الفحص. لا يغيّر أي بيانات موجودة، والتشغيل الثاني لا يكتب شيئًا. «السبب» ملاحظة قصيرة تُحفظ في سجل التدقيق، ليعرف من يراجع لاحقًا لماذا شُغّل.",
+    reasonPlaceholder: "مثال: إعطاء الحسابات القديمة أرقامها بعد تشغيل مساحات العمل",
     took: (ms: number) => `استغرق ${(ms / 1000).toFixed(1)} ث.`,
     counts: {
-      accounts: "الحسابات", missing: "سجلات مفقودة", members: "الأعضاء", owners: "الملاك", idsSet: "معرّفات للتعبئة", indexesSet: "فهارس دخول للتعبئة",
-      conflicts: "تعارضات", orphans: "سجلات يتيمة", personsSet: "أشخاص للتعبئة", membershipsSet: "عضويات للتعبئة", orgsSet: "مدخلات مساحات للتعبئة",
-      loginsSet: "فهارس دخول للتعبئة", paused: "مقاعد موقوفة", personConflicts: "تعارضات أشخاص", loginConflicts: "تعارضات دخول",
-      ownerConflicts: "تعارضات ملاك", orphanRecords: "سجلات أعضاء يتيمة", orphanEntries: "مدخلات قائمة يتيمة", busy: "مشغول (أعد التشغيل)",
+      accounts: "الحسابات التي فُحصت", missing: "حسابات حُذفت جزئيًا (تُترك كما هي)", members: "أعضاء الفرق", owners: "أصحاب الحسابات",
+      idsSet: "أرقام حسابات للتعبئة", indexesSet: "روابط دخول للتعبئة", conflicts: "تعارضات (يجب أن يكون 0)", orphans: "مدخلات فريق معطوبة (يجب أن يكون 0)",
+      personsSet: "أشخاص للتعبئة", membershipsSet: "عضويات للتعبئة", orgsSet: "قوائم مساحات للتعبئة", loginsSet: "روابط دخول للتعبئة",
+      paused: "أعضاء موقوفون (يبقون موقوفين)", personConflicts: "تعارضات أشخاص (يجب أن يكون 0)", loginConflicts: "تعارضات دخول (يجب أن يكون 0)",
+      ownerConflicts: "تعارضات أصحاب الحسابات (يجب أن يكون 0)", orphanRecords: "أعضاء حسابهم محذوف (يجب أن يكون 0)", orphanEntries: "مدخلات فريق معطوبة (يجب أن يكون 0)",
+      busy: "مشغول: أعد الفحص",
     } as Record<string, string>,
     errors: {
       forbidden: "فقط مالك لوحة التحكم يقدر يشغّل هذا.", read_only: "فقط مالك لوحة التحكم يقدر يشغّل هذا.",
-      busy: "فيه تعبئة ثانية شغالة. انتظر دقيقة ثم حاول مرة ثانية.", dry_run_first: "شغّل تشغيلًا تجريبيًا نظيفًا أولًا؛ يبقى صالحًا 15 دقيقة.",
-      dry_run_only: "هذه التعبئة تشغيل تجريبي فقط.", slow_down: "تشغيلات كثيرة هذه الساعة. حاول لاحقًا.",
-      failed: "توقف التشغيل. لا شيء مكتوب نصفه إلا ويكمله التشغيل الثاني.",
+      busy: "فيه تعبئة ثانية شغالة. انتظر دقيقة ثم حاول مرة ثانية.", dry_run_first: "اضغط «فحص» أولًا وتأكد أنه بلا مشاكل؛ يبقى صالحًا 15 دقيقة.",
+      dry_run_only: "هذه فحص فقط.", slow_down: "تشغيلات كثيرة هذه الساعة. حاول لاحقًا.",
+      failed: "توقف التشغيل. شغّله مرة ثانية ليكمل ما بقي؛ لا شيء يُكتب مرتين.",
     } as Record<string, string>,
     unknownError: "ما اكتمل التشغيل. حاول مرة ثانية.",
   },
@@ -87,6 +96,7 @@ type Result = { report: Record<string, number | boolean>; clean: boolean; ms: nu
 export function ConversionRow({ lang, name, applies, initial }: { lang: "ar" | "en"; name: Name; applies: boolean; initial?: Result }) {
   const C = CONVERSIONS_COPY[lang];
   const R = C.rows[name];
+  const code = ROWS.find((r) => r.name === name)?.code;
   const [result, setResult] = useState<Result | null>(initial ?? null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
@@ -97,7 +107,7 @@ export function ConversionRow({ lang, name, applies, initial }: { lang: "ar" | "
     setMsg("");
     let reason: string | undefined;
     if (apply) {
-      const v = await askForm({ title: C.applyTitle, message: C.applyMessage, submitLabel: C.apply, fields: [], parse: () => ({ ok: true, value: {} }) });
+      const v = await askForm({ title: C.applyTitle, message: C.applyMessage, submitLabel: C.apply, reasonPlaceholder: C.reasonPlaceholder, fields: [], parse: () => ({ ok: true, value: {} }) });
       if (!v) return;
       reason = v.reason;
     }
@@ -120,7 +130,7 @@ export function ConversionRow({ lang, name, applies, initial }: { lang: "ar" | "
     <div className="border-t border-border pt-3" data-testid={`conversion-${name}`}>
       <div className="flex items-start justify-between gap-2">
         <div>
-          <h3 className="text-sm font-semibold">{R.title}</h3>
+          <h3 className="text-sm font-semibold">{R.title}{code && <span className="ms-1.5 text-xs font-normal text-foreground-muted" dir="ltr">{code}</span>}</h3>
           <p className="text-xs text-foreground-muted">{R.what}</p>
         </div>
         {result && <Badge tone={result.clean ? "success" : "warning"} className="shrink-0">{result.clean ? C.clean : C.notClean}</Badge>}
