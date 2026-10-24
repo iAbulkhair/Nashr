@@ -194,7 +194,7 @@ export async function newOpaqueUser(prefix = "o", { verified = true, legacy = fa
  * `{ legacy: true }` or `TEST_PERSONS=legacy` makes today's legacy member (record plus roster entry, person id = its
  * address). Either way the member also holds a shadow membership, accepted one second after the home one.
  */
-export async function newMember(owner: User, role: "admin" | "member" = "member", prefix = "m", { legacy = false, shadow = true }: Fixture = {}): Promise<{ email: string; password: string; pid: PersonId }> {
+export async function newMember(owner: User, role: "admin" | "member" | "viewer" = "member", prefix = "m", { legacy = false, shadow = true }: Fixture = {}): Promise<{ email: string; password: string; pid: PersonId }> {
   const email = `${prefix}${++n}-${randomBytes(3).toString("hex")}@test.example`;
   const password = "abc12345";
   const input = { email, name: `Member ${n}`, password, lang: "ar" as const, role, invitedBy: owner.email };

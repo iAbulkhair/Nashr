@@ -19,6 +19,12 @@ export type TeamPerms = {
   viewLog: boolean;
   /** Transfer ownership (multi-workspace M3): the owner's own session, while `MULTI_ORG` is on. */
   transfer: boolean;
+  /** Rules 3756, 3760: change a person's brand scope and approve toggle (owner and unscoped admins). */
+  access: boolean;
+  /** Rule 3770: set a person's monthly credit cap (the owner). */
+  cap: boolean;
+  /** Rule 3762: turn the approval policy on or off (the owner). */
+  policy: boolean;
   /** A founder viewing this account: every team change is refused, so the page says why. */
   impersonating: boolean;
 };
@@ -35,6 +41,9 @@ export function teamPerms(u: User | null | undefined): TeamPerms {
     leave: can(u, "team.leave"),
     viewLog: MULTI_ORG && can(u, "team.log.view"),
     transfer: MULTI_ORG && can(u, "team.transfer"),
+    access: can(u, "team.access"),
+    cap: can(u, "team.cap"),
+    policy: can(u, "team.policy"),
     impersonating: u?.actor?.kind === "founder",
   };
 }

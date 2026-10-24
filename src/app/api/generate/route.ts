@@ -1,4 +1,5 @@
 import { track } from "@/lib/track";
+import { forbid } from "@/lib/roles";
 import { NextResponse } from "next/server";
 import { currentUser, sc } from "@/lib/auth";
 import { isTaskType } from "@/lib/tasks";
@@ -18,6 +19,9 @@ export async function POST(req: Request) {
   const deadline = deadlineFor(maxDuration);
   const u = await currentUser();
   if (!u) return NextResponse.json({ ok: false }, { status: 401 });
+  // A Viewer reads and comments only: no agent runs, no credits spent (rule 3752).
+  const no = forbid(u, "generate");
+  if (no) return no;
   // Before the charge: a paused model must not take credits and hand them back.
   if (modelState() === "paused") return NextResponse.json({ ok: false, error: "model_paused" }, { status: 503 });
   const b = (await req.json().catch(() => ({}))) as { type?: string; notes?: string };

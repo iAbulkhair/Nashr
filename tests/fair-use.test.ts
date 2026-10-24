@@ -116,9 +116,10 @@ describe("the reads (rules 1726, 1728)", () => {
     expect(mget).toHaveBeenCalledTimes(1);
     expect(mget.mock.calls[0][0]).toEqual([`usage:${u.email}:${month}:usd_micro`, mediaCostKey(u.email, month)]);
     expect(s).toMatchObject({ costSar: 300, limitSar: 284.05, paused: true });
-    mget.mockClear();
     const t = await account("trial");
     await spend(t.email, month, 1000);
+    // Cleared after the fixture: a new account's first draft is auto-assigned (rule 3764), which reads the roster.
+    mget.mockClear();
     expect((await fairUseOf(t, month)).paused).toBe(false);
     expect(mget).not.toHaveBeenCalled();
   });

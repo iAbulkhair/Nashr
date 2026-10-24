@@ -24,7 +24,7 @@ export type TeamLogInput = {
   kind: TeamLogRowValue["kind"];
   actor: { pid: string; email: string };
   target: { pid?: string; email: string };
-  role?: "admin" | "member";
+  role?: "admin" | "member" | "viewer";
   via: TeamLogRowValue["via"];
 };
 
@@ -63,7 +63,7 @@ export type TeamLogViewRow = {
   kind: TeamLogRowValue["kind"];
   actor: { email: string };
   target: { email: string };
-  role?: "admin" | "member";
+  role?: "admin" | "member" | "viewer";
   via: TeamLogRowValue["via"];
 };
 

@@ -89,6 +89,8 @@ export const wsKey = {
   task: (s: Scope, id: string) => `task:${s}:${id}`,
   /** lock: one task's writers. */
   taskLock: (s: Scope, id: string) => `tasklock:${s}:${id}`,
+  /** counter: whose turn the next fresh draft of this brand is assigned to (src/lib/assign.ts, rule 3764). */
+  assignTurn: (s: Scope) => `assignturn:${s}`,
   /** lock: writers of the workspace's preferences.md, one learned note at a time (src/lib/task-notes.ts). */
   prefsFileLock: (s: Scope) => `prefsfile:${s}`,
   /** set: ids of tasks waiting for approval. */

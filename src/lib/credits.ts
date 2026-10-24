@@ -39,12 +39,20 @@ export async function withUserLock<T>(email: string, fn: (u: User) => Promise<T>
  * Who a charge is for: the brand scope it is spent in and the agent that owns the work (`agentForTask(type)`, computed in
  * code), plus the owner's monthly cap for that agent in that scope (`gov.agentCaps`), read by the caller before charging.
  */
-export type SpendMeta = { scope: string; agent: AgentId; cap?: number };
+export type SpendMeta = { scope: string; agent: AgentId; cap?: number; person?: SpendPerson };
+/**
+ * The member who spends (rule 3770): their person id and the owner's monthly cap for them (`Membership.creditCap`), from
+ * the session's actor (`personOf`), never a request. Every member's spend is counted, capped or not, so the owner sees it.
+ */
+export type SpendPerson = { pid: string; cap?: number };
+/** The spending member of a session: a team member's actor, or nothing for the owner, a founder or a token. */
+export const personOf = (u: Pick<User, "actor">): SpendPerson | undefined =>
+  u.actor?.kind === "member" ? { pid: u.actor.pid, ...(capOf(u.actor.creditCap) !== undefined ? { cap: capOf(u.actor.creditCap) } : {}) } : undefined;
 /**
  * What `refund` needs to lower the counter a metered charge raised, and to put the credits back where they came from
  * (`from`, present when the charge took from a top-up pack, src/lib/topups.ts). A metered charge's result is one.
  */
-export type SpendRef = { scope: string; agent: AgentId; month: string; from?: Receipt };
+export type SpendRef = { scope: string; agent: AgentId; month: string; from?: Receipt; person?: string };
 
 type NoCredits = { ok: false; reason: "no_credits"; credits: number; need: number };
 export type ChargeResult = { ok: true; credits: number } | NoCredits;
@@ -52,12 +60,20 @@ export type ChargeResult = { ok: true; credits: number } | NoCredits;
 export type AgentCharge =
   | (SpendRef & { ok: true; credits: number; spent: number; cap?: number; warn80: boolean })
   | NoCredits
-  | { ok: false; reason: "agent_cap"; credits: number; agent: AgentId; spent: number; cap: number };
+  | { ok: false; reason: "agent_cap"; credits: number; agent: AgentId; spent: number; cap: number }
+  /** The member's own monthly cap (rule 3771). `credits` is what is left of their cap, so a no-credits message reads true. */
+  | { ok: false; reason: "person_cap"; credits: number; spent: number; cap: number };
 
 /** A cap is a finite number of at least 0; anything else (none set, NaN, negative) is no cap. */
 export const capOf = (cap: number | undefined) => (typeof cap === "number" && Number.isFinite(cap) && cap >= 0 ? cap : undefined);
 
 /** This month's credits per agent in one brand scope. A record written in an earlier month counts as empty. */
+/** This month's credits spent by member `pid` across the account. A record written in an earlier month counts as 0. */
+export function personSpendFor(u: Pick<User, "personSpend">, pid: string, month = monthKey()): number {
+  const n = u.personSpend?.month === month ? u.personSpend.by[pid] : undefined;
+  return typeof n === "number" && Number.isFinite(n) ? n : 0;
+}
+
 export function agentSpendFor(u: Pick<User, "agentSpend">, scope: string, month = monthKey()): Partial<Record<AgentId, number>> {
   return u.agentSpend?.month === month ? { ...(u.agentSpend.by[scope] ?? {}) } : {};
 }
@@ -104,6 +120,12 @@ function debit(u: User, cost: number, meta?: SpendMeta): { out: ChargeResult | A
   if (meta && cap !== undefined && spent + cost > cap) {
     return { out: { ok: false, reason: "agent_cap", credits: u.credits, agent: meta.agent, spent, cap }, dirty: damaged };
   }
+  const who = meta?.person;
+  const mine = who ? personSpendFor(u, who.pid, month) : 0;
+  const personCap = capOf(who?.cap);
+  if (who && personCap !== undefined && mine + cost > personCap) {
+    return { out: { ok: false, reason: "person_cap", credits: Math.max(0, personCap - mine), spent: mine, cap: personCap }, dirty: damaged };
+  }
   if (u.credits < cost) return { out: { ok: false, reason: "no_credits", credits: u.credits, need: cost }, dirty: damaged };
   // The month's plan credits first, then top-up packs by earliest expiry; the receipt says which packs (rule 441).
   const from = spendCredits(u, cost);
@@ -113,8 +135,10 @@ function debit(u: User, cost: number, meta?: SpendMeta): { out: ChargeResult | A
   const book = u.agentSpend?.month === month ? u.agentSpend : { month, by: {} };
   book.by[meta.scope] = { ...book.by[meta.scope], [meta.agent]: after };
   u.agentSpend = book;
+  // The member's own counter, in the same save (rule 3771): a new month starts it from zero like the agents'.
+  if (who) u.personSpend = { month, by: { ...(u.personSpend?.month === month ? u.personSpend.by : {}), [who.pid]: mine + cost } };
   const warn80 = cap !== undefined && cap > 0 && spent < cap * 0.8 && after >= cap * 0.8;
-  return { out: { ok: true, credits: u.credits, scope: meta.scope, agent: meta.agent, month, spent: after, ...(cap !== undefined ? { cap } : {}), warn80, ...(from ? { from } : {}) }, dirty: true };
+  return { out: { ok: true, credits: u.credits, scope: meta.scope, agent: meta.agent, month, spent: after, ...(cap !== undefined ? { cap } : {}), warn80, ...(from ? { from } : {}), ...(who ? { person: who.pid } : {}) }, dirty: true };
 }
 
 /**
@@ -224,6 +248,8 @@ function giveBack(u: User, n: number, spend: SpendRef) {
   else addMonthly(u, delta);
   const mine = u.agentSpend?.month === spend.month ? u.agentSpend.by[spend.scope] : undefined;
   if (mine && typeof mine[spend.agent] === "number") mine[spend.agent] = Math.max(0, mine[spend.agent]! - Math.max(0, delta));
+  const by = spend.person && u.personSpend?.month === spend.month ? u.personSpend.by : undefined;
+  if (by && typeof by[spend.person!] === "number") by[spend.person!] = Math.max(0, by[spend.person!]! - Math.max(0, delta));
 }
 
 /**
@@ -257,7 +283,7 @@ export async function chargeOnboard(email: string, cost: number, meta: SpendMeta
       if (dirty) await saveUser(u);
       return out as Exclude<AgentCharge, { ok: true }>;
     }
-    const hold: OnboardHold = { scope: meta.scope, agent: meta.agent, month: out.month, credits: cost, at, ...(out.from ? { from: out.from } : {}) };
+    const hold: OnboardHold = { scope: meta.scope, agent: meta.agent, month: out.month, credits: cost, at, ...(out.from ? { from: out.from } : {}), ...(out.person ? { person: out.person } : {}) };
     u.onboardPaid = { ...u.onboardPaid, [meta.scope]: hold };
     await saveUser(u);
     return { ...out, reused: false, hold };
@@ -344,7 +370,7 @@ export async function chargeOnce(email: string, cost: number, meta: SpendMeta, c
     // (NaN) is not "recent" either.
     const live = Object.entries(u.paidOnce ?? {}).filter(([, h]) => now - new Date(h.at).getTime() < PAID_ONCE_MS);
     // `from`: the top-up packs the charge took from, so a refund puts the credits back there (rule 442).
-    u.paidOnce = { ...Object.fromEntries(live), [claim]: { scope: meta.scope, agent: meta.agent, month: out.month, credits: cost, at: new Date(now).toISOString(), ...(out.from ? { from: out.from } : {}) } };
+    u.paidOnce = { ...Object.fromEntries(live), [claim]: { scope: meta.scope, agent: meta.agent, month: out.month, credits: cost, at: new Date(now).toISOString(), ...(out.from ? { from: out.from } : {}), ...(out.person ? { person: out.person } : {}) } };
     await saveUser(u);
     return { ...out, reused: false, ...(replaced !== undefined ? { replaced } : {}) };
   });
