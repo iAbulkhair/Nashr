@@ -109,6 +109,7 @@ export const WORKSPACE_FREE: readonly string[] = [
   "/api/media/hook/",
   "/api/secretary/booking/",
   "/api/billing/paymob/",
+  "/api/billing/geidea/",
   "/api/shopify/compliance",
   "/api/cron/",
 ];

@@ -152,20 +152,20 @@ export type ClaimOutcome = { seat: "claimed" | "full" | null; lock: number | nul
  * when the intent asked for it, then the lock. A retried callback whose first run claimed but did not save finds its own
  * claim ("exists") and saves it. An account that ever had a seat or a lock gets nothing automatically again.
  */
-export async function claimOnPayment(u: User, p: { founding: boolean; plan: SelfServePlan; paidHalalas: number; paymentId: string; day: string }, now = Date.now()): Promise<ClaimOutcome> {
+export async function claimOnPayment(u: User, p: { founding: boolean; plan: SelfServePlan; paidHalalas: number; paymentId: string; day: string; by?: string }, now = Date.now()): Promise<ClaimOutcome> {
   if (!saleStarted(p.day)) return { seat: null, lock: null };
   let seat: ClaimOutcome["seat"] = null;
   if (p.founding && !u.founding) {
     const r = await db.zaddCapped(SEATS_KEY, now, acct(u), FOUNDING_SEATS);
     seat = r === "full" ? "full" : "claimed";
-    if (seat === "claimed") u.founding = { at: new Date(now).toISOString(), by: "paymob", paymentId: p.paymentId };
+    if (seat === "claimed") u.founding = { at: new Date(now).toISOString(), by: p.by ?? "paymob", paymentId: p.paymentId };
   }
   if (u.priceLock) return { seat, lock: null };
   const founding = liveSeat(u);
   // A founding seat always carries its lock; anyone else only while one of the first 100 places is free.
   const r = await db.zaddCapped(LOCKS_KEY, now, acct(u), founding ? Number.MAX_SAFE_INTEGER : PRICE_LOCK_ACCOUNTS);
   if (r === "full") return { seat, lock: null };
-  u.priceLock = newLock({ plan: p.plan, from: p.day, founding, by: "paymob", paidHalalas: p.paidHalalas, paymentId: p.paymentId }, now);
+  u.priceLock = newLock({ plan: p.plan, from: p.day, founding, by: p.by ?? "paymob", paidHalalas: p.paidHalalas, paymentId: p.paymentId }, now);
   return { seat, lock: u.priceLock.months };
 }
 
