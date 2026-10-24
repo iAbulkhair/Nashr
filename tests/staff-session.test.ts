@@ -5,7 +5,7 @@ import { currentUser } from "@/lib/auth";
 import { idleInTime, idleTtl } from "@/lib/idle-session";
 import { getStaff, saveStaff } from "@/lib/staff";
 import {
-  STAFF_COOKIE, STAFF_COOKIE_DEV, STAFF_PRE_COOKIE, STAFF_PRE_COOKIE_DEV, STAFF_SESSION_IDLE, STAFF_SESSION_MAX, destroyStaffSession, endStaffSessions,
+  STAFF_COOKIE, STAFF_COOKIE_DEV, STAFF_PRE_COOKIE, STAFF_PRE_COOKIE_DEV, STAFF_SETUP_COOKIE, STAFF_SETUP_COOKIE_DEV, STAFF_SESSION_IDLE, STAFF_SESSION_MAX, destroyStaffSession, endStaffSessions,
   openStaffSession, readStaffSession, staffCookieNames, staffCookieOptions, staffSessionKey,
 } from "@/lib/staff-session";
 import { jar, withHeaders } from "./helpers/session";
@@ -21,7 +21,7 @@ afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
 
 describe("the staff cookie (rule 1633)", () => {
   it("__Host- names, HttpOnly, Secure, SameSite=Strict, Path=/, no Domain", async () => {
-    expect(await staffCookieNames()).toEqual({ session: STAFF_COOKIE, pre: STAFF_PRE_COOKIE });
+    expect(await staffCookieNames()).toEqual({ session: STAFF_COOKIE, pre: STAFF_PRE_COOKIE, setup: STAFF_SETUP_COOKIE });
     expect([STAFF_COOKIE, STAFF_PRE_COOKIE].every((n) => n.startsWith("__Host-"))).toBe(true);
     const o = await staffCookieOptions(STAFF_SESSION_MAX);
     expect(o).toEqual({ httpOnly: true, secure: true, sameSite: "strict", path: "/", maxAge: STAFF_SESSION_MAX });
@@ -37,7 +37,7 @@ describe("the staff cookie (rule 1633)", () => {
   it("the dev names only on plain http to the loopback host", async () => {
     for (const host of ["localhost:3000", "127.0.0.1:3000", "[::1]:3000"]) {
       await withHeaders({ host, "x-forwarded-proto": "http" }, async () => {
-        expect(await staffCookieNames()).toEqual({ session: STAFF_COOKIE_DEV, pre: STAFF_PRE_COOKIE_DEV });
+        expect(await staffCookieNames()).toEqual({ session: STAFF_COOKIE_DEV, pre: STAFF_PRE_COOKIE_DEV, setup: STAFF_SETUP_COOKIE_DEV });
         expect((await staffCookieOptions(1)).secure).toBe(false);
       });
     }

@@ -55,7 +55,7 @@ const iso = (ms: number | null) => (ms === null ? null : new Date(ms).toISOStrin
  * The account a chosen address belongs to: the account it owns, else the account its login stands for (`login.acct`),
  * read back with `getAccount`; `openedFrom` names the member's address. An address that signs in nowhere opens nothing.
  */
-async function accountForChosen(chosen: string): Promise<{ owner: User; openedFrom: string | null } | null> {
+export async function accountForChosen(chosen: string): Promise<{ owner: User; openedFrom: string | null } | null> {
   const email = normalizeEmail(chosen);
   if (!email) return null;
   const login = await getLogin(email);
@@ -70,7 +70,14 @@ async function accountForChosen(chosen: string): Promise<{ owner: User; openedFr
 export async function workspaceView(chosen: string): Promise<WorkspaceView | null> {
   const found = await accountForChosen(chosen);
   if (!found) return null;
-  const { owner, openedFrom } = found;
+  return viewOf(found.owner, found.openedFrom);
+}
+
+/**
+ * The view of an account already found by `accountForChosen` (rules 3720-3749: the workspace page reads the same view and
+ * adds its numbers, without finding the account twice). The key still comes from the stored record, never from a request.
+ */
+export async function viewOf(owner: User, openedFrom: string | null): Promise<WorkspaceView> {
   // The account id, from the stored record (an owner's address is its id while `OPAQUE_IDS` is off).
   const key = acct(owner);
   const [members, invites, brands, ownerSignIn, active] = await Promise.all([listMembers(key), peekInvites(key), listBrands(key), lastSignIn(owner.email), lastActive(owner.email)]);

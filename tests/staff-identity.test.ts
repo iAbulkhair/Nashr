@@ -138,7 +138,9 @@ describe("staff sign-in refuses alike (rule 1631)", () => {
     ]);
     const bodies = await Promise.all(answers.map((r) => r.text()));
     expect(answers.map((r) => r.status)).toEqual(Array(7).fill(401));
-    expect(new Set(bodies)).toEqual(new Set(['{"ok":false,"error":"invalid"}']));
+    // Rule 3702: a locked address adds `locked: true` (so the form offers the code field); every other refusal is identical.
+    expect(bodies[4]).toBe('{"ok":false,"error":"invalid","locked":true}');
+    expect(new Set(bodies.filter((_, i) => i !== 4))).toEqual(new Set(['{"ok":false,"error":"invalid"}']));
     expect(jar().has(STAFF_PRE_COOKIE)).toBe(false);
     expect(jar().has(STAFF_COOKIE)).toBe(false);
   });
@@ -248,15 +250,22 @@ describe("setup codes and no email recovery (rules 1640, 1643)", () => {
       expect((await staffSetup({ email: s.email, code, password: "a brand new long phrase" })).status).toBe(401);
     } finally { vi.useRealTimers(); }
   });
-  it("no staff route or staff library sends mail, and no setup code is read from a URL", () => {
+  it("no staff route or staff library sends mail except the invite (rule 3706), and no setup code is read from a URL", () => {
     const files: string[] = [];
     const walk = (d: string) => { for (const f of readdirSync(d)) { const p = join(d, f); if (statSync(p).isDirectory()) walk(p); else files.push(p); } };
     walk("src/app/api/admin/staff");
-    files.push("src/lib/staff.ts", "src/lib/staff-session.ts", "src/lib/staff-signin.ts", "src/lib/staff-code.ts");
+    files.push("src/lib/staff.ts", "src/lib/staff-session.ts", "src/lib/staff-signin.ts", "src/lib/staff-code.ts", "src/lib/staff-founder.ts");
     for (const f of files) {
       const src = readFileSync(f, "utf8");
-      expect(src, f).not.toMatch(/from "@\/lib\/(mail|email)|from "\.\/(mail|email)|sendMail|sendEmail/);
       expect(src, f).not.toMatch(/searchParams|nextUrl/);
+      if (f.endsWith(join("staff", "route.ts"))) {
+        // One send, inside the invite action: setup and reset codes are still never mailed (rule 1643).
+        expect(src.match(/sendEmail\(/g) ?? []).toHaveLength(1);
+        const at = src.indexOf("sendEmail(email");
+        expect(src.lastIndexOf('if (action === "invite")', at)).toBeGreaterThan(src.lastIndexOf('if (action === "create")', at));
+        continue;
+      }
+      expect(src, f).not.toMatch(/from "@\/lib\/(mail|email)|from "\.\/(mail|email)|sendMail|sendEmail/);
     }
   });
 });

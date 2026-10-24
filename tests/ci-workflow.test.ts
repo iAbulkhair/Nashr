@@ -104,18 +104,32 @@ describe("rule 772: CI checks every change and runs the end-to-end suite where i
     expect(c).toMatch(/restore-keys: \|\n\s+nextjs-\$\{\{ runner\.os \}\}-\$\{\{ hashFiles\('package-lock\.json'\) \}\}-\n/);
   });
 
-  it("Playwright's browsers are cached by version: a hit installs only the system packages, a miss downloads", () => {
+  it("Playwright's browsers are cached by version: a miss downloads them, every run installs the system packages", () => {
     expect(step("Playwright version")).toMatch(/require\('@playwright\/test\/package\.json'\)\.version/);
     expect(step("Playwright version")).toMatch(/if: steps\.scope\.outputs\.e2e == 'true'\n/);
     const c = cacheStep("Cache Playwright browsers");
     expect(c).toMatch(/path: ~\/\.cache\/ms-playwright\n/);
     expect(c).toMatch(/key: playwright-\$\{\{ runner\.os \}\}-\$\{\{ steps\.playwright\.outputs\.version \}\}-/);
+    // Rule 3210: and by the OS release, so a WebKit built for one Ubuntu is never restored on another.
+    expect(step("Playwright version")).toMatch(/echo "image=\$\(\. \/etc\/os-release && echo "\$ID\$VERSION_ID"\)" >> "\$GITHUB_OUTPUT"/);
+    expect(c).toMatch(/key: playwright-[^\n]*-\$\{\{ steps\.playwright\.outputs\.image \}\}-chromium-webkit$/m);
     const miss = step("Install Playwright browsers");
     expect(miss).toMatch(/if: steps\.scope\.outputs\.e2e == 'true' && steps\.playwright-cache\.outputs\.cache-hit != 'true'/);
-    expect(miss).toMatch(/run: npx playwright install --with-deps chromium webkit/);
-    const hit = step("Install Playwright system dependencies");
-    expect(hit).toMatch(/if: steps\.scope\.outputs\.e2e == 'true' && steps\.playwright-cache\.outputs\.cache-hit == 'true'/);
-    expect(hit).toMatch(/run: npx playwright install-deps chromium webkit/);
+    const deps = step("Install Playwright system dependencies");
+    expect(deps).toMatch(/if: steps\.scope\.outputs\.e2e == 'true'\n/);
+    // Rule 3211: the browsers (CDN) get two tries of 5 minutes and no apt work of their own.
+    expect(miss).toMatch(/run: \|\n\s+for try in 1 2; do\n\s+timeout 5m npx playwright install chromium webkit && exit 0\n/);
+    expect(miss).not.toMatch(/--with-deps|sudo/);
+    expect(miss).toMatch(/echo "::warning::Playwright browsers try \$try failed or ran past 5 minutes"\n\s+done\n\s+exit 1/);
+    // The system packages get three tries of 6 minutes as root, so the kill reaches apt-get and frees the dpkg lock;
+    // a failed try kills any apt-get left, repairs dpkg and moves apt off the Azure mirror to archive.ubuntu.com.
+    expect(deps).toMatch(/for try in 1 2 3; do\n\s+sudo env "PATH=\$PATH" timeout --kill-after=30s 6m npx playwright install-deps chromium webkit && exit 0\n/);
+    const after = deps.slice(deps.indexOf("&& exit 0"));
+    const order = ["::warning::", "sudo pkill -x apt-get || true", "sudo dpkg --configure -a || true", "s/azure\\.archive\\.ubuntu\\.com/archive.ubuntu.com/g", "done", "exit 1"];
+    const at = order.map((o) => after.indexOf(o));
+    expect(at.every((i) => i > 0), JSON.stringify(at)).toBe(true);
+    expect([...at].sort((a, b) => a - b)).toEqual(at);
+    expect(deps).toMatch(/\/etc\/apt\/apt-mirrors\.txt \/etc\/apt\/sources\.list \/etc\/apt\/sources\.list\.d\/\* 2>\/dev\/null \|\| true/);
     // Every browser step comes before the suite that needs it.
     for (const s of ["Cache Playwright browsers", "Install Playwright browsers", "Install Playwright system dependencies"]) {
       expect(yml.indexOf(`- name: ${s}`), s).toBeLessThan(yml.indexOf("- name: End-to-end tests"));
