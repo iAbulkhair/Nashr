@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { json, newUser, signIn } from "./helpers/session";
+import { acct } from "@/lib/auth";
 import { adCodeIndex, getTask, saveTask, type Task } from "@/lib/brand";
 import { codesIn, newAdCode } from "@/lib/ad-codes";
 import { analyze, readRows } from "@/lib/perf-import";
@@ -21,14 +22,14 @@ describe("ad codes (rule 90)", () => {
   it("are given to every new ad and social item, indexed once, kept on later saves, and not given to other types", async () => {
     const u = await newUser("codes");
     const ad = task("ad1"), post = task("post1", "social"), plan = task("plan1", "weekly_plan");
-    await Promise.all([saveTask(u.email, ad, true), saveTask(u.email, post, true), saveTask(u.email, plan, true)]);
-    const [a, p, w] = await Promise.all([getTask(u.email, "ad1"), getTask(u.email, "post1"), getTask(u.email, "plan1")]);
+    await Promise.all([saveTask(acct(u), ad, true), saveTask(acct(u), post, true), saveTask(acct(u), plan, true)]);
+    const [a, p, w] = await Promise.all([getTask(acct(u), "ad1"), getTask(acct(u), "post1"), getTask(acct(u), "plan1")]);
     expect(a!.adCode).toMatch(/^NSR-/);
     expect(p!.adCode).toMatch(/^NSR-/);
     expect(w!.adCode).toBeUndefined();
-    await saveTask(u.email, { ...a!, status: "pending" });
-    expect((await getTask(u.email, "ad1"))!.adCode).toBe(a!.adCode);
-    expect(await adCodeIndex(u.email)).toEqual({ [a!.adCode!]: "ad1", [p!.adCode!]: "post1" });
+    await saveTask(acct(u), { ...a!, status: "pending" });
+    expect((await getTask(acct(u), "ad1"))!.adCode).toBe(a!.adCode);
+    expect(await adCodeIndex(acct(u))).toEqual({ [a!.adCode!]: "ad1", [p!.adCode!]: "post1" });
   });
 });
 
@@ -76,17 +77,17 @@ describe("measuring Thakeen's ads (rule 91)", () => {
   it("an upload matches the caller's own codes into the snapshot and into Noor's memory", async () => {
     const u = await newUser("nashrads");
     const items = [task("a1"), task("a2"), task("a3")];
-    for (const t of items) await saveTask(u.email, t, true);
-    const mine = (await Promise.all(items.map((t) => getTask(u.email, t.id)))).map((t) => t!.adCode!);
+    for (const t of items) await saveTask(acct(u), t, true);
+    const mine = (await Promise.all(items.map((t) => getTask(acct(u), t.id)))).map((t) => t!.adCode!);
     const other = await newUser("nashrads");
-    await saveTask(other.email, task("o1"), true);
-    const theirs = (await getTask(other.email, "o1"))!.adCode!;
+    await saveTask(acct(other), task("o1"), true);
+    const theirs = (await getTask(acct(other), "o1"))!.adCode!;
     await signIn(u.email);
     const res = await route.POST(json("/api/performance", "POST", { csv: csv([mine[0], mine[1], theirs]), file: "x.csv", metric: "ctr" }));
     expect(res.status).toBe(200);
-    const snap = (await getPerf(u.email))!;
+    const snap = (await getPerf(acct(u)))!;
     expect(snap.nashr!.ads.map((a) => a.taskId)).toEqual(["a1", "a2"]);
     expect(snap.nashr!.ads.some((a) => a.code === theirs)).toBe(false);
-    expect((await readFile(u.email, "performance-learnings.md"))!.content).toContain("## Thakeen's own ads");
+    expect((await readFile(acct(u), "performance-learnings.md"))!.content).toContain("## Thakeen's own ads");
   });
 });

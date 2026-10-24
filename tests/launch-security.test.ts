@@ -497,7 +497,7 @@ describe("production never answers with the model mock (rule 431)", () => {
 
   it("generate, the free tools and the chat refuse in production without a key: nothing charged, no [DEV MOCK] saved", async () => {
     const { newUser } = await import("./helpers/session");
-    const { getUser } = await import("@/lib/auth");
+    const { getUser, currentUser, acct } = await import("@/lib/auth");
     const { listTasks } = await import("@/lib/brand");
     const { chat } = await import("@/lib/chat");
     const { PAUSED_REPLY } = await import("@/lib/model");
@@ -505,22 +505,24 @@ describe("production never answers with the model mock (rule 431)", () => {
     const toolRoute = await import("@/app/api/tools/[tool]/route");
     const { TOOLS } = await import("@/lib/tools");
     vi.stubEnv("ANTHROPIC_API_KEY", "");
+    // A production host has its connect secret (the workspace handle is sealed with it); a test value stands in.
+    vi.stubEnv("CONNECT_SECRET", "launch-security-test-connect-secret");
     // A production build on a host other than Vercel, with no deployment variable set.
     deployEnv({ NODE_ENV: "production" });
     const err = vi.spyOn(console, "error").mockImplementation(() => {});
     const u = await newUser("prodnokey");
-    await db.set(`brand:${u.email}`, { name: "محمصة", website: "", industry: "قهوة", dialect: "saudi", languages: ["ar"], tone: "ودود", products: "قهوة", audience: "الرياض", offers: "", competitors: "", banned: "", preferred: "", channels: ["instagram"], city: "الرياض", updatedAt: "2026-10-01T00:00:00.000Z" });
+    await db.set(`brand:${acct(u)}`, { name: "محمصة", website: "", industry: "قهوة", dialect: "saudi", languages: ["ar"], tone: "ودود", products: "قهوة", audience: "الرياض", offers: "", competitors: "", banned: "", preferred: "", channels: ["instagram"], city: "الرياض", updatedAt: "2026-10-01T00:00:00.000Z" });
     await signIn(u.email);
     const res = await generateRoute.POST(json("/api/generate", "POST", { type: "social" }));
     expect(res.status).toBe(503);
     expect(((await res.json()) as { error: string }).error).toBe("model_paused");
-    expect(await getUser(u.email).then((x) => x!.credits)).toBe(50);
-    expect(JSON.stringify(await listTasks(u.email))).not.toMatch(/DEV MOCK/);
+    expect(await getUser(acct(u)).then((x) => x!.credits)).toBe(50);
+    expect(JSON.stringify(await listTasks(acct(u)))).not.toMatch(/DEV MOCK/);
     const slug = TOOLS[0].slug;
     const tool = await toolRoute.POST(json(`/api/tools/${slug}`, "POST", {}, ip()), { params: Promise.resolve({ tool: slug }) });
     expect(tool.status).toBe(503);
     expect(await tool.text()).not.toMatch(/DEV MOCK/);
-    const reply = await chat((await getUser(u.email))!, "hello", undefined, "noor", { lang: "en" });
+    const reply = await chat((await currentUser())!, "hello", undefined, "noor", { lang: "en" });
     expect(reply.content).toBe(PAUSED_REPLY.en);
     err.mockRestore();
   });
@@ -659,7 +661,7 @@ describe("Cloudflare Turnstile on signup and forgot-password (rules 426-428)", (
     on();
     signOut();
     const signup = await import("@/app/api/auth/signup/route");
-    const { getUser } = await import("@/lib/auth");
+    const { getLogin } = await import("@/lib/auth");
     const f = answer({ success: false, "error-codes": ["invalid-input-response"] });
     const a = fresh(), b = fresh();
     const none = await signup.POST(json("/api/auth/signup", "POST", { email: a, password: "abc12345", name: "Bot" }, ip()));
@@ -667,8 +669,8 @@ describe("Cloudflare Turnstile on signup and forgot-password (rules 426-428)", (
     expect(f, "no token: nothing to ask Cloudflare").not.toHaveBeenCalled();
     const bad = await signup.POST(json("/api/auth/signup", "POST", { email: b, password: "abc12345", name: "Bot", turnstile: "forged-token" }, ip()));
     expect([bad.status, ((await bad.json()) as { error: string }).error]).toEqual([400, "captcha_failed"]);
-    expect(await getUser(a)).toBeNull();
-    expect(await getUser(b)).toBeNull();
+    expect(await getLogin(a)).toBeNull();
+    expect(await getLogin(b)).toBeNull();
     expect(jar().has("thakeen_session")).toBe(false);
   });
 
@@ -676,12 +678,12 @@ describe("Cloudflare Turnstile on signup and forgot-password (rules 426-428)", (
     on();
     signOut();
     const signup = await import("@/app/api/auth/signup/route");
-    const { getUser } = await import("@/lib/auth");
+    const { getLogin } = await import("@/lib/auth");
     const f = answer({ success: true });
     const email = fresh();
     const res = await signup.POST(json("/api/auth/signup", "POST", { email, password: "abc12345", name: "Human", turnstile: "good-token" }, { "x-forwarded-for": "203.0.113.9" }));
     expect(res.status).toBe(200);
-    expect(await getUser(email)).not.toBeNull();
+    expect(await getLogin(email)).not.toBeNull();
     expect(f).toHaveBeenCalledTimes(1);
     const [url, init] = f.mock.calls[0] as [string, RequestInit];
     expect(url).toBe("https://challenges.cloudflare.com/turnstile/v0/siteverify");

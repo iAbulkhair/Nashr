@@ -1,4 +1,5 @@
 import { createHash } from "crypto";
+import { acct } from "@/lib/account-id";
 import { readFileSync } from "fs";
 import { describe, expect, it } from "vitest";
 import { newUser } from "./helpers/session";
@@ -29,7 +30,7 @@ const basic = (id: string, secret: string) => ({ authorization: `Basic ${Buffer.
 async function setup(confidential: boolean) {
   const u = await newUser("oauthsrv");
   const client = await registerClient({ redirect_uris: [REDIRECT], client_name: "Claude", ...(confidential ? { token_endpoint_auth_method: "client_secret_post" } : {}) });
-  const code = await issueCode({ client_id: client.client_id, redirect_uri: REDIRECT, challenge, email: u.email, scope: "noor" });
+  const code = await issueCode({ client_id: client.client_id, redirect_uri: REDIRECT, challenge, email: acct(u), scope: "noor" });
   const exchange = { grant_type: "authorization_code", client_id: client.client_id, code, code_verifier: verifier, redirect_uri: REDIRECT };
   return { u, client, exchange };
 }
@@ -73,7 +74,7 @@ describe("token endpoint client authentication (rule 18)", () => {
     const res = await token.POST(form(exchange, h));
     expect(res.status).toBe(200);
     const t = await res.json();
-    expect((await userFromBearer(new Request("https://nashr.test/api/mcp", { headers: { authorization: `Bearer ${t.access_token}` } })))!.email).toBe(u.email);
+    expect(acct((await userFromBearer(new Request("https://nashr.test/api/mcp", { headers: { authorization: `Bearer ${t.access_token}` } })))!)).toBe(acct(u));
     const r = await token.POST(post("/api/oauth/token", { grant_type: "refresh_token", client_id: client.client_id, refresh_token: t.refresh_token }, h));
     expect(r.status).toBe(200);
     expect((await r.json()).refresh_token).not.toBe(t.refresh_token);

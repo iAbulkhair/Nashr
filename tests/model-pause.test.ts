@@ -14,7 +14,7 @@ vi.mock("@/lib/credits", async (orig) => { const m = await orig<typeof import("@
 vi.mock("@/lib/model", async (orig) => ({ ...(await orig<typeof import("@/lib/model")>()), modelState: () => "paused" as const }));
 
 import { db } from "@/lib/db";
-import { getUser } from "@/lib/auth";
+import { acct, getUser, sc } from "@/lib/auth";
 import { getBrand, listTasks, type Brand, type Task } from "@/lib/brand";
 import { createMcpToken } from "@/lib/mcp";
 import { chat, history, runTool } from "@/lib/chat";
@@ -34,8 +34,8 @@ import * as mcpRoute from "@/app/api/mcp/route";
 import { TOOLS } from "@/lib/tools";
 
 const brand: Brand = { name: "محمصة", website: "", industry: "قهوة", dialect: "saudi", languages: ["ar"], tone: "ودود", products: "قهوة", audience: "الرياض", offers: "", competitors: "", banned: "", preferred: "", channels: ["instagram"], city: "الرياض", updatedAt: "2026-09-28T00:00:00.000Z" };
-const withBrand = async () => { const u = await newUser("paused"); await db.set(`brand:${u.email}`, brand); return u; };
-const credits = async (email: string) => (await getUser(email))!.credits;
+const withBrand = async () => { const u = await newUser("paused"); await db.set(`brand:${sc(u)}`, brand); return { ...u, scope: sc(u) }; };
+const credits = async (id: string) => (await getUser(id))!.credits;
 
 beforeEach(() => { vi.stubEnv("ANTHROPIC_API_KEY", "test"); sdk.made = 0; sdk.crawled = 0; sdk.charged = 0; });
 afterEach(() => { vi.unstubAllEnvs(); expect(sdk.made, "the SDK must never be constructed while paused").toBe(0); });
@@ -71,16 +71,16 @@ describe("while Claude is paused (rule 76)", () => {
     expect(res.status).toBe(503);
     expect(((await res.json()) as { error: string }).error).toBe("model_paused");
     expect(sdk.charged).toBe(0);
-    expect(await credits(u.email)).toBe(50);
-    expect(await listTasks(u.email)).toEqual([]);
+    expect(await credits(acct(u))).toBe(50);
+    expect(await listTasks(sc(u))).toEqual([]);
   });
 
   it("generate() throws instead of returning mock items, and a caller that charged first refunds", async () => {
     await expect(generate("social", brand, [])).rejects.toBeInstanceOf(ModelPaused);
     const u = await withBrand();
     await expect(runTool(u, "generate_content", { type: "social" }, [])).rejects.toThrow("model_paused");
-    expect([sdk.charged, await credits(u.email)], "charged once, refunded in full").toEqual([1, 50]);
-    expect(await listTasks(u.email)).toEqual([]);
+    expect([sdk.charged, await credits(acct(u))], "charged once, refunded in full").toEqual([1, 50]);
+    expect(await listTasks(sc(u))).toEqual([]);
   });
 
   it("the chat answers in the owner's language, without [DEV MOCK], and runs no tool", async () => {
@@ -90,19 +90,19 @@ describe("while Claude is paused (rule 76)", () => {
       expect(m.content).toBe(PAUSED_REPLY[lang]);
       expect(m.content).not.toMatch(/DEV MOCK/);
     }
-    expect((await history(u.email)).at(-1)!.content).toBe(PAUSED_REPLY.en);
+    expect((await history(sc(u))).at(-1)!.content).toBe(PAUSED_REPLY.en);
     expect(sdk.charged).toBe(0);
   });
 
   it("MCP generate_content refuses before charging", async () => {
     const u = await withBrand();
-    const token = await createMcpToken(u.email);
+    const token = await createMcpToken(acct(u));
     const req = new Request("https://nashr.test/api/mcp", { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${token}` }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "generate_content", arguments: { type: "social" } } }) });
     const out = (await (await mcpRoute.POST(req)).json()) as { result: { isError?: boolean; content: { text: string }[] } };
     expect(out.result.isError).toBe(true);
     expect(out.result.content[0].text).toMatch(/paused/);
     expect(sdk.charged).toBe(0);
-    expect(await credits(u.email)).toBe(50);
+    expect(await credits(acct(u))).toBe(50);
   });
 
   it("onboarding refuses before crawling, so no mock brand file is saved to end it for good", async () => {
@@ -113,8 +113,8 @@ describe("while Claude is paused (rule 76)", () => {
     expect(res.status).toBe(503);
     expect(await res.text()).toBe("paused");
     expect(sdk.crawled).toBe(0);
-    expect(await getBrand(u.email)).toBeNull();
-    expect(await db.get(`onboardlock:${u.email}`), "no lock left behind").toBeNull();
+    expect(await getBrand(sc(u))).toBeNull();
+    expect(await db.get(`onboardlock:${sc(u)}`), "no lock left behind").toBeNull();
     const site = { url: "https://roastery.example", ok: true, title: "Roastery", description: "", text: "", links: [], platform: "unknown" };
     await expect(buildFromSite(site as never, "ar"), "the builder itself never hands back the mock brand").rejects.toBeInstanceOf(ModelPaused);
   });
@@ -132,10 +132,10 @@ describe("while Claude is paused (rule 76)", () => {
     expect(await runWeekly(u)).toBe("retry:paused");
     expect(sdk.charged).toBe(0);
     // The routines the owner turned on leave their day open the same way.
-    await saveSchedule(u.email, { routines: Object.fromEntries(ROUTINE_IDS.map((id) => [id, true])) });
+    await saveSchedule(sc(u), { routines: Object.fromEntries(ROUTINE_IDS.map((id) => [id, true])) });
     for (const id of ROUTINE_IDS) expect(await runRoutine(u, id), id).toBe("retry:paused");
     expect(sdk.charged).toBe(0);
-    expect(await scoreItems(u.email, brand, "social", [{ channel: "instagram", title: "t", body: "b" }])).toEqual([]);
+    expect(await scoreItems(sc(u), brand, "social", [{ channel: "instagram", title: "t", body: "b" }])).toEqual([]);
     const task: Task = { id: "img1", type: "social", channel: "instagram", title: "t", body: "b", status: "approved", createdAt: "2026-09-28T00:00:00.000Z", lang: "ar" };
     expect(await imagePrompt(brand, task, "img-fast", "square"), "the fixed prompt, not a model call").toMatch(/^Premium قهوة product photo/);
     expect(await videoPrompt(brand, task, "vid-quick", false), "the fixed video prompt, not a model call").toMatch(/second vertical social video/);

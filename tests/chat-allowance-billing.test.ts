@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { createElement, type ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { db } from "@/lib/db";
-import { saveUser, type User } from "@/lib/auth";
+import { saveUser, type User, acct } from "@/lib/auth";
 import { CHAT_ALLOWANCE, chatOverflowHold, formatCount } from "@/lib/pricing";
 import { chatCredKey, chatMsgKey, chatOverKey, chatTrialKey } from "@/lib/usage";
 import type { ChatStatus } from "@/lib/chat-allowance";
@@ -41,9 +41,9 @@ async function account(plan: User["plan"] = "starter", used = 0, extra: Partial<
   const u = await newUser("cab");
   const saved = { ...u, plan, credits: 300, ...extra };
   await saveUser(saved);
-  if (used) await db.set(plan === "trial" ? chatTrialKey(u.email) : chatMsgKey(u.email), used);
-  if (over) await db.set(chatOverKey(u.email), over);
-  if (billed) await db.set(chatCredKey(u.email), billed);
+  if (used) await db.set(plan === "trial" ? chatTrialKey(acct(u)) : chatMsgKey(acct(u)), used);
+  if (over) await db.set(chatOverKey(acct(u)), over);
+  if (billed) await db.set(chatCredKey(acct(u)), billed);
   return saved;
 }
 const HOLD = chatOverflowHold();

@@ -2,7 +2,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vite
 import { readFileSync } from "node:fs";
 import type { ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { getUser, saveUser, type Plan, type User } from "@/lib/auth";
+import { acct, getUser, saveUser, type Plan, type User } from "@/lib/auth";
 import { addTopup, adjust, charge, chargeOnboard, monthKey, refund, refundOnboard, renewIfDue, saveSettledTopups, settleChatOverflow, voidTopup, type AgentCharge, type TopupInput } from "@/lib/credits";
 import { db } from "@/lib/db";
 import { PLAN_CREDITS, SAR_PER_USD, TOPUP_PACKS, TOPUP_SAR_PER_CREDIT, TOPUP_VALID_DAYS, cheapestCreditUsd, isTopupPack, priceOf, topupPriceSar, topupsSold, type Plan as PricingPlan } from "@/lib/pricing";
@@ -50,20 +50,22 @@ const pay = (credits: number, extra: Partial<TopupInput> = {}): TopupInput => ({
 /** An owner on a paid plan whose month's plan credits are `monthly` (renewed this month, so no renewal is due). */
 async function paid(monthly = 300, plan: Plan = "starter"): Promise<string> {
   const u = await newUser("top");
-  await saveUser({ ...(await getUser(u.email))!, plan, credits: monthly, renewedAt: monthKey() });
-  return u.email;
+  await saveUser({ ...(await getUser(acct(u)))!, plan, credits: monthly, renewedAt: monthKey() });
+  return acct(u);
 }
-async function lot(email: string, credits: number, now = Date.now(), extra: Partial<TopupInput> = {}): Promise<TopupLot> {
-  const r = await addTopup(email, pay(credits, extra), now);
+/** The sign-in address of an account, for the routes and the sign-in that name it by address (the account itself is its `a_…` id). */
+const addr = async (id: string) => (await getUser(id))!.email;
+async function lot(id: string, credits: number, now = Date.now(), extra: Partial<TopupInput> = {}): Promise<TopupLot> {
+  const r = await addTopup(id, pay(credits, extra), now);
   if (!r.ok) throw new Error(r.error);
   return r.lot;
 }
-const state = async (email: string) => {
-  const u = (await getUser(email))!;
+const state = async (id: string) => {
+  const u = (await getUser(id))!;
   return { credits: u.credits, monthly: monthlyCredits(u), lots: Object.fromEntries(lotsOf(u).map((l) => [l.id, l.left])) };
 };
 const ok = (r: AgentCharge) => { if (!r.ok) throw new Error(r.reason); return r; };
-const meta = (email: string) => ({ scope: email, agent: "noor" as const });
+const meta = (id: string) => ({ scope: id, agent: "noor" as const });
 
 describe("the pack table lives in src/lib/pricing.ts (rule 440)", () => {
   it("100 / 300 / 1,000 credits at 1 SAR a credit, valid 90 days, sold to every paid plan and never on a trial", () => {
@@ -86,33 +88,33 @@ describe("the pack table lives in src/lib/pricing.ts (rule 440)", () => {
 
 describe("spending order: the month's plan credits first, then packs by earliest expiry (rule 441)", () => {
   it("a charge takes the monthly part first, then the pack that expires first, and its receipt says where each credit came from", async () => {
-    const email = await paid(300);
-    const later = await lot(email, 1000);
-    const sooner = await lot(email, 300, Date.now() - 10 * DAY); // activated 10 days ago: expires first
-    expect(await state(email)).toEqual({ credits: 1600, monthly: 300, lots: { [later.id]: 1000, [sooner.id]: 300 } });
+    const id = await paid(300);
+    const later = await lot(id, 1000);
+    const sooner = await lot(id, 300, Date.now() - 10 * DAY); // activated 10 days ago: expires first
+    expect(await state(id)).toEqual({ credits: 1600, monthly: 300, lots: { [later.id]: 1000, [sooner.id]: 300 } });
 
-    const a = ok(await charge(email, 250, meta(email)));
+    const a = ok(await charge(id, 250, meta(id)));
     expect(a.credits).toBe(1350);
     expect(a.from, "a charge inside the monthly part touches no pack and carries no receipt").toBeUndefined();
 
-    const b = ok(await charge(email, 100, meta(email)));
+    const b = ok(await charge(id, 100, meta(id)));
     expect(b.from).toEqual({ monthly: 50, lots: [{ id: sooner.id, n: 50 }] });
-    expect(await state(email)).toEqual({ credits: 1250, monthly: 0, lots: { [later.id]: 1000, [sooner.id]: 250 } });
+    expect(await state(id)).toEqual({ credits: 1250, monthly: 0, lots: { [later.id]: 1000, [sooner.id]: 250 } });
 
-    const c = ok(await charge(email, 400, meta(email)));
+    const c = ok(await charge(id, 400, meta(id)));
     expect(c.from).toEqual({ monthly: 0, lots: [{ id: sooner.id, n: 250 }, { id: later.id, n: 150 }] });
-    expect(await state(email)).toEqual({ credits: 850, monthly: 0, lots: { [later.id]: 850, [sooner.id]: 0 } });
+    expect(await state(id)).toEqual({ credits: 850, monthly: 0, lots: { [later.id]: 850, [sooner.id]: 0 } });
     // More than is left is refused without touching anything.
-    expect(await charge(email, 851)).toEqual({ ok: false, reason: "no_credits", credits: 850, need: 851 });
-    expect((await state(email)).credits).toBe(850);
+    expect(await charge(id, 851)).toEqual({ ok: false, reason: "no_credits", credits: 850, need: 851 });
+    expect((await state(id)).credits).toBe(850);
   });
 
   it("a chat message billed past the allowance spends the same way: monthly first, then packs", async () => {
-    const email = await paid(2);
-    const p = await lot(email, 100);
-    const r = await settleChatOverflow(email, 5, 5 * 71_040, 71_040);
+    const id = await paid(2);
+    const p = await lot(id, 100);
+    const r = await settleChatOverflow(id, 5, 5 * 71_040, 71_040);
     expect(r).toEqual({ credits: 97, charged: 5 });
-    expect(await state(email)).toEqual({ credits: 97, monthly: 0, lots: { [p.id]: 97 } });
+    expect(await state(id)).toEqual({ credits: 97, monthly: 0, lots: { [p.id]: 97 } });
   });
 
   it("spendCredits and settleTopups on a record in memory: whole numbers, the oldest expiry first", () => {
@@ -128,31 +130,31 @@ describe("spending order: the month's plan credits first, then packs by earliest
 
 describe("refunds go back where the credits came from (rule 442)", () => {
   it("a full refund restores each pack and the monthly part; a partial one undoes the charge from its last credit", async () => {
-    const email = await paid(50);
-    const p = await lot(email, 100);
-    const r = ok(await charge(email, 80, meta(email)));
+    const id = await paid(50);
+    const p = await lot(id, 100);
+    const r = ok(await charge(id, 80, meta(id)));
     expect(r.from).toEqual({ monthly: 50, lots: [{ id: p.id, n: 30 }] });
-    await refund(email, 80, r);
-    expect(await state(email)).toEqual({ credits: 150, monthly: 50, lots: { [p.id]: 100 } });
+    await refund(id, 80, r);
+    expect(await state(id)).toEqual({ credits: 150, monthly: 50, lots: { [p.id]: 100 } });
 
-    const s = ok(await charge(email, 80, meta(email)));
-    await refund(email, 40, s);
-    expect(await state(email), "the last 30 credits came from the pack, the 10 before them from the monthly part").toEqual({ credits: 110, monthly: 10, lots: { [p.id]: 100 } });
+    const s = ok(await charge(id, 80, meta(id)));
+    await refund(id, 40, s);
+    expect(await state(id), "the last 30 credits came from the pack, the 10 before them from the monthly part").toEqual({ credits: 110, monthly: 10, lots: { [p.id]: 100 } });
     // A second refund against the same receipt (no caller makes one) never gives a pack more than it was sold with.
-    await refund(email, 30, s);
-    expect((await state(email)).lots[p.id]).toBe(100);
+    await refund(id, 30, s);
+    expect((await state(id)).lots[p.id]).toBe(100);
   });
 
   // Founder decision of 2026-10-02 (rule 461): what a failed charge owed to a pack that is gone goes to the plan credits.
   it("a refund owed to a pack that was voided or has expired goes to the month's plan credits", async () => {
-    const email = await paid(0);
-    const p = await lot(email, 100, Date.now() - 1000);
-    const q = await lot(email, 300);
-    const r = ok(await charge(email, 150, meta(email)));
+    const id = await paid(0);
+    const p = await lot(id, 100, Date.now() - 1000);
+    const q = await lot(id, 300);
+    const r = ok(await charge(id, 150, meta(id)));
     expect(r.from).toEqual({ monthly: 0, lots: [{ id: p.id, n: 100 }, { id: q.id, n: 50 }] });
-    expect((await voidTopup(email, p.id)).ok).toBe(true);
-    await refund(email, 150, r);
-    expect(await state(email), "the voided pack's 100 come back as plan credits; the live pack gets its 50 back").toEqual({ credits: 400, monthly: 100, lots: { [q.id]: 300 } });
+    expect((await voidTopup(id, p.id)).ok).toBe(true);
+    await refund(id, 150, r);
+    expect(await state(id), "the voided pack's 100 come back as plan credits; the live pack gets its 50 back").toEqual({ credits: 400, monthly: 100, lots: { [q.id]: 300 } });
 
     // Expired: the charge took 30 from a pack that expires before the refund lands.
     const e2 = await paid(0);
@@ -171,24 +173,24 @@ describe("refunds go back where the credits came from (rule 442)", () => {
   });
 
   it("a refund with no receipt, or past what the receipt took, goes to the monthly part as before top-ups", async () => {
-    const email = await paid(100);
-    const p = await lot(email, 100);
-    const r = ok(await charge(email, 30, meta(email)));
+    const id = await paid(100);
+    const p = await lot(id, 100);
+    const r = ok(await charge(id, 30, meta(id)));
     expect(r.from).toBeUndefined();
-    await refund(email, 30, r);
-    expect(await state(email)).toEqual({ credits: 200, monthly: 100, lots: { [p.id]: 100 } });
-    await refund(email, 5); // no receipt at all: adjust(+5)
-    expect(await state(email)).toEqual({ credits: 205, monthly: 105, lots: { [p.id]: 100 } });
+    await refund(id, 30, r);
+    expect(await state(id)).toEqual({ credits: 200, monthly: 100, lots: { [p.id]: 100 } });
+    await refund(id, 5); // no receipt at all: adjust(+5)
+    expect(await state(id)).toEqual({ credits: 205, monthly: 105, lots: { [p.id]: 100 } });
   });
 
   it("an added brand's setup hold keeps its receipt, and its refund goes back to the pack", async () => {
-    const email = await paid(4);
-    const p = await lot(email, 100);
-    const held = await chargeOnboard(email, 9, { scope: `${email}#b2`, agent: "noor" });
+    const id = await paid(4);
+    const p = await lot(id, 100);
+    const held = await chargeOnboard(id, 9, { scope: `${id}#b2`, agent: "noor" });
     expect(held.ok && !held.reused && held.hold.from).toEqual({ monthly: 4, lots: [{ id: p.id, n: 5 }] });
-    expect(await state(email)).toEqual({ credits: 95, monthly: 0, lots: { [p.id]: 95 } });
-    expect(await refundOnboard(email, `${email}#b2`)).toEqual({ credits: 104, refunded: 9 });
-    expect(await state(email)).toEqual({ credits: 104, monthly: 4, lots: { [p.id]: 100 } });
+    expect(await state(id)).toEqual({ credits: 95, monthly: 0, lots: { [p.id]: 95 } });
+    expect(await refundOnboard(id, `${id}#b2`)).toEqual({ credits: 104, refunded: 9 });
+    expect(await state(id)).toEqual({ credits: 104, monthly: 4, lots: { [p.id]: 100 } });
   });
 
   it("every metered spender hands the receipt to its refund: batches pass the charge result, media jobs store it", () => {
@@ -204,58 +206,59 @@ describe("refunds go back where the credits came from (rule 442)", () => {
 
 describe("renewal and the founder's plan changes reset the monthly part only (rule 443)", () => {
   it("renewal resets the month's plan credits to the allowance and keeps every credit left in live packs", async () => {
-    const email = await paid(10, "pro");
-    const p = await lot(email, 300);
-    ok(await charge(email, 60, meta(email)));
-    await saveUser({ ...(await getUser(email))!, renewedAt: "2020-01" });
-    expect(await renewIfDue(email)).toBe(true);
-    expect(await state(email), "unused monthly credits do not roll over; the pack's 250 stay").toEqual({ credits: PLAN_CREDITS.pro + 250, monthly: PLAN_CREDITS.pro, lots: { [p.id]: 250 } });
+    const id = await paid(10, "pro");
+    const p = await lot(id, 300);
+    ok(await charge(id, 60, meta(id)));
+    await saveUser({ ...(await getUser(id))!, renewedAt: "2020-01" });
+    expect(await renewIfDue(id)).toBe(true);
+    expect(await state(id), "unused monthly credits do not roll over; the pack's 250 stay").toEqual({ credits: PLAN_CREDITS.pro + 250, monthly: PLAN_CREDITS.pro, lots: { [p.id]: 250 } });
   });
 
   it("a plan change in the console sets the monthly part and keeps the packs; '+ credits' never takes a pack's credits", async () => {
     await asConsole();
-    const email = await paid(300);
-    const p = await lot(email, 100);
-    expect((await planRoute.POST(json("/api/admin/plan", "POST", { email, plan: "business" }))).status).toBe(200);
-    expect(await state(email)).toEqual({ credits: PLAN_CREDITS.business + 100, monthly: PLAN_CREDITS.business, lots: { [p.id]: 100 } });
-    expect((await planRoute.POST(json("/api/admin/plan", "POST", { email, addCredits: -100_000 }))).status).toBe(200);
-    expect(await state(email), "taking credits stops at the packs").toEqual({ credits: 100, monthly: 0, lots: { [p.id]: 100 } });
-    expect(await adjust(email, -5)).toBe(100);
-    expect(await adjust(email, 7)).toBe(107);
+    const id = await paid(300);
+    const p = await lot(id, 100);
+    expect((await planRoute.POST(json("/api/admin/plan", "POST", { email: await addr(id), plan: "business" }))).status).toBe(200);
+    expect(await state(id)).toEqual({ credits: PLAN_CREDITS.business + 100, monthly: PLAN_CREDITS.business, lots: { [p.id]: 100 } });
+    expect((await planRoute.POST(json("/api/admin/plan", "POST", { email: await addr(id), addCredits: -100_000 }))).status).toBe(200);
+    expect(await state(id), "taking credits stops at the packs").toEqual({ credits: 100, monthly: 0, lots: { [p.id]: 100 } });
+    expect(await adjust(id, -5)).toBe(100);
+    expect(await adjust(id, 7)).toBe(107);
     const list = (await (await planRoute.GET(json("/api/admin/plan", "GET"))).json()) as { users: { email: string; credits: number; topupCredits: number }[] };
-    expect(list.users.find((x) => x.email === email)).toMatchObject({ credits: 107, topupCredits: 100 });
+    const address = await addr(id);
+    expect(list.users.find((x) => x.email === address)).toMatchObject({ credits: 107, topupCredits: 100 });
   });
 });
 
 describe("expiry: a pack's unspent credits leave on the day it expires (rule 444)", () => {
   it("every read settles an expired pack out of the balance; the daily sweep writes it back under the lock", async () => {
-    const email = await paid(40);
-    const old = await lot(email, 100, Date.now() - 89 * DAY);
-    const fresh = await lot(email, 300);
-    ok(await charge(email, 60, meta(email))); // 40 monthly, 20 from the older pack
-    expect(await state(email)).toEqual({ credits: 380, monthly: 0, lots: { [old.id]: 80, [fresh.id]: 300 } });
+    const id = await paid(40);
+    const old = await lot(id, 100, Date.now() - 89 * DAY);
+    const fresh = await lot(id, 300);
+    ok(await charge(id, 60, meta(id))); // 40 monthly, 20 from the older pack
+    expect(await state(id)).toEqual({ credits: 380, monthly: 0, lots: { [old.id]: 80, [fresh.id]: 300 } });
 
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(new Date(old.expiresAt)); // the instant it expires: no longer live
-    const u = (await getUser(email))!;
+    const u = (await getUser(id))!;
     expect(u.credits, "the expired pack's 80 are gone from the balance at once").toBe(300);
     expect(lotsOf(u).map((l) => l.id)).toEqual([fresh.id]);
     expect(u.topupsDirty).toBe(true);
-    const stored = (await db.get<User>(`user:${email}`))!;
+    const stored = (await db.get<User>(`user:${id}`))!;
     expect(stored.credits, "storage is behind until a locked save").toBe(380);
     expect(stored).not.toHaveProperty("topupsDirty");
 
-    expect(await saveSettledTopups(email)).toEqual({ saved: true, credits: 300 });
-    const after = (await db.get<User>(`user:${email}`))!;
+    expect(await saveSettledTopups(id)).toEqual({ saved: true, credits: 300 });
+    const after = (await db.get<User>(`user:${id}`))!;
     expect(after.credits).toBe(300);
     expect(after.topups?.map((l) => l.id)).toEqual([fresh.id]);
     expect(after, "the runtime flag is never stored").not.toHaveProperty("topupsDirty");
-    expect(await saveSettledTopups(email), "nothing left to write").toEqual({ saved: false, credits: 300 });
+    expect(await saveSettledTopups(id), "nothing left to write").toEqual({ saved: false, credits: 300 });
 
     vi.setSystemTime(new Date(fresh.expiresAt));
-    expect(await state(email), "the last pack gone, the field goes too").toEqual({ credits: 0, monthly: 0, lots: {} });
-    await saveSettledTopups(email);
-    expect((await db.get<User>(`user:${email}`))!).not.toHaveProperty("topups");
+    expect(await state(id), "the last pack gone, the field goes too").toEqual({ credits: 0, monthly: 0, lots: {} });
+    await saveSettledTopups(id);
+    expect((await db.get<User>(`user:${id}`))!).not.toHaveProperty("topups");
   });
 
   it("the daily cron saves settled packs once per account, on its default brand's entry, never in an awaited loop", () => {
@@ -280,25 +283,25 @@ describe("expiry: a pack's unspent credits leave on the day it expires (rule 444
 
 describe("concurrent charges never overspend the monthly part or a pack (rule 445)", () => {
   it("20 parallel charges of 10 on 50 monthly + a 100 pack: exactly 15 succeed and every receipt adds up", async () => {
-    const email = await paid(50);
-    const p = await lot(email, 100);
-    const results = await Promise.all(Array.from({ length: 20 }, () => charge(email, 10, meta(email))));
+    const id = await paid(50);
+    const p = await lot(id, 100);
+    const results = await Promise.all(Array.from({ length: 20 }, () => charge(id, 10, meta(id))));
     const done = results.filter((r): r is Extract<AgentCharge, { ok: true }> => r.ok);
     expect(done).toHaveLength(15);
-    expect(await state(email)).toEqual({ credits: 0, monthly: 0, lots: { [p.id]: 0 } });
+    expect(await state(id)).toEqual({ credits: 0, monthly: 0, lots: { [p.id]: 0 } });
     const fromPack = done.reduce((s, r) => s + (r.from?.lots.reduce((t, l) => t + l.n, 0) ?? 0), 0);
     expect(fromPack).toBe(100);
     // Refunding all of them in parallel puts back exactly what each took.
-    await Promise.all(done.map((r) => refund(email, 10, r)));
-    expect(await state(email)).toEqual({ credits: 150, monthly: 50, lots: { [p.id]: 100 } });
+    await Promise.all(done.map((r) => refund(id, 10, r)));
+    expect(await state(id)).toEqual({ credits: 150, monthly: 50, lots: { [p.id]: 100 } });
   });
 
   it("a void racing charges never leaves the balance below what the remaining packs hold", async () => {
-    const email = await paid(0);
-    const p = await lot(email, 300);
-    const q = await lot(email, 100);
-    await Promise.all([...Array.from({ length: 10 }, () => charge(email, 20)), voidTopup(email, q.id)]);
-    const u = (await getUser(email))!;
+    const id = await paid(0);
+    const p = await lot(id, 300);
+    const q = await lot(id, 100);
+    await Promise.all([...Array.from({ length: 10 }, () => charge(id, 20)), voidTopup(id, q.id)]);
+    const u = (await getUser(id))!;
     expect(u.credits).toBe(topupCredits(u));
     expect(lotsOf(u).map((l) => l.id)).toEqual([p.id]);
   });
@@ -310,20 +313,20 @@ describe("POST /api/admin/topups: the founder activates a pack by hand (rule 446
   const lastLog = async () => JSON.parse((await db.lrange("admin:log", 0, 0))[0]) as Record<string, unknown>;
 
   it("founder only: anyone else is 401 before the body is read", async () => {
-    const email = await paid(0);
+    const id = await paid(0);
     jar().clear();
-    expect((await post({ email, action: "add", credits: 100, paidSar: 100, paidOn: today() })).status).toBe(401);
+    expect((await post({ email: await addr(id), action: "add", credits: 100, paidSar: 100, paidOn: today() })).status).toBe(401);
     const owner = await newUser("own");
     await signIn(owner.email);
-    expect((await post({ email, action: "add", credits: 100, paidSar: 100, paidOn: today() })).status).toBe(401);
+    expect((await post({ email: await addr(id), action: "add", credits: 100, paidSar: 100, paidOn: today() })).status).toBe(401);
     signOut();
-    expect((await getUser(email))!.topups).toBeUndefined();
+    expect((await getUser(id))!.topups).toBeUndefined();
   });
 
   it("checks every field in code and writes nothing on a bad request", async () => {
-    const email = await paid(0);
+    const id = await paid(0);
     const logged = (await db.lrange("admin:log", 0, -1)).length;
-    const good = { email, action: "add", credits: 300, paidSar: 300, paidOn: today(), ref: "TRX" };
+    const good = { email: await addr(id), action: "add", credits: 300, paidSar: 300, paidOn: today(), ref: "TRX" };
     const cases: [Record<string, unknown>, number, string][] = [
       [{ ...good, action: "grant" }, 400, "bad_action"],
       [{ ...good, credits: 200 }, 400, "bad_pack"],
@@ -348,7 +351,7 @@ describe("POST /api/admin/topups: the founder activates a pack by hand (rule 446
       expect(res.status, JSON.stringify(body)).toBe(status);
       expect(await res.json(), JSON.stringify(body)).toEqual({ ok: false, error });
     }
-    expect((await getUser(email))!.topups).toBeUndefined();
+    expect((await getUser(id))!.topups).toBeUndefined();
     expect((await db.lrange("admin:log", 0, -1)).length, "a refused request is not logged").toBe(logged);
     expect(parseTopup({ credits: 100, paidSar: 99.999, paidOn: today(), ref: "  a\nb\u0007 " })).toEqual({ ok: true, topup: { credits: 100, paidSar: 100, paidOn: today(), ref: "a b" } });
   });
@@ -358,14 +361,14 @@ describe("POST /api/admin/topups: the founder activates a pack by hand (rule 446
     const res = await post({ email: u.email, action: "add", credits: 100, paidSar: 100, paidOn: today() });
     expect(res.status).toBe(409);
     expect(await res.json()).toEqual({ ok: false, error: "topup_needs_paid_plan" });
-    expect((await getUser(u.email))!.credits).toBe(PLAN_CREDITS.trial);
-    expect((await getUser(u.email))!.topups).toBeUndefined();
+    expect((await getUser(acct(u)))!.credits).toBe(PLAN_CREDITS.trial);
+    expect((await getUser(acct(u)))!.topups).toBeUndefined();
   });
 
   it("adds the pack at once, valid 90 days, and logs the actor, the pack and the payment without its reference", async () => {
-    const email = await paid(120, "agency");
+    const id = await paid(120, "agency");
     const before = Date.now();
-    const res = await post({ email, action: "add", credits: 1000, paidSar: 950.5, paidOn: today(), ref: "BANK-778899", reason: "WhatsApp request" });
+    const res = await post({ email: await addr(id), action: "add", credits: 1000, paidSar: 950.5, paidOn: today(), ref: "BANK-778899", reason: "WhatsApp request" });
     expect(res.status).toBe(200);
     const body = (await res.json()) as { ok: boolean; lot: TopupLot; credits: number; topupCredits: number };
     expect(body).toMatchObject({ ok: true, credits: 1120, topupCredits: 1000, lot: { credits: 1000, left: 1000, paidSar: 950.5, paidOn: today(), ref: "BANK-778899", by: "key" } });
@@ -373,21 +376,21 @@ describe("POST /api/admin/topups: the founder activates a pack by hand (rule 446
     const at = new Date(body.lot.at).getTime();
     expect(at).toBeGreaterThanOrEqual(before);
     expect(new Date(body.lot.expiresAt).getTime() - at).toBe(90 * DAY);
-    expect(await state(email)).toEqual({ credits: 1120, monthly: 120, lots: { [body.lot.id]: 1000 } });
+    expect(await state(id)).toEqual({ credits: 1120, monthly: 120, lots: { [body.lot.id]: 1000 } });
     const log = await lastLog();
     // The pack's payment is recorded with it (rule 454); this customer has no partner, so no commission is named.
-    expect(log).toMatchObject({ actor: "key", email, what: `topup:+1000 payment:${body.lot.paymentId}`, before: { credits: 120 }, after: { credits: 1120 }, reason: "WhatsApp request", topup: { id: body.lot.id, credits: 1000, paidSar: 950.5, paidOn: today() } });
+    expect(log).toMatchObject({ actor: "key", email: await addr(id), what: `topup:+1000 payment:${body.lot.paymentId}`, before: { credits: 120 }, after: { credits: 1120 }, reason: "WhatsApp request", topup: { id: body.lot.id, credits: 1000, paidSar: 950.5, paidOn: today() } });
     expect(body.lot.paymentId).toMatch(/^pay_[0-9a-f]+$/);
     expect(JSON.stringify(log), "the payment reference stays on the pack").not.toContain("BANK-778899");
   });
 
   it("refuses a pack past the live-pack bound", async () => {
-    const email = await paid(0);
-    const u = (await getUser(email))!;
+    const id = await paid(0);
+    const u = (await getUser(id))!;
     const now = Date.now();
     u.topups = Array.from({ length: MAX_LIVE_TOPUPS }, (_, i) => ({ id: i.toString(16).padStart(16, "0"), credits: 100, left: 0, at: new Date(now).toISOString(), expiresAt: new Date(now + DAY).toISOString(), paidSar: 100, paidOn: today(), ref: "", by: "key" }));
     await saveUser(u);
-    const res = await post({ email, action: "add", credits: 100, paidSar: 100, paidOn: today() });
+    const res = await post({ email: await addr(id), action: "add", credits: 100, paidSar: 100, paidOn: today() });
     expect(res.status).toBe(409);
     expect(await res.json()).toEqual({ ok: false, error: "too_many_topups" });
   });
@@ -398,19 +401,19 @@ describe("POST /api/admin/topups void: a pack's unspent credits leave, spent one
   const post = (body: Record<string, unknown>) => topupsRoute.POST(json("/api/admin/topups", "POST", body));
 
   it("voids the pack, logs what left the balance, and refuses an id that is malformed or not there", async () => {
-    const email = await paid(0);
-    const p = await lot(email, 300);
-    ok(await charge(email, 120, meta(email)));
-    expect((await post({ email, action: "void", id: "../../user" })).status).toBe(400);
-    const missing = await post({ email, action: "void", id: "0123456789abcdef" });
+    const id = await paid(0);
+    const p = await lot(id, 300);
+    ok(await charge(id, 120, meta(id)));
+    expect((await post({ email: await addr(id), action: "void", id: "../../user" })).status).toBe(400);
+    const missing = await post({ email: await addr(id), action: "void", id: "0123456789abcdef" });
     expect(missing.status).toBe(404);
     expect(await missing.json()).toEqual({ ok: false, error: "topup_not_found" });
-    const res = await post({ email, action: "void", id: p.id, reason: "transfer bounced" });
+    const res = await post({ email: await addr(id), action: "void", id: p.id, reason: "transfer bounced" });
     expect(res.status).toBe(200);
     expect(await res.json()).toMatchObject({ ok: true, credits: 0, removed: 180, topupCredits: 0 });
-    expect(await state(email)).toEqual({ credits: 0, monthly: 0, lots: {} });
+    expect(await state(id)).toEqual({ credits: 0, monthly: 0, lots: {} });
     const log = JSON.parse((await db.lrange("admin:log", 0, 0))[0]);
-    expect(log).toMatchObject({ actor: "key", email, what: "topup_void:300 removed:180", before: { credits: 180 }, after: { credits: 0 }, reason: "transfer bounced" });
+    expect(log).toMatchObject({ actor: "key", email: await addr(id), what: "topup_void:300 removed:180", before: { credits: 180 }, after: { credits: 0 }, reason: "transfer bounced" });
     expect(JSON.stringify(log)).not.toContain("TRX-1");
   });
 });
@@ -422,13 +425,13 @@ describe("top-up revenue sits next to MRR, never inside it (rule 448)", () => {
   });
 
   it("the founder overview reports this month's top-up revenue and leaves MRR as the plans' prices", async () => {
-    const email = await paid(0, "pro");
+    const id = await paid(0, "pro");
     const a = await overview();
-    const p = await lot(email, 300, Date.now(), { paidSar: 123.45 });
+    const p = await lot(id, 300, Date.now(), { paidSar: 123.45 });
     const b = await overview();
     expect(Math.round((b.revenue.topupSarMonth - a.revenue.topupSarMonth) * 100) / 100).toBe(123.45);
     expect(b.revenue.mrrSar, "MRR is unchanged by a top-up").toBe(a.revenue.mrrSar);
-    await voidTopup(email, p.id);
+    await voidTopup(id, p.id);
     expect((await overview()).revenue.topupSarMonth).toBe(a.revenue.topupSarMonth);
     expect(priceOf({ plan: "pro" })).toBeGreaterThan(0);
   });
@@ -442,9 +445,9 @@ describe("the billing page's 'Top up credits' section (rule 449)", () => {
 
   it("the owner of a paid plan gets the three packs with their price, 90 days, and a WhatsApp request naming the pack and the account", async () => {
     vi.stubEnv("SUPPORT_WHATSAPP", "+966 50 000 0000");
-    const email = await paid(300);
-    const p = await lot(email, 300);
-    await signIn(email);
+    const id = await paid(300);
+    const p = await lot(id, 300);
+    await signIn(await addr(id));
     const en = await billing("en");
     expect(en).toContain('id="topup"');
     expect(en).toContain("Top up credits");
@@ -453,7 +456,7 @@ describe("the billing page's 'Top up credits' section (rule 449)", () => {
       expect(en).toContain(`${c === 1000 ? "1,000" : c} SAR + VAT`);
     }
     expect(en).toContain("used after your plan&#x27;s monthly credits, and valid for 90 days from activation");
-    const msg = encodeURIComponent(`Thakeen: I'd like to top up with the 1,000-credit pack (1,000 SAR + VAT). Account: ${email}`);
+    const msg = encodeURIComponent(`Thakeen: I'd like to top up with the 1,000-credit pack (1,000 SAR + VAT). Account: ${await addr(id)}`);
     expect(en).toContain(amp(`https://wa.me/966500000000?text=${msg}`));
     expect((en.match(/data-pack-request=""/g) ?? []).length).toBe(3);
     // The account's live pack, and the balance's share from packs.
@@ -464,14 +467,14 @@ describe("the billing page's 'Top up credits' section (rule 449)", () => {
     const ar = await billing("ar");
     expect(ar).toContain("اشحن رصيدك");
     expect(ar).toContain("100 ريال + الضريبة");
-    expect(ar).toContain(amp(`https://wa.me/966500000000?text=${encodeURIComponent(`ذكين: أرغب في شحن رصيدي بباقة 100 كريدت (100 ريال + الضريبة). الحساب: ${email}`)}`));
+    expect(ar).toContain(amp(`https://wa.me/966500000000?text=${encodeURIComponent(`ذكين: أرغب في شحن رصيدي بباقة 100 كريدت (100 ريال + الضريبة). الحساب: ${await addr(id)}`)}`));
     vi.unstubAllEnvs(); vi.stubEnv("WAITLIST_ADMIN_KEY", KEY);
   });
 
-  it("without a support number the request goes by email; a trial sees the packs as available after subscribing, with no button", async () => {
+  it("without a support number the request goes by id; a trial sees the packs as available after subscribing, with no button", async () => {
     vi.stubEnv("SUPPORT_WHATSAPP", "");
-    const email = await paid(300);
-    await signIn(email);
+    const id = await paid(300);
+    await signIn(await addr(id));
     const en = await billing("en");
     expect(en).toContain("mailto:hello@thakeen.com?subject=");
     expect(en).not.toContain("wa.me");
@@ -486,9 +489,9 @@ describe("the billing page's 'Top up credits' section (rule 449)", () => {
 
   it("a member sees the packs and the account's packs read-only, never a request carrying the owner's email", async () => {
     vi.stubEnv("SUPPORT_WHATSAPP", "966500000000");
-    const email = await paid(300);
-    const p = await lot(email, 100);
-    const m = await newMember((await getUser(email))!, "admin");
+    const id = await paid(300);
+    const p = await lot(id, 100);
+    const m = await newMember((await getUser(id))!, "admin");
     await signIn(m.email);
     const html = await billing("en");
     expect(html).toContain('data-pack="1000"');
@@ -575,13 +578,13 @@ describe("the module boundaries (rules 451-452)", () => {
 
 describe("the owner's /api/profile shows packs without what was paid or who activated them (rule 453)", () => {
   it("each pack is its credits, what is left and its dates; no payment reference, amount, founder or runtime flag", async () => {
-    const email = await paid(80);
-    const live = await lot(email, 300, Date.now(), { ref: "BANK-SECRET-4411", by: "founder-x@test.example", paidSar: 287.5 });
-    const gone = await lot(email, 100, Date.now(), { ref: "BANK-SECRET-4412", by: "founder-x@test.example" });
+    const id = await paid(80);
+    const live = await lot(id, 300, Date.now(), { ref: "BANK-SECRET-4411", by: "founder-x@test.example", paidSar: 287.5 });
+    const gone = await lot(id, 100, Date.now(), { ref: "BANK-SECRET-4412", by: "founder-x@test.example" });
     // The second pack expires under the owner's feet: the read settles it out and marks the record dirty (rule 444).
-    const u = (await getUser(email))!;
+    const u = (await getUser(id))!;
     await saveUser({ ...u, topups: u.topups!.map((l) => (l.id === gone.id ? { ...l, expiresAt: new Date(Date.now() - DAY).toISOString() } : l)) });
-    await signIn(email);
+    await signIn(await addr(id));
     const res = await profileRoute.GET();
     expect(res.status).toBe(200);
     const raw = await res.text();
@@ -594,9 +597,9 @@ describe("the owner's /api/profile shows packs without what was paid or who acti
   });
 
   it("a member sees the same packs as the owner, and nothing of their payment", async () => {
-    const email = await paid(80);
-    const p = await lot(email, 100, Date.now(), { ref: "BANK-SECRET-9", paymentId: "pay_00112233445566778899" });
-    const m = await newMember((await getUser(email))!);
+    const id = await paid(80);
+    const p = await lot(id, 100, Date.now(), { ref: "BANK-SECRET-9", paymentId: "pay_00112233445566778899" });
+    const m = await newMember((await getUser(id))!);
     await signIn(m.email);
     const raw = await (await profileRoute.GET()).text();
     for (const secret of ["BANK-SECRET", "paidSar", "paymentId", "pay_00112233"]) expect(raw).not.toContain(secret);

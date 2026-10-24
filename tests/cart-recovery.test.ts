@@ -3,7 +3,7 @@ import { json, newUser, signIn } from "./helpers/session";
 import { claudeOn } from "./helpers/model";
 import { db } from "@/lib/db";
 import { listTasks, type Brand } from "@/lib/brand";
-import { getUser } from "@/lib/auth";
+import { acct, currentUser, getUser } from "@/lib/auth";
 import { capDiscounts, cartDataBlock } from "@/lib/cart-recovery";
 import { statsFor } from "@/lib/stats";
 import { TASK_COST, TASK_COUNT } from "@/lib/tasks";
@@ -36,15 +36,15 @@ describe("cart-recovery drafts need real abandoned carts (rule 74)", () => {
   it("refuses before charging when the store was never synced or has no products left in carts", async () => {
     for (const snap of [null, snapshot({ top: [] })]) {
       const u = await newUser("cartgate");
-      await db.set(`brand:${u.email}`, brand);
-      if (snap) await db.set(`storesales:${u.email}`, snap);
+      await db.set(`brand:${acct(u)}`, brand);
+      if (snap) await db.set(`storesales:${acct(u)}`, snap);
       await signIn(u.email);
-      const before = (await getUser(u.email))!.credits;
+      const before = (await getUser(acct(u)))!.credits;
       const res = await generateRoute.POST(json("/api/generate", "POST", { type: "cart_recovery" }));
       expect(res.status).toBe(409);
       expect((await res.json()).error).toBe("no_cart_data");
-      expect((await getUser(u.email))!.credits).toBe(before);
-      expect(await listTasks(u.email)).toEqual([]);
+      expect((await getUser(acct(u)))!.credits).toBe(before);
+      expect(await listTasks(acct(u))).toEqual([]);
     }
   });
 
@@ -52,8 +52,9 @@ describe("cart-recovery drafts need real abandoned carts (rule 74)", () => {
   // draft_items refuses it in code before any read (rule 250). Neither path charges.
   it("refuses from chat too: a batch without carts, and a small ask as not a draft type", async () => {
     const u = await newUser("cartchat");
-    await db.set(`brand:${u.email}`, brand);
-    const user = (await getUser(u.email))!;
+    await db.set(`brand:${acct(u)}`, brand);
+    await signIn(u.email);
+    const user = (await currentUser())!; // the session user carries the scope, as the chat route passes it
     const before = user.credits;
     for (const [tool, input, answer] of [
       ["generate_content", { type: "cart_recovery" }, /No abandoned-cart data yet/],
@@ -61,29 +62,29 @@ describe("cart-recovery drafts need real abandoned carts (rule 74)", () => {
     ] as const) {
       expect(await runTool(user, tool, input, [])).toMatch(answer);
     }
-    expect((await getUser(u.email))!.credits).toBe(before);
-    expect(await listTasks(u.email)).toEqual([]);
+    expect((await getUser(acct(u)))!.credits).toBe(before);
+    expect(await listTasks(acct(u))).toEqual([]);
   });
 
   it("charges and fills the inbox once the store has abandoned-cart products", async () => {
     const u = await newUser("cartok");
-    await db.set(`brand:${u.email}`, brand);
-    await db.set(`storesales:${u.email}`, snapshot());
+    await db.set(`brand:${acct(u)}`, brand);
+    await db.set(`storesales:${acct(u)}`, snapshot());
     await signIn(u.email);
-    const before = (await getUser(u.email))!.credits;
+    const before = (await getUser(acct(u)))!.credits;
     const res = await generateRoute.POST(json("/api/generate", "POST", { type: "cart_recovery" }));
     expect((await res.json()).ok).toBe(true);
-    expect((await getUser(u.email))!.credits).toBe(before - 3);
-    const tasks = await listTasks(u.email);
+    expect((await getUser(acct(u)))!.credits).toBe(before - 3);
+    const tasks = await listTasks(acct(u));
     expect(tasks).toHaveLength(5);
     expect(tasks.every((t) => t.type === "cart_recovery" && t.status === "pending")).toBe(true);
   });
 
   it("hands the model the store's products as escaped JSON data, with no shopper detail", async () => {
     const u = await newUser("cartdata");
-    await db.set(`storesales:${u.email}`, snapshot());
-    const block = await statsFor("cart_recovery", u.email);
-    expect(block).toBe(await cartDataBlock(u.email));
+    await db.set(`storesales:${acct(u)}`, snapshot());
+    const block = await statsFor("cart_recovery", acct(u));
+    expect(block).toBe(await cartDataBlock(acct(u)));
     expect(block).toContain("CART DATA (read from the owner's connected store");
     const inner = block.match(/<cart_data>([\s\S]*)<\/cart_data>/)![1];
     // A product name cannot close the data element: "<" is escaped inside the JSON.
@@ -91,7 +92,7 @@ describe("cart-recovery drafts need real abandoned carts (rule 74)", () => {
     const data = JSON.parse(inner);
     expect(data.products_most_often_left[0]).toEqual({ name: "مسك أبيض", times_left: 5 });
     expect(data).toMatchObject({ store: "Shopify", open_carts: 7, best_sellers: ["عود ملكي"] });
-    expect(await statsFor("social", u.email)).toBe("");
+    expect(await statsFor("social", acct(u))).toBe("");
   });
 });
 

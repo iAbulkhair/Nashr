@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { json, newMember, newUser, signIn } from "./helpers/session";
-import { currentUser, saveUser, sc, type User } from "@/lib/auth";
+import { acct, currentUser, saveUser, sc, type User } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { MAX_FILES, readFile, writeFile } from "@/lib/files";
 import { getConnection, saveConnection } from "@/lib/connectors/store";
@@ -441,7 +441,7 @@ describe("rule 956: who, how often, and what is wiped", () => {
     expect((await imp({ kind: "doc", id: ID, title: "Wipe me" })).status).toBe(200);
     expect(instructionKeys(sc(u))).toContain(`skillrefs:${sc(u)}`);
     expect(Object.keys(await db.hgetall(`skillrefs:${sc(u)}`))).toEqual(["ref-wipe-me.md"]);
-    await wipeAccount(u.email);
+    await wipeAccount(acct(u));
     expect(Object.keys(await db.hgetall(`skillrefs:${sc(u)}`))).toEqual([]);
     expect(await readFile(sc(u), "ref-wipe-me.md")).toBeNull();
   });

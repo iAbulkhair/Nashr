@@ -2,7 +2,7 @@ import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { readFileSync } from "fs";
 import { jar, json, newMember, newUser, signIn, signOut } from "./helpers/session";
 import { codeAt } from "./helpers/staff";
-import { currentUser, getUser, saveUser, sessionRecord } from "@/lib/auth";
+import { acct, currentUser, getUser, saveUser, sessionRecord } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { CHALLENGE_TRIES, MFA_COOKIE, MFA_LABEL, mfaKey, mfaRecoveryHash, type MfaEnrolment } from "@/lib/mfa";
 import { openStaffSecret, openWithLabel, sealWithLabel, staffRecoveryHash } from "@/lib/staff";
@@ -160,7 +160,7 @@ describe("rule 1934: the challenge is short, single use and drops after five wro
     const { secret } = await enrol();
     signOut();
     await login(u.email);
-    const x = (await getUser(u.email))!;
+    const x = (await getUser(acct(u)))!;
     x.suspended = true;
     await saveUser(x);
     const r = await code(codeAt(secret, Date.now() + STEP));

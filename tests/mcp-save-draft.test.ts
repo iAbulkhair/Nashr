@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { newUser, signIn, type Fixture, seedActiveBrand } from "./helpers/session";
 import { vjson } from "./helpers/version";
 import { getTask, listTasks, pendingCount, saveBrand, type Brand } from "@/lib/brand";
-import { getUser } from "@/lib/auth";
+import { getUser, acct } from "@/lib/auth";
 import { createMcpToken } from "@/lib/mcp";
 import { saveGov } from "@/lib/governance";
 import { saveBrands, scopeFor } from "@/lib/brands";
@@ -22,8 +22,8 @@ const report = async (res: Response) => JSON.parse((await result(res)).content[0
 
 async function owner(prefix = "draft", fx: Fixture = {}) {
   const u = await newUser(prefix, fx);
-  await saveBrand(u.email, BRAND);
-  return { u, token: await createMcpToken(u.email) };
+  await saveBrand(acct(u), BRAND);
+  return { u, token: await createMcpToken(acct(u)) };
 }
 
 describe("MCP save_draft: the owner's own assistant saves into the inbox (rules 144-148)", () => {
@@ -36,45 +36,45 @@ describe("MCP save_draft: the owner's own assistant saves into the inbox (rules 
 
   it("saves one pending item with source external in the caller's scope, and charges nothing", async () => {
     const { u, token } = await owner();
-    const before = (await getUser(u.email))!.credits;
+    const before = (await getUser(acct(u)))!.credits;
     const r = await report(await call({ type: "social", channel: "Instagram", title: "  كوب الصباح ", body: "قهوة طازجة من المحمصة كل صباح", notes: "for the weekend" }, token));
     expect(r).toMatchObject({ saved: true, status: "pending", type: "social", channel: "instagram", title: "كوب الصباح", credits: 0 });
     expect(r.brandCheck.pass).toBe(true);
-    const t = await getTask(u.email, r.id);
+    const t = await getTask(acct(u), r.id);
     expect(t).toMatchObject({ status: "pending", source: "external", type: "social", channel: "instagram", body: "قهوة طازجة من المحمصة كل صباح", brief: "for the weekend", lang: "ar" });
-    expect(await pendingCount(u.email)).toBe(1);
-    expect((await getUser(u.email))!.credits).toBe(before);
+    expect(await pendingCount(acct(u))).toBe(1);
+    expect((await getUser(acct(u)))!.credits).toBe(before);
   });
 
   it("is never auto-approved, even when the owner auto-approves that type", async () => {
     const { u, token } = await owner();
-    await saveGov(u.email, { autoApprove: { social: true } });
+    await saveGov(acct(u), { autoApprove: { social: true } });
     const r = await report(await call({ type: "social", body: "قهوة طازجة" }, token));
     expect(r.status).toBe("pending");
-    expect((await getTask(u.email, r.id))!.status).toBe("pending");
+    expect((await getTask(acct(u), r.id))!.status).toBe("pending");
   });
 
   it("writes only to the bearer's own active brand: scope, email or id in the arguments are ignored", async () => {
     const a = await owner("drafta");
     const b = await owner("draftb");
-    const r = await report(await call({ type: "social", body: "قهوة طازجة", scope: b.u.email, email: b.u.email, owner: b.u.email, id: "fixed" }, a.token));
+    const r = await report(await call({ type: "social", body: "قهوة طازجة", scope: acct(b.u), email: b.u.email, owner: acct(b.u), id: "fixed" }, a.token));
     expect(r.id).not.toBe("fixed");
-    expect(await getTask(a.u.email, r.id)).not.toBeNull();
-    expect(await getTask(b.u.email, r.id)).toBeNull();
-    expect(await listTasks(b.u.email)).toHaveLength(0);
+    expect(await getTask(acct(a.u), r.id)).not.toBeNull();
+    expect(await getTask(acct(b.u), r.id)).toBeNull();
+    expect(await listTasks(acct(b.u))).toHaveLength(0);
 
     // A second brand active: the draft goes to that brand, not the account's default one.
-    await saveBrands(a.u.email, [{ id: "default", name: "", createdAt: new Date().toISOString(), status: "active" }, { id: "b2", name: "Two", createdAt: new Date().toISOString(), status: "active" }]);
-    await saveBrand(scopeFor(a.u.email, "b2"), { ...BRAND, name: "Two" });
+    await saveBrands(acct(a.u), [{ id: "default", name: "", createdAt: new Date().toISOString(), status: "active" }, { id: "b2", name: "Two", createdAt: new Date().toISOString(), status: "active" }]);
+    await saveBrand(scopeFor(acct(a.u), "b2"), { ...BRAND, name: "Two" });
     await seedActiveBrand(a.u.email, "b2");
     const r2 = await report(await call({ type: "social", body: "قهوة طازجة" }, a.token));
-    expect(await getTask(scopeFor(a.u.email, "b2"), r2.id)).not.toBeNull();
-    expect(await getTask(a.u.email, r2.id)).toBeNull();
+    expect(await getTask(scopeFor(acct(a.u), "b2"), r2.id)).not.toBeNull();
+    expect(await getTask(acct(a.u), r2.id)).toBeNull();
   });
 
   it("runs the brand gate in code: a banned word is saved held, named in the answer, and cannot be approved", async () => {
     const { u, token } = await owner();
-    await saveGov(u.email, { autoApprove: { social: true } });
+    await saveGov(acct(u), { autoApprove: { social: true } });
     const r = await report(await call({ type: "social", body: "نتيجة مضمونة من أول كوب" }, token));
     expect(r.status).toBe("pending");
     expect(r.brandCheck.pass).toBe(false);
@@ -84,7 +84,7 @@ describe("MCP save_draft: the owner's own assistant saves into the inbox (rules 
     await signIn(u.email);
     const res = await taskRoute.PATCH(await vjson(`/api/tasks/${r.id}`, "PATCH", { status: "approved" }), { params: Promise.resolve({ id: r.id }) });
     expect(res.status).toBe(409);
-    expect((await getTask(u.email, r.id))!.status).toBe("pending");
+    expect((await getTask(acct(u), r.id))!.status).toBe("pending");
     // The title is checked too, and an internal document may quote the word.
     expect((await report(await call({ type: "ads", title: "cheap coffee", body: "قهوة طازجة" }, token))).brandCheck.pass).toBe(false);
     expect((await report(await call({ type: "strategy_review", body: "لا تقل مضمون في الإعلانات" }, token))).brandCheck.pass).toBe(true);
@@ -110,7 +110,7 @@ describe("MCP save_draft: the owner's own assistant saves into the inbox (rules 
       const res = await result(await call(args, token));
       expect(res.isError, JSON.stringify(args).slice(0, 80)).toBe(true);
     }
-    expect(await listTasks(u.email)).toHaveLength(0);
+    expect(await listTasks(acct(u))).toHaveLength(0);
   });
 
   it("strips control and direction-override characters and defaults the title and channel", () => {
@@ -120,9 +120,9 @@ describe("MCP save_draft: the owner's own assistant saves into the inbox (rules 
 
   it("refuses without a brand file, saving nothing", async () => {
     const u = await newUser("nobrand");
-    const token = await createMcpToken(u.email);
+    const token = await createMcpToken(acct(u));
     expect((await result(await call({ type: "social", body: "قهوة" }, token))).isError).toBe(true);
-    expect(await listTasks(u.email)).toHaveLength(0);
+    expect(await listTasks(acct(u))).toHaveLength(0);
   });
 
   it(`stops at ${DRAFTS_PER_HOUR} drafts an hour per account, across its brands`, async () => {
@@ -131,12 +131,12 @@ describe("MCP save_draft: the owner's own assistant saves into the inbox (rules 
     const over = await result(await call({ type: "social", body: "قهوة أخرى" }, token));
     expect(over.isError).toBe(true);
     expect(over.content[0].text).toMatch(/Too many drafts/);
-    expect(await pendingCount(u.email)).toBe(DRAFTS_PER_HOUR);
+    expect(await pendingCount(acct(u))).toBe(DRAFTS_PER_HOUR);
     // Switching brand does not reset the allowance.
-    await saveBrands(u.email, [{ id: "default", name: "", createdAt: new Date().toISOString(), status: "active" }, { id: "b2", name: "Two", createdAt: new Date().toISOString(), status: "active" }]);
-    await saveBrand(scopeFor(u.email, "b2"), BRAND);
+    await saveBrands(acct(u), [{ id: "default", name: "", createdAt: new Date().toISOString(), status: "active" }, { id: "b2", name: "Two", createdAt: new Date().toISOString(), status: "active" }]);
+    await saveBrand(scopeFor(acct(u), "b2"), BRAND);
     await seedActiveBrand(u.email, "b2");
     expect((await result(await call({ type: "social", body: "قهوة" }, token))).isError).toBe(true);
-    expect(await listTasks(scopeFor(u.email, "b2"))).toHaveLength(0);
+    expect(await listTasks(scopeFor(acct(u), "b2"))).toHaveLength(0);
   });
 });

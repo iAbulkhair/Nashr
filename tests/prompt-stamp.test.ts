@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { acct } from "@/lib/account-id";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -100,15 +101,15 @@ describe("every generated task records which prompts made it (rule 229)", () => 
     expect(t.pb).toEqual(promptStamp("social", brand));
 
     const u = await newUser("stamp-gen");
-    await db.set(`brand:${u.email}`, brand);
+    await db.set(`brand:${acct(u)}`, brand);
     await signIn(u.email);
     expect((await generateRoute.POST(json("/api/generate", "POST", { type: "whatsapp" }))).status).toBe(200);
-    const tasks = await Promise.all((await listLite(u.email)).map((l) => getTask(u.email, l.id)));
+    const tasks = await Promise.all((await listLite(acct(u))).map((l) => getTask(acct(u), l.id)));
     expect(tasks.length).toBeGreaterThan(0);
     // A batch also records the instruction blocks it carried (rule 947): none, none for an account with no instructions.
     for (const x of tasks) expect(x!.pb).toEqual(promptStamp("whatsapp", brand, { plat: "none", ins: "none" }));
 
-    const saved = await saveExternalDraft((await getUser(u.email))!, { type: "social", channel: "instagram", title: "مسودة", body: "نص كتبه مساعد المالك" });
+    const saved = await saveExternalDraft((await getUser(acct(u)))!, { type: "social", channel: "instagram", title: "مسودة", body: "نص كتبه مساعد المالك" });
     if (!saved.ok) throw new Error(saved.reason);
     expect(saved.task).not.toHaveProperty("pb");
   });

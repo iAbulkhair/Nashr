@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { json, newMember, newUser, params, signIn, signOut, type Fixture, seedActiveBrand } from "./helpers/session";
-import { currentUser, getUser, saveUser, sc, type User } from "@/lib/auth";
+import { acct, currentUser, getUser, saveUser, sc, type User } from "@/lib/auth";
 import { addBrand, scopeFor } from "@/lib/brands";
 import { db } from "@/lib/db";
 import { CHAT_TOOL_NAMES, TOOL_ACTION, history, push, runTool, statusFor, system, toolsFor, type ToolCtx } from "@/lib/chat";
@@ -67,7 +67,7 @@ describe("rule 953: the tool stores a proposal and nothing else", () => {
     const layer = await getLayer(sc(u));
     expect(layer.active.items).toEqual([]);
     expect(layer.draft).toBeNull();
-    expect((await getUser(u.email))!.credits).toBe(credits);
+    expect((await getUser(acct(u)))!.credits).toBe(credits);
   });
 
   it("rule 953: the proposal key holds the stored by and lives 7 days", async () => {
@@ -142,9 +142,9 @@ describe("rule 953: the tool stores a proposal and nothing else", () => {
     const u = await owner("prop-day-brand");
     const limits = entitlements(u).instructions;
     for (let i = 0; i < INSTRUCTION_PROPOSALS_PER_DAY; i++) await proposeInstruction(sc(u), { text: `Rule ${i}.` }, byOf(u), limits);
-    const second = await addBrand((await getUser(u.email))!, "Second");
+    const second = await addBrand((await getUser(acct(u)))!, "Second");
     if ("error" in second) throw new Error(second.error);
-    const other = scopeFor(u.email, second.id);
+    const other = scopeFor(acct(u), second.id);
     expect((await proposeInstruction(other, { text: "Second brand rule." }, byOf(u), limits)).ok).toBe(true);
     expect((await proposeInstruction(sc(u), { text: "First brand again." }, byOf(u), limits)).ok).toBe(false);
   });
@@ -202,8 +202,8 @@ describe("rule 953: the tool stores a proposal and nothing else", () => {
     const u = await owner("prop-scope");
     const victim = await newUser("prop-victim");
     const r = reply();
-    await propose(u, { text: "Rule one.", scope: victim.email, email: victim.email, brandId: "x", id: "aaaaaaaaaaaaaaaa" }, r);
-    expect(await ids(victim.email)).toEqual([]);
+    await propose(u, { text: "Rule one.", scope: acct(victim), email: acct(victim), brandId: "x", id: "aaaaaaaaaaaaaaaa" }, r);
+    expect(await ids(acct(victim))).toEqual([]);
     expect(await ids(sc(u))).toEqual([r.cards[0].id]);
     expect(r.cards[0].id).not.toBe("aaaaaaaaaaaaaaaa");
   });
@@ -248,9 +248,9 @@ describe("rule 953: the tool stores a proposal and nothing else", () => {
 
   it("rule 953: wipeAccount removes every proposal key, the outcomes, the index and the day's counter", async () => {
     const u = await owner("prop-wipe");
-    const second = await addBrand((await getUser(u.email))!, "Second");
+    const second = await addBrand((await getUser(acct(u)))!, "Second");
     if ("error" in second) throw new Error(second.error);
-    const other = scopeFor(u.email, second.id);
+    const other = scopeFor(acct(u), second.id);
     const limits = entitlements(u).instructions;
     const scopes = [sc(u), other];
     const made = await Promise.all(scopes.map((s) => proposeInstruction(s, { text: `Rule for ${s}.` }, byOf(u), limits)));
@@ -261,7 +261,7 @@ describe("rule 953: the tool stores a proposal and nothing else", () => {
     expect(keys.length).toBeGreaterThan(8);
     expect((await Promise.all(keys.map((k) => db.get(k)))).some((v) => v !== null)).toBe(true);
     expect(more.every((m) => m.ok)).toBe(true);
-    await wipeAccount(u.email);
+    await wipeAccount(acct(u));
     expect(await Promise.all(keys.map((k) => db.get(k)))).toEqual(keys.map(() => null));
     for (const s of scopes) expect(await db.smembers(`skillprops:${s}`)).toEqual([]);
   });
@@ -396,21 +396,21 @@ describe("rule 954: the owner's click applies a proposal", () => {
   it("rule 954: another workspace's id is 404: another account's, and another brand of the same account", async () => {
     const a = await owner("apply-a", "agency");
     const p = await make(a);
-    const second = await addBrand((await getUser(a.email))!, "Second");
+    const second = await addBrand((await getUser(acct(a)))!, "Second");
     if ("error" in second) throw new Error(second.error);
     await seedActiveBrand(a.email, second.id);
     await signIn(a.email);
-    expect(sc((await currentUser())!)).toBe(scopeFor(a.email, second.id));
+    expect(sc((await currentUser())!)).toBe(scopeFor(acct(a), second.id));
     const crossBrand = await decide(p.id, { decision: "apply" });
     expect(crossBrand.status).toBe(404);
     expect(crossBrand.body).toEqual({ ok: false, error: "not_found" });
     const b = await owner("apply-b");
     expect((await decide(p.id, { decision: "apply" })).status).toBe(404);
     expect((await getLayer(sc(b))).active.items).toEqual([]);
-    expect((await getLayer(scopeFor(a.email, second.id))).active.items).toEqual([]);
+    expect((await getLayer(scopeFor(acct(a), second.id))).active.items).toEqual([]);
     // The proposal is still open in its own brand, and nothing in a body names a scope.
-    expect(await instructionProposalStates(a.email, [p.id])).toEqual({ [p.id]: "open" });
-    expect((await decide(p.id, { decision: "apply", scope: a.email, email: a.email })).status).toBe(404);
+    expect(await instructionProposalStates(acct(a), [p.id])).toEqual({ [p.id]: "open" });
+    expect((await decide(p.id, { decision: "apply", scope: acct(a), email: acct(a) })).status).toBe(404);
     for (const id of ["nope", "../x", "AAAAAAAAAAAAAAAA", ""]) expect((await decide(id, { decision: "apply" })).status, id).toBe(404);
   });
 

@@ -22,6 +22,21 @@ import * as planRoute from "@/app/api/admin/plan/route";
 import * as sessionsRoute from "@/app/api/account/sessions/route";
 import { TXN_HMAC_FIELDS, hmacString, signHmac } from "@/lib/paymob";
 
+// Both switches are on since the enable release (rule 3810). The one test that pins R1's deletion of a legacy team (the
+// member's person and login go with its last membership) runs with both off again (`offPath`), the rollback floor
+// (rule 3814); everything else runs as production does now.
+const flag = vi.hoisted(() => ({ on: true }));
+vi.mock("@/lib/multi-org", async (orig) => {
+  const real = await orig<typeof import("@/lib/multi-org")>();
+  return { ...real, get MULTI_ORG() { return flag.on; } };
+});
+vi.mock("@/lib/account-id", async (orig) => {
+  const real = await orig<typeof import("@/lib/account-id")>();
+  return { ...real, get OPAQUE_IDS() { return flag.on; } };
+});
+/** Inside a describe: its tests run with `MULTI_ORG` and `OPAQUE_IDS` off, as an M1 build (the rollback floor) does. */
+const offPath = () => beforeEach(() => { flag.on = false; });
+
 // Pins the legacy shape (multi-org M1): this file reads and writes R1's records by address (`user:`/`member:`, address-shaped
 // person ids and actors), so its persons are legacy ones; each still holds a shadow membership unless it says `shadow: false`.
 const newUser = (prefix?: string, o: Parameters<typeof helperNewUser>[1] = {}) => helperNewUser(prefix, { legacy: true, ...o });
@@ -37,7 +52,7 @@ const newMember = (owner: Parameters<typeof helperNewMember>[0], role?: Paramete
  * tests/account-security-wipe.test.ts, which runs unchanged.
  */
 
-afterEach(() => { vi.restoreAllMocks(); vi.unstubAllEnvs(); vi.unstubAllGlobals(); signOut(); });
+afterEach(() => { vi.restoreAllMocks(); vi.unstubAllEnvs(); vi.unstubAllGlobals(); signOut(); flag.on = true; });
 
 const address = (p: string) => `${p}-${randomBytes(4).toString("hex")}@test.example`;
 const aidOf = (u: User): AccountId => storedAccountId(acct(u));
@@ -73,6 +88,9 @@ async function threeAccounts() {
   const P = await pPerson("three");
   const [B, C] = [await withPlan(await newUser("tb"), "pro"), await withPlan(await newUser("tc"), "pro")];
   await join(B, P.pid);
+  // A later millisecond: two joins in one tie on the date, and the order then falls to the account ids, random `a_` ones
+  // since the enable release (rule 3810).
+  await new Promise((r) => setTimeout(r, 5));
   await join(C, P.pid);
   await Promise.all([db.set(personKey.activeBrand(P.pid, aidOf(B)), "default"), db.set(personKey.activeBrand(P.pid, aidOf(C)), "default")]);
   // Someone else on each roster, so the other accounts have a team of their own to keep. No shadow memberships: they
@@ -149,19 +167,24 @@ describe("rule 2126 (M1 half): deleting an account keeps its members' other acco
     expect(await lastSignIn(P.e)).toBeNull();
   }, 20_000);
 
-  it("a legacy owner's deletion with one plain member is R1's: the owner and the member login both go", async () => {
-    // No shadow memberships: the persons here hold nothing else, so the person and the login go with the last membership (multi-org M1).
-    const O = await newUser("leg", { shadow: false });
-    const m = await newMember(O, "member", "m", { shadow: false });
-    await recordDevice(m.email, "session:h:legacy-member");
-    await wipeAccount(acct(O));
-    for (const e of [O.email, m.email]) {
-      expect(await getLogin(e), e).toBeNull();
-      expect(await db.get(accountKey.login(e)), e).toBeNull();
-      expect(await db.get(personKey.person(storedPersonId(e))), e).toBeNull();
-      expect(await lastSignIn(e), e).toBeNull();
-    }
-  }, 20_000);
+  // R1's answer (switches off); with `MULTI_ORG` on the member's person and login outlive its last membership (rule
+  // 2124, M3 half: tests/multi-org-m3-legacy.test.ts).
+  describe("with the switches off (rollback floor, rule 3814)", () => {
+    offPath();
+    it("a legacy owner's deletion with one plain member is R1's: the owner and the member login both go", async () => {
+      // No shadow memberships: the persons here hold nothing else, so the person and the login go with the last membership (multi-org M1).
+      const O = await newUser("leg", { shadow: false });
+      const m = await newMember(O, "member", "m", { shadow: false });
+      await recordDevice(m.email, "session:h:legacy-member");
+      await wipeAccount(acct(O));
+      for (const e of [O.email, m.email]) {
+        expect(await getLogin(e), e).toBeNull();
+        expect(await db.get(accountKey.login(e)), e).toBeNull();
+        expect(await db.get(personKey.person(storedPersonId(e))), e).toBeNull();
+        expect(await lastSignIn(e), e).toBeNull();
+      }
+    }, 20_000);
+  });
 
   it("the account's team log goes with it (its rows hold member addresses); another account's log is unchanged", async () => {
     const [O, other] = [await withPlan(await newUser("tlog", { shadow: false }), "pro"), await withPlan(await newUser("tlo", { shadow: false }), "pro")];
@@ -301,7 +324,7 @@ describe("rule 2139: a team lock that cannot be had is a 409, not a 500", () => 
     /** An owner with a member, a checkout for `plan`, and the intention Paymob saw. */
     const started = async (plan: Plan) => {
       const u = await newUser("pay");
-      await saveUser({ ...(await getUser(u.email))!, phone: "+966500000123" });
+      await saveUser({ ...(await getUser(acct(u)))!, phone: "+966500000123" });
       const m = await newMember(u);
       await signIn(u.email);
       expect((await checkout.POST(json("/api/billing/checkout", "POST", { kind: "plan", plan }))).status).toBe(200);
@@ -328,9 +351,9 @@ describe("rule 2139: a team lock that cannot be had is a 409, not a 500", () => 
       expect(await first.json()).toMatchObject({ result: "busy" });
       // The plan and its transaction id were saved before the refit; the seats were not fitted, and nothing of the
       // payment itself was written: no payment record, no invoice, no paid status, no done marker, no paid line.
-      expect((await getUser(u.email))!.plan).toBe("starter");
+      expect((await getUser(acct(u)))!.plan).toBe("starter");
       expect(await disabled(u, m.email)).toBeUndefined();
-      expect(await db.hgetall<Payment>(`payments:${u.email}`)).toEqual({});
+      expect(await db.hgetall<Payment>(`payments:${acct(u)}`)).toEqual({});
       expect(invoices).not.toHaveBeenCalled();
       expect((await db.get<{ status: string }>(`paymob:intent:${it.ref}`))?.status).not.toBe("paid");
       expect(await db.get(`paymob:done:${obj.id}`)).toBeNull();
@@ -342,12 +365,12 @@ describe("rule 2139: a team lock that cannot be had is a 409, not a 500", () => 
       const p = paymentProvider()!;
       expect((await applyTransaction(p, p.parseTransaction(obj)!)).result).toBe("already");
       // Exactly one of each, and the plan applied once: its transaction id once, one month paid.
-      expect(Object.keys(await db.hgetall<Payment>(`payments:${u.email}`))).toHaveLength(1);
+      expect(Object.keys(await db.hgetall<Payment>(`payments:${acct(u)}`))).toHaveLength(1);
       expect(invoices).toHaveBeenCalledTimes(1);
       expect((await db.get<{ status: string }>(`paymob:intent:${it.ref}`))?.status).toBe("paid");
       expect(await db.get(`paymob:done:${obj.id}`)).toBe("paid");
       expect(await paidLines()).toHaveLength(1);
-      const billing = (await getUser(u.email))!.billing!;
+      const billing = (await getUser(acct(u)))!.billing!;
       expect(billing.txns.filter((x) => x === String(obj.id))).toHaveLength(1);
       expect(billing.plan).toBe("starter");
     }, 30_000);
@@ -356,19 +379,19 @@ describe("rule 2139: a team lock that cannot be had is a 409, not a 500", () => 
       const { u, m, it } = await started("pro");
       expect((await hook(txnObj(it))).status).toBe(200);
       expect(await disabled(u, m.email)).toBeUndefined();
-      const [pay] = Object.values(await db.hgetall<Payment>(`payments:${u.email}`));
-      const first = await held(u, () => refundPaymobPayment(u.email, pay.id, "founder@test.example", "test refund"));
+      const [pay] = Object.values(await db.hgetall<Payment>(`payments:${acct(u)}`));
+      const first = await held(u, () => refundPaymobPayment(acct(u), pay.id, "founder@test.example", "test refund"));
       expect(first).toEqual({ ok: false, error: "busy" });
-      expect((await getUser(u.email))!.plan).toBe("trial");
+      expect((await getUser(acct(u)))!.plan).toBe("trial");
       expect(await disabled(u, m.email)).toBeUndefined();
       // The trial seats three like Pro, so a one-seat limit set now shows whether the retry fits the seats at all (the
       // plan already ended: before multi-workspace M1 the retry returned without refitting).
-      await saveUser({ ...(await getUser(u.email))!, seats: 1 });
-      const second = await refundPaymobPayment(u.email, pay.id, "founder@test.example", "test refund");
+      await saveUser({ ...(await getUser(acct(u)))!, seats: 1 });
+      const second = await refundPaymobPayment(acct(u), pay.id, "founder@test.example", "test refund");
       // This refund ended the plan, on its first try: the retry says so.
       expect(second).toMatchObject({ ok: true, alreadyRefunded: true, planEnded: true });
       expect(await disabled(u, m.email)).toBe("seats");
-      expect((await auditRows()).filter((x) => x.action === "refund_plan_ended" && x.target === u.email)).toHaveLength(1);
+      expect((await auditRows()).filter((x) => x.action === "refund_plan_ended" && x.target === acct(u))).toHaveLength(1);
     }, 30_000);
 
     const admin = () => vi.stubEnv("WAITLIST_ADMIN_KEY", "wipe-test-admin-key-0123456789");
@@ -378,14 +401,14 @@ describe("rule 2139: a team lock that cannot be had is a 409, not a 500", () => 
       admin();
       const u = await withPlan(await newUser("cpl"), "pro");
       const m = await newMember(u);
-      const credits = (await getUser(u.email))!.credits;
+      const credits = (await getUser(acct(u)))!.credits;
       const planRows = async () => (await auditRows()).filter((x) => x.action === "plan" && x.target === u.email);
       const r = await held(u, () => planPost({ email: u.email, plan: "starter", addCredits: 7 }));
       expect(r.status).toBe(409);
       expect(await r.json()).toEqual({ ok: false, error: "busy" });
       // Nothing written: the plan, the credits and the audit log are as they were, and the team is untouched.
-      expect((await getUser(u.email))!.plan).toBe("pro");
-      expect((await getUser(u.email))!.credits).toBe(credits);
+      expect((await getUser(acct(u)))!.plan).toBe("pro");
+      expect((await getUser(acct(u)))!.credits).toBe(credits);
       expect(await planRows()).toEqual([]);
       expect(await disabled(u, m.email)).toBeUndefined();
       const retry = await planPost({ email: u.email, plan: "starter", addCredits: 7 });
@@ -393,7 +416,7 @@ describe("rule 2139: a team lock that cannot be had is a 409, not a 500", () => 
       const body = (await retry.json()) as { ok: boolean; team?: { disabled: string[] } };
       expect(body.ok).toBe(true);
       expect(body.team?.disabled).toEqual([m.email]);
-      expect((await getUser(u.email))!.plan).toBe("starter");
+      expect((await getUser(acct(u)))!.plan).toBe("starter");
       expect(await disabled(u, m.email)).toBe("seats");
       const rows = await planRows();
       expect(rows).toHaveLength(1);
@@ -409,7 +432,7 @@ describe("rule 2139: a team lock that cannot be had is a 409, not a 500", () => 
       const row = async () => ((await db.get(accountKey.membership(aidOf(u), storedPersonId(m.email)))) as { disabled?: string } | null)?.disabled;
       const mirror = async () => ((await db.get(accountKey.member(m.email))) as { disabled?: string } | null)?.disabled;
       // No plan change: a plan change resets the month's credits, which would hide a doubled `addCredits`.
-      const before = (await getUser(u.email))!.credits;
+      const before = (await getUser(acct(u)))!.credits;
       const lock = accountKey.memberLock(m.email);
       expect(await db.lock(lock, 10)).toBe(true);
       let r: Response;
@@ -418,7 +441,7 @@ describe("rule 2139: a team lock that cannot be had is a 409, not a 500", () => 
       const res = (await r.json()) as { ok: boolean; team?: unknown; user?: { plan: string } };
       expect(res).toMatchObject({ ok: true, team: "busy", user: { plan: "pro" } });
       // The change stands, once: the credits added exactly once, one audit row saying the team is busy.
-      expect((await getUser(u.email))!.credits).toBe(before + 7);
+      expect((await getUser(acct(u)))!.credits).toBe(before + 7);
       expect(await planRows()).toHaveLength(1);
       expect((await planRows())[0]).toMatchObject({ team: "busy" });
       // `writeMembership` writes the row and the mirror in one round under `lock:member`: the held lock wrote neither.
@@ -432,7 +455,7 @@ describe("rule 2139: a team lock that cannot be had is a 409, not a 500", () => 
       expect(await refit.json()).toMatchObject({ ok: true, team: { limit: 1 } });
       expect(await row()).toBe("seats");
       expect(await mirror()).toBe("seats");
-      expect((await getUser(u.email))!.credits).toBe(before + 7);
+      expect((await getUser(acct(u)))!.credits).toBe(before + 7);
       expect(await planRows()).toHaveLength(2);
     }, 30_000);
 
@@ -440,11 +463,11 @@ describe("rule 2139: a team lock that cannot be had is a 409, not a 500", () => 
       admin();
       const u = await withPlan(await newUser("cpn"), "pro");
       const m = await newMember(u);
-      const credits = (await getUser(u.email))!.credits;
+      const credits = (await getUser(acct(u)))!.credits;
       // Credits alone move no seat: the request takes no team lock, so a held one does not refuse it.
       const add = await held(u, () => planPost({ email: u.email, addCredits: 5 }));
       expect(add.status).toBe(200);
-      expect((await getUser(u.email))!.credits).toBe(credits + 5);
+      expect((await getUser(acct(u)))!.credits).toBe(credits + 5);
       expect(await disabled(u, m.email)).toBeUndefined();
       const down = await planPost({ email: u.email, plan: "starter" });
       expect(down.status).toBe(200);

@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import * as leaveRoute from "@/app/api/team/leave/route";
 import * as listRoute from "@/app/api/workspaces/route";
 import * as loginRoute from "@/app/api/auth/login/route";
@@ -12,7 +12,6 @@ import { getMembership, ownerOf } from "@/lib/membership";
 import { getPerson } from "@/lib/person";
 import { addShadowMembership, json, newMember, newUser, signIn, signOut } from "./helpers/session";
 
-vi.mock("@/lib/multi-org", async (orig) => ({ ...(await orig<typeof import("@/lib/multi-org")>()), MULTI_ORG: true }));
 
 /**
  * Multi-workspace M2, the person outlives its last workspace (docs/specs/2026-10-18-multi-org.md sections 9 "Leave" and

@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { json, newMember, newUser, settle, signIn } from "./helpers/session";
-import { getUser } from "@/lib/auth";
+import { acct, getUser, sc } from "@/lib/auth";
 import { getConnection, saveConnection, type Connection } from "@/lib/connectors/store";
 import { setComposioClientForTests } from "@/lib/connectors/composio";
 import { connectViaComposio, selectPropertyVia } from "@/lib/connectors/via-composio";
@@ -97,7 +97,7 @@ describe("the previous 28 days beside each site read (rule 733)", () => {
     const u = await newUser("sitega");
     answers.GOOGLE_ANALYTICS_RUN_REPORT = gaReport;
     answers.GOOGLE_SEARCH_CONSOLE_SEARCH_ANALYTICS_QUERY = gscQuery;
-    await syncSite(u.email, google(), NOW);
+    await syncSite(sc(u), google(), NOW);
     const reports = calls.filter((c) => c.slug === "GOOGLE_ANALYTICS_RUN_REPORT");
     expect(reports).toHaveLength(2);
     for (const r of reports) {
@@ -118,7 +118,7 @@ describe("the previous 28 days beside each site read (rule 733)", () => {
       return r;
     };
     answers.GOOGLE_SEARCH_CONSOLE_SEARCH_ANALYTICS_QUERY = gscQuery;
-    const snap = await syncSite(u.email, google(), NOW);
+    const snap = await syncSite(sc(u), google(), NOW);
     expect(snap.ga).toMatchObject({ range: GA_CUR, sessions: 100, keyEvents: 15, revenue: 1500.5, engagementRate: 0.4 });
     // (50 × 0.4 + 30 × 0.2) / 80, weighted by sessions like the window's rate.
     expect(snap.ga?.prev).toEqual({ range: GA_PREV, sessions: 80, keyEvents: 12, revenue: 1000, engagementRate: 0.325 });
@@ -130,7 +130,7 @@ describe("the previous 28 days beside each site read (rule 733)", () => {
     const u = await newUser("sitelabels");
     answers.GOOGLE_SEARCH_CONSOLE_SEARCH_ANALYTICS_QUERY = gscQuery;
     answers.GOOGLE_ANALYTICS_RUN_REPORT = gaReport;
-    const named = (await syncSite(u.email, google(), NOW)).ga;
+    const named = (await syncSite(sc(u), google(), NOW)).ga;
     expect(named?.sessions).toBe(100);
     expect(named?.prev?.sessions).toBe(80);
 
@@ -141,7 +141,7 @@ describe("the previous 28 days beside each site read (rule 733)", () => {
       for (const row of rowsOf(r)) row.dimensionValues[1].value = DEFAULT[row.dimensionValues[1].value];
       return r;
     };
-    expect((await syncSite(u.email, google(), NOW)).ga, "unnamed default labels").toEqual(named);
+    expect((await syncSite(sc(u), google(), NOW)).ga, "unnamed default labels").toEqual(named);
 
     // The dateRange column is wherever dimensionHeaders puts it, not always after the requested dimension.
     answers.GOOGLE_ANALYTICS_RUN_REPORT = (args) => {
@@ -150,7 +150,7 @@ describe("the previous 28 days beside each site read (rule 733)", () => {
       for (const row of rowsOf(r)) row.dimensionValues.reverse();
       return r;
     };
-    expect((await syncSite(u.email, google(), NOW)).ga, "dateRange first").toEqual(named);
+    expect((await syncSite(sc(u), google(), NOW)).ga, "dateRange first").toEqual(named);
   });
 
   it("rows labelled with no known range give null figures, never 0, and log ga_no_range_column once (733)", async () => {
@@ -163,7 +163,7 @@ describe("the previous 28 days beside each site read (rule 733)", () => {
       for (const row of rowsOf(r)) row.dimensionValues[1].value = `range_${row.dimensionValues[1].value}`;
       return r;
     };
-    const snap = await syncSite(u.email, google(), NOW);
+    const snap = await syncSite(sc(u), google(), NOW);
     expect(snap.ga).toMatchObject({ sessions: null, keyEvents: null, revenue: null, engagementRate: null, channels: [], pages: [] });
     expect(snap.ga?.prev).toBeUndefined();
     expect(JSON.stringify(snap)).not.toMatch(/NaN/);
@@ -173,9 +173,9 @@ describe("the previous 28 days beside each site read (rule 733)", () => {
     // Labelled rows, or a report with no rows at all, log nothing.
     warn.mockClear();
     answers.GOOGLE_ANALYTICS_RUN_REPORT = gaReport;
-    await syncSite(u.email, google(), NOW);
+    await syncSite(sc(u), google(), NOW);
     answers.GOOGLE_ANALYTICS_RUN_REPORT = ok({ rows: [] });
-    await syncSite(u.email, google(), NOW);
+    await syncSite(sc(u), google(), NOW);
     expect(coded()).toEqual([]);
   });
 
@@ -190,7 +190,7 @@ describe("the previous 28 days beside each site read (rule 733)", () => {
     answers.GOOGLE_ANALYTICS_RUN_REPORT = (args) => (dims({ slug: "", args })[0] === "landingPage"
       ? ok({ dimensionHeaders: [{ name: "landingPage" }, { name: "dateRange" }], rows: gaOrdered(all, ["landingPage", "dateRange"], args) })
       : gaReport(args));
-    const snap = await syncSite(u.email, google(), NOW);
+    const snap = await syncSite(sc(u), google(), NOW);
     const pages = calls.find((c) => c.slug === "GOOGLE_ANALYTICS_RUN_REPORT" && dims(c)[0] === "landingPage")!;
     expect(pages.args.orderBys).toEqual([{ desc: false, dimension: { dimensionName: "dateRange" } }, { desc: true, metric: { metricName: "sessions" } }]);
     expect(pages.args.limit).toBe(20);
@@ -204,7 +204,7 @@ describe("the previous 28 days beside each site read (rule 733)", () => {
     answers.GOOGLE_ANALYTICS_RUN_REPORT = (args) => (dims({ slug: "", args })[0] === "landingPage" ? { successful: false, error: "Internal error (500) for properties/987" } : gaReport(args));
     vi.spyOn(console, "error").mockImplementation(() => {});
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    const snap = await syncSite(u.email, google(), NOW);
+    const snap = await syncSite(sc(u), google(), NOW);
     expect(snap.ga).toMatchObject({ range: GA_CUR, sessions: 100, keyEvents: 15, pages: [] });
     expect(snap.ga?.channels).toHaveLength(2);
     expect(snap.ga?.prev).toMatchObject({ range: GA_PREV, sessions: 80, keyEvents: 12 });
@@ -217,7 +217,7 @@ describe("the previous 28 days beside each site read (rule 733)", () => {
     const u = await newUser("sitegsc");
     answers.GOOGLE_ANALYTICS_RUN_REPORT = gaReport;
     answers.GOOGLE_SEARCH_CONSOLE_SEARCH_ANALYTICS_QUERY = gscQuery;
-    const snap = await syncSite(u.email, google(), NOW);
+    const snap = await syncSite(sc(u), google(), NOW);
     const queries = calls.filter((c) => c.slug === "GOOGLE_SEARCH_CONSOLE_SEARCH_ANALYTICS_QUERY").map((c) => c.args);
     expect(queries).toHaveLength(3);
     expect(queries).toEqual(expect.arrayContaining([
@@ -236,11 +236,11 @@ describe("the previous 28 days beside each site read (rule 733)", () => {
     answers.GOOGLE_ANALYTICS_RUN_REPORT = gaReport;
     answers.GOOGLE_SEARCH_CONSOLE_SEARCH_ANALYTICS_QUERY = (args) => (args.start_date === GSC_PREV.from ? { successful: false, error: "Internal error (500)" } : gscQuery(args));
     vi.spyOn(console, "error").mockImplementation(() => {});
-    const snap = await syncSite(u.email, google(), NOW);
+    const snap = await syncSite(sc(u), google(), NOW);
     expect(snap.gsc).toMatchObject({ clicks: 40, impressions: 400 });
     expect(snap.gsc?.prev).toBeUndefined();
     expect(snap.gscError).toBeUndefined();
-    expect((await getSiteSnapshot(u.email))?.gsc?.prev).toBeUndefined();
+    expect((await getSiteSnapshot(sc(u)))?.gsc?.prev).toBeUndefined();
   });
 
   it("an empty previous period leaves no prev, so no change can be written (733)", async () => {
@@ -248,11 +248,11 @@ describe("the previous 28 days beside each site read (rule 733)", () => {
     // A new property and a new site: Google returns rows for the window only.
     answers.GOOGLE_ANALYTICS_RUN_REPORT = (args) => ok({ rows: ((gaReport(args).data as { rows: { dimensionValues: { value: string }[] }[] }).rows).filter((r) => r.dimensionValues[1]?.value === "cur") });
     answers.GOOGLE_SEARCH_CONSOLE_SEARCH_ANALYTICS_QUERY = (args) => (args.start_date === GSC_PREV.from ? ok({ rows: [] }) : gscQuery(args));
-    const snap = await syncSite(u.email, google(), NOW);
+    const snap = await syncSite(sc(u), google(), NOW);
     expect(snap.ga?.sessions).toBe(100);
     expect(snap.ga?.prev).toBeUndefined();
     expect(snap.gsc?.prev).toBeUndefined();
-    expect(await siteDataBlock(u.email, NOW)).not.toMatch(/"prev":/);
+    expect(await siteDataBlock(sc(u), NOW)).not.toMatch(/"prev":/);
   });
 
   it("a previous period of zeros leaves no prev, as on the social parts; a 0 in a kept prev gives no percentage (733)", async () => {
@@ -265,12 +265,12 @@ describe("the previous 28 days beside each site read (rule 733)", () => {
     };
     answers.GOOGLE_SEARCH_CONSOLE_SEARCH_ANALYTICS_QUERY = (args) =>
       args.start_date === GSC_PREV.from ? ok({ rows: [{ keys: ["2026-09-01"], clicks: 0, impressions: 0, position: 0 }] }) : gscQuery(args);
-    const snap = await syncSite(u.email, google(), NOW);
+    const snap = await syncSite(sc(u), google(), NOW);
     expect(snap.ga?.sessions).toBe(100);
     expect(snap.ga?.prev).toBeUndefined();
     expect(snap.gsc?.clicks).toBe(40);
     expect(snap.gsc?.prev).toBeUndefined();
-    const block = await siteDataBlock(u.email, NOW);
+    const block = await siteDataBlock(sc(u), NOW);
     expect(block).not.toMatch(/"prev":/);
     // A prev with one figure above 0 is kept; its zeros are not a base for a percentage.
     expect(block).toContain("where a prev figure is 0 or null, give no percentage change for it");
@@ -287,7 +287,7 @@ describe("a site figure not read is null, never 0 (rule 737)", () => {
     answers.GOOGLE_SEARCH_CONSOLE_SEARCH_ANALYTICS_QUERY = (args) => (args.dimensions as string[])[0] === "query"
       ? ok({ rows: [{ keys: ["oud"], clicks: "5" }] })
       : ok({ rows: [{ keys: ["2026-10-01"], impressions: "N/A" }, { keys: ["2026-10-02"], clicks: {} }] });
-    const snap = await syncSite(u.email, google(), NOW);
+    const snap = await syncSite(sc(u), google(), NOW);
     // The junk row carries no sessions, so it weighs nothing in the rate.
     expect(snap.ga).toMatchObject({ sessions: 600, keyEvents: null, revenue: null, engagementRate: 0.5 });
     expect(snap.ga?.channels).toEqual([
@@ -297,9 +297,9 @@ describe("a site figure not read is null, never 0 (rule 737)", () => {
     expect(snap.ga?.pages).toEqual([{ path: "/oud", sessions: 300, keyEvents: null }]);
     expect(snap.gsc).toMatchObject({ clicks: null, impressions: null, ctr: null, position: null });
     expect(snap.gsc?.queries).toEqual([{ query: "oud", clicks: 5, impressions: null, position: null }]);
-    expect(JSON.stringify(await getSiteSnapshot(u.email))).not.toMatch(/NaN/);
+    expect(JSON.stringify(await getSiteSnapshot(sc(u)))).not.toMatch(/NaN/);
 
-    const data = JSON.parse((await siteDataBlock(u.email, NOW)).match(/<site_data>(.*)<\/site_data>/)![1]);
+    const data = JSON.parse((await siteDataBlock(sc(u), NOW)).match(/<site_data>(.*)<\/site_data>/)![1]);
     expect(data.analytics).toMatchObject({ sessions: 600, key_events: null, purchase_revenue: null });
     expect(data.search).toMatchObject({ clicks: null, impressions: null, ctr: null, average_position: null });
   });
@@ -308,7 +308,7 @@ describe("a site figure not read is null, never 0 (rule 737)", () => {
     const u = await newUser("siteempty");
     answers.GOOGLE_ANALYTICS_RUN_REPORT = ok({ rows: [] });
     answers.GOOGLE_SEARCH_CONSOLE_SEARCH_ANALYTICS_QUERY = ok({ rows: [] });
-    const snap = await syncSite(u.email, google(), NOW);
+    const snap = await syncSite(sc(u), google(), NOW);
     expect(snap.ga).toMatchObject({ sessions: null, keyEvents: null, revenue: null, engagementRate: null, channels: [], pages: [] });
     expect(snap.gsc).toMatchObject({ clicks: null, impressions: null, ctr: null, position: null, queries: [] });
     expect(snap.ga?.prev).toBeUndefined();
@@ -319,22 +319,22 @@ describe("a site figure not read is null, never 0 (rule 737)", () => {
 describe("a site read at once (A3)", () => {
   it("force reads again inside 20 hours", async () => {
     const u = await newUser("siteforce");
-    await saveConnection(u.email, google());
+    await saveConnection(sc(u), google());
     answers.GOOGLE_ANALYTICS_RUN_REPORT = gaReport;
     answers.GOOGLE_SEARCH_CONSOLE_SEARCH_ANALYTICS_QUERY = gscQuery;
-    expect(await syncSiteIfDue(u.email, NOW)).toBe(true);
+    expect(await syncSiteIfDue(sc(u), NOW)).toBe(true);
     const hourLater = new Date(NOW.getTime() + 3600e3);
-    expect(await syncSiteIfDue(u.email, hourLater)).toBe(false);
-    expect(await syncSiteIfDue(u.email, NOW, true)).toBe(true);
-    expect(await syncSiteIfDue(u.email, hourLater, true)).toBe(true);
-    expect((await getSiteSnapshot(u.email))?.at).toBe(hourLater.toISOString());
+    expect(await syncSiteIfDue(sc(u), hourLater)).toBe(false);
+    expect(await syncSiteIfDue(sc(u), NOW, true)).toBe(true);
+    expect(await syncSiteIfDue(sc(u), hourLater, true)).toBe(true);
+    expect((await getSiteSnapshot(sc(u)))?.at).toBe(hourLater.toISOString());
 
     // Force never reads a record waiting for a reconnect, nor a direct one.
     calls.length = 0;
-    await saveConnection(u.email, { ...google(), needsReconnect: NOW.toISOString() });
-    expect(await syncSiteIfDue(u.email, hourLater, true)).toBe(false);
-    await saveConnection(u.email, { provider: "google", data: { access_token: "t" }, meta: {}, connectedAt: NOW.toISOString() });
-    expect(await syncSiteIfDue(u.email, hourLater, true)).toBe(false);
+    await saveConnection(sc(u), { ...google(), needsReconnect: NOW.toISOString() });
+    expect(await syncSiteIfDue(sc(u), hourLater, true)).toBe(false);
+    await saveConnection(sc(u), { provider: "google", data: { access_token: "t" }, meta: {}, connectedAt: NOW.toISOString() });
+    expect(await syncSiteIfDue(sc(u), hourLater, true)).toBe(false);
     expect(calls).toEqual([]);
   });
 
@@ -342,23 +342,23 @@ describe("a site read at once (A3)", () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(NOW);
     const u = await newUser("sitesoon");
-    await saveConnection(u.email, google());
+    await saveConnection(sc(u), google());
     answers.GOOGLE_ANALYTICS_RUN_REPORT = gaReport;
     answers.GOOGLE_SEARCH_CONSOLE_SEARCH_ANALYTICS_QUERY = gscQuery;
-    await syncSite(u.email, google(), new Date(NOW.getTime() - 3600e3));
+    await syncSite(sc(u), google(), new Date(NOW.getTime() - 3600e3));
     calls.length = 0;
-    readSiteSoon(u.email);
+    readSiteSoon(sc(u));
     await settle();
     expect(calls).toHaveLength(5);
-    expect((await getSiteSnapshot(u.email))?.at).toBe(NOW.toISOString());
+    expect((await getSiteSnapshot(sc(u)))?.at).toBe(NOW.toISOString());
 
     const err = vi.spyOn(console, "error").mockImplementation(() => {});
     answers.GOOGLE_ANALYTICS_RUN_REPORT = { successful: false, error: "Internal error (500)" };
     answers.GOOGLE_SEARCH_CONSOLE_SEARCH_ANALYTICS_QUERY = { successful: false, error: "Internal error (500)" };
-    readSiteSoon(u.email);
+    readSiteSoon(sc(u));
     await settle();
     expect(err).toHaveBeenCalledWith("site read failed");
-    expect((await getSiteSnapshot(u.email))?.ga?.sessions).toBe(100);
+    expect((await getSiteSnapshot(sc(u)))?.ga?.sessions).toBe(100);
   });
 });
 
@@ -367,8 +367,8 @@ describe("Dana's <site_data> and the site card (rules 733, 737)", () => {
     const u = await newUser("siteblock");
     answers.GOOGLE_ANALYTICS_RUN_REPORT = gaReport;
     answers.GOOGLE_SEARCH_CONSOLE_SEARCH_ANALYTICS_QUERY = gscQuery;
-    await syncSite(u.email, google(), NOW);
-    const block = await siteDataBlock(u.email, NOW);
+    await syncSite(sc(u), google(), NOW);
+    const block = await siteDataBlock(sc(u), NOW);
     const data = JSON.parse(block.match(/<site_data>(.*)<\/site_data>/)![1]);
     expect(data.analytics.prev).toEqual({ from: GA_PREV.from, to: GA_PREV.to, sessions: 80, key_events: 12, purchase_revenue: 1000, engagement_rate: 0.325 });
     expect(data.search.prev).toEqual({ from: GSC_PREV.from, to: GSC_PREV.to, clicks: 20, impressions: 400, ctr: 0.05, average_position: 10 });
@@ -418,7 +418,7 @@ describe("choosing the GA4 property and the Search Console site (rule 734)", () 
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(NOW);
     const owner = await newUser("siteprop");
-    await saveConnection(owner.email, held());
+    await saveConnection(sc(owner), held());
     await signIn(owner.email);
     answer();
 
@@ -435,17 +435,17 @@ describe("choosing the GA4 property and the Search Console site (rule 734)", () 
       expect((await bad.json()).error).toBe("bad_value");
     }
     await settle();
-    expect((await getConnection(owner.email, "google"))?.meta).toEqual(held().meta);
+    expect((await getConnection(sc(owner), "google"))?.meta).toEqual(held().meta);
     expect(calls, "a refused choice reads nothing").toEqual([]);
 
     const r = await post("google", { action: "select_property", kind: "ga4", id: "properties/2" });
     expect(r.status).toBe(200);
     expect(await r.json()).toEqual({ ok: true, account: "Shop B · roastery.example", read: true });
-    expect((await getConnection(owner.email, "google"))?.meta).toMatchObject({ gaProperty: "properties/2", gaName: "Shop B", gscSite: SITE, gaProperties: PROPS, gscSites: SITES });
-    expect((await getConnection(owner.email, "google"))?.meta?.account).toContain("Shop B");
+    expect((await getConnection(sc(owner), "google"))?.meta).toMatchObject({ gaProperty: "properties/2", gaName: "Shop B", gscSite: SITE, gaProperties: PROPS, gscSites: SITES });
+    expect((await getConnection(sc(owner), "google"))?.meta?.account).toContain("Shop B");
     const s = await post("google", { action: "select_property", kind: "gsc", id: "https://shop-b.example/" });
     expect(s.status).toBe(200);
-    expect((await getConnection(owner.email, "google"))?.meta).toMatchObject({ gaProperty: "properties/2", gaName: "Shop B", gscSite: "https://shop-b.example/", account: "Shop B · shop-b.example" });
+    expect((await getConnection(sc(owner), "google"))?.meta).toMatchObject({ gaProperty: "properties/2", gaName: "Shop B", gscSite: "https://shop-b.example/", account: "Shop B · shop-b.example" });
     await settle();
   });
 
@@ -454,18 +454,18 @@ describe("choosing the GA4 property and the Search Console site (rule 734)", () 
     await signIn(owner.email);
     // A direct Google record, even one carrying a list, has no Composio read to point anywhere.
     const direct: Connection = { provider: "google", data: { access_token: "t" }, meta: { gaProperties: PROPS, gaProperty: "properties/987" }, connectedAt: NOW.toISOString() };
-    await saveConnection(owner.email, direct);
+    await saveConnection(sc(owner), direct);
     const d = await post("google", { action: "select_property", kind: "ga4", id: "properties/2" });
     expect(d.status).toBe(400);
     expect((await d.json()).error).toBe("bad_action");
-    expect((await getConnection(owner.email, "google"))?.meta).toEqual(direct.meta);
+    expect((await getConnection(sc(owner), "google"))?.meta).toEqual(direct.meta);
     // The action belongs to the Google path only: a Composio Meta record with the same list is not changed.
     const meta: Connection = { provider: "meta", data: { facebook: "ca_fb" }, meta: { via: "composio", pageId: "1", gaProperties: PROPS }, connectedAt: NOW.toISOString() };
-    await saveConnection(owner.email, meta);
+    await saveConnection(sc(owner), meta);
     expect((await post("meta", { action: "select_property", kind: "ga4", id: "properties/2" })).status).toBe(400);
-    expect((await getConnection(owner.email, "meta"))?.meta).toEqual(meta.meta);
+    expect((await getConnection(sc(owner), "meta"))?.meta).toEqual(meta.meta);
     // A stored list that does not parse is an empty list, never a 502.
-    await saveConnection(owner.email, google({ gaProperties: "[{", gscSites: "{}" }));
+    await saveConnection(sc(owner), google({ gaProperties: "[{", gscSites: "{}" }));
     expect((await post("google", { action: "select_property", kind: "ga4", id: "properties/2" })).status).toBe(400);
     expect((await post("google", { action: "select_property", kind: "gsc", id: SITE })).status).toBe(400);
     await settle();
@@ -482,23 +482,23 @@ describe("choosing the GA4 property and the Search Console site (rule 734)", () 
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(NOW);
     const owner = await newUser("sitepropm");
-    await saveConnection(owner.email, held());
+    await saveConnection(sc(owner), held());
     answer();
     const member = await newMember(owner, "member");
     await signIn(member.email);
     const no = await post("google", { action: "select_property", kind: "ga4", id: "properties/2" });
     expect(no.status).toBe(403);
-    expect((await getConnection(owner.email, "google"))?.meta?.gaProperty).toBe("properties/987");
+    expect((await getConnection(sc(owner), "google"))?.meta?.gaProperty).toBe("properties/987");
     // Role `connectors`: an admin may choose, like the owner.
     const admin = await newMember(owner, "admin");
     await signIn(admin.email);
     expect((await post("google", { action: "select_property", kind: "ga4", id: "properties/2" })).status).toBe(200);
-    expect((await getConnection(owner.email, "google"))?.meta?.gaProperty).toBe("properties/2");
+    expect((await getConnection(sc(owner), "google"))?.meta?.gaProperty).toBe("properties/2");
     await settle();
 
     // One property and one site: connect stored no list, so even the current ones are not a choice.
     await signIn(owner.email);
-    await saveConnection(owner.email, google());
+    await saveConnection(sc(owner), google());
     const one = await post("google", { action: "select_property", kind: "ga4", id: "properties/987" });
     expect(one.status).toBe(400);
     expect((await one.json()).error).toBe("unknown_property");
@@ -509,11 +509,11 @@ describe("choosing the GA4 property and the Search Console site (rule 734)", () 
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(NOW);
     const owner = await newUser("sitepropread");
-    await saveConnection(owner.email, held());
+    await saveConnection(sc(owner), held());
     answer();
     // Read an hour ago: the daily run would not read again for 19 hours.
-    await syncSite(owner.email, held(), new Date(NOW.getTime() - 3600e3));
-    expect(await syncSiteIfDue(owner.email, NOW)).toBe(false);
+    await syncSite(sc(owner), held(), new Date(NOW.getTime() - 3600e3));
+    expect(await syncSiteIfDue(sc(owner), NOW)).toBe(false);
     calls.length = 0;
     await signIn(owner.email);
 
@@ -522,7 +522,7 @@ describe("choosing the GA4 property and the Search Console site (rule 734)", () 
     const reports = calls.filter((c) => c.slug === "GOOGLE_ANALYTICS_RUN_REPORT");
     expect(reports).toHaveLength(2);
     for (const r of reports) expect(r.args.property).toBe("properties/2");
-    const snap = await getSiteSnapshot(owner.email);
+    const snap = await getSiteSnapshot(sc(owner));
     expect(snap).toMatchObject({ at: NOW.toISOString(), ga: { property: "properties/2", name: "Shop B" }, gsc: { site: SITE } });
 
     calls.length = 0;
@@ -530,14 +530,14 @@ describe("choosing the GA4 property and the Search Console site (rule 734)", () 
     await settle();
     const sites = calls.filter((c) => c.slug === "GOOGLE_SEARCH_CONSOLE_SEARCH_ANALYTICS_QUERY").map((c) => c.args.site_url);
     expect(sites).toEqual(["https://shop-b.example/", "https://shop-b.example/", "https://shop-b.example/"]);
-    expect((await getSiteSnapshot(owner.email))?.gsc?.site).toBe("https://shop-b.example/");
+    expect((await getSiteSnapshot(sc(owner)))?.gsc?.site).toBe("https://shop-b.example/");
   });
 
   it("a choice always saves, and reads only while the hour's six site reads last (734, 735)", async () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(NOW);
     const owner = await newUser("sitepropmany");
-    await saveConnection(owner.email, held());
+    await saveConnection(sc(owner), held());
     answer();
     await signIn(owner.email);
     const ids = ["properties/2", "properties/987"];
@@ -556,7 +556,7 @@ describe("choosing the GA4 property and the Search Console site (rule 734)", () 
     expect(await seventh.json()).toEqual({ ok: true, account: "Shop B · roastery.example", read: false });
     await settle();
     expect(calls, "no read past the hour's six").toEqual([]);
-    expect((await getConnection(owner.email, "google"))?.meta).toMatchObject({ gaProperty: "properties/2", gaName: "Shop B" });
+    expect((await getConnection(sc(owner), "google"))?.meta).toMatchObject({ gaProperty: "properties/2", gaName: "Shop B" });
     // The choices and the owner's refreshes share the workspace's bucket.
     expect((await post("google", { action: "sync_site" })).status).toBe(429);
   });
@@ -566,7 +566,7 @@ describe("choosing the GA4 property and the Search Console site (rule 734)", () 
     const raw = `Shop\tB\r\n**Roastery** ${"x".repeat(90)}`;
     const cleaned = `Shop B Roastery ${"x".repeat(90)}`.slice(0, 80);
     answers.GOOGLE_ANALYTICS_LIST_ACCOUNT_SUMMARIES = ok({ accountSummaries: [{ propertySummaries: [{ property: "properties/2", displayName: raw }, { property: "properties/987", displayName: "roastery.example" }] }] });
-    const c = await connectViaComposio(u.email, "google", "google_analytics", "ca_ga", null);
+    const c = await connectViaComposio(sc(u), "google", "google_analytics", "ca_ga", null);
     expect(c.meta?.gaName).toBe(cleaned);
     expect(JSON.parse(c.meta!.gaProperties)).toEqual([{ id: "properties/2", name: cleaned }, { id: "properties/987", name: "roastery.example" }]);
     expect(c.meta?.account).toBe(cleaned);
@@ -595,11 +595,11 @@ describe("the owner's refresh of the site figures (rule 735)", () => {
 
   it("sync_site is free, any member may press it, six an hour per workspace (735)", async () => {
     const owner = await newUser("sitesync");
-    await saveConnection(owner.email, google());
+    await saveConnection(sc(owner), google());
     // Read an hour ago: the daily run would not read again for 19 hours, a click reads at once.
-    await syncSite(owner.email, google(), new Date(NOW.getTime() - 3600e3));
+    await syncSite(sc(owner), google(), new Date(NOW.getTime() - 3600e3));
     calls.length = 0;
-    const start = (await getUser(owner.email))!.credits;
+    const start = (await getUser(acct(owner)))!.credits;
     const member = await newMember(owner, "member");
     await signIn(member.email);
     for (let i = 0; i < 6; i++) {
@@ -608,7 +608,7 @@ describe("the owner's refresh of the site figures (rule 735)", () => {
       expect(await r.json()).toEqual({ ok: true, read: true });
     }
     expect(calls.filter((c) => c.slug === "GOOGLE_ANALYTICS_RUN_REPORT")).toHaveLength(12);
-    expect((await getSiteSnapshot(owner.email))?.at).toBe(NOW.toISOString());
+    expect((await getSiteSnapshot(sc(owner)))?.at).toBe(NOW.toISOString());
 
     // The seventh in the hour is refused for the whole workspace, the owner included, with the window to wait.
     calls.length = 0;
@@ -618,11 +618,11 @@ describe("the owner's refresh of the site figures (rule 735)", () => {
     expect(r.headers.get("Retry-After")).toBe("3600");
     expect(await r.json()).toEqual({ ok: false, error: "slow_down" });
     expect(calls, "a refused click reads nothing").toEqual([]);
-    expect((await getUser(owner.email))!.credits, "free: no credit leaves the account").toBe(start);
+    expect((await getUser(acct(owner)))!.credits, "free: no credit leaves the account").toBe(start);
 
     // Another workspace has its own six; this one has six again once the hour is over.
     const other = await newUser("sitesync2");
-    await saveConnection(other.email, google());
+    await saveConnection(sc(other), google());
     await signIn(other.email);
     expect((await post("google", { action: "sync_site" })).status).toBe(200);
     vi.setSystemTime(NOW.getTime() + 3600e3 + 1000);
@@ -637,22 +637,22 @@ describe("the owner's refresh of the site figures (rule 735)", () => {
     expect(none.status).toBe(404);
     expect(await none.json()).toEqual({ ok: false, error: "not_connected" });
     // A direct Google record holds nothing the site reader reads.
-    await saveConnection(owner.email, { provider: "google", data: { access_token: "t" }, meta: { gaProperty: "properties/987" }, connectedAt: NOW.toISOString() });
+    await saveConnection(sc(owner), { provider: "google", data: { access_token: "t" }, meta: { gaProperty: "properties/987" }, connectedAt: NOW.toISOString() });
     expect((await post("google", { action: "sync_site" })).status).toBe(404);
     // On a social path the action is not an action at all.
-    await saveConnection(owner.email, { provider: "meta", data: { instagram: "ca_ig" }, meta: { via: "composio", igId: "1784" }, connectedAt: NOW.toISOString() });
+    await saveConnection(sc(owner), { provider: "meta", data: { instagram: "ca_ig" }, meta: { via: "composio", igId: "1784" }, connectedAt: NOW.toISOString() });
     const meta = await post("meta", { action: "sync_site" });
     expect(meta.status).toBe(400);
     expect((await meta.json()).error).toBe("bad_action");
     // A record waiting for a reconnect asks for it and reads nothing.
-    await saveConnection(owner.email, { ...google(), needsReconnect: NOW.toISOString() });
+    await saveConnection(sc(owner), { ...google(), needsReconnect: NOW.toISOString() });
     const stale = await post("google", { action: "sync_site" });
     expect(stale.status).toBe(502);
     expect((await stale.json()).error).toBe("reconnect_required");
     await settle();
     expect(calls).toEqual([]);
     // None of the refusals spent the hour's six.
-    await saveConnection(owner.email, google());
+    await saveConnection(sc(owner), google());
     for (let i = 0; i < 6; i++) expect((await post("google", { action: "sync_site" })).status).toBe(200);
   });
 });

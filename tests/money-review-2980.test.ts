@@ -92,16 +92,16 @@ async function payAndConfirm(body: Record<string, unknown>) {
 }
 async function owner(prefix = "mr"): Promise<User> {
   const u = await newUser(prefix);
-  await saveUser({ ...(await getUser(u.email))!, phone: "+966500000123" });
+  await saveUser({ ...(await getUser(acct(u)))!, phone: "+966500000123" });
   await signIn(u.email);
-  return (await getUser(u.email))!;
+  return (await getUser(acct(u)))!;
 }
 async function subscribed(b: Partial<Billing> = {}): Promise<User> {
   const u = await owner("mrsub");
   const billing: Billing = { provider: "paymob", plan: "starter", status: "active", paidThrough: today(), anchor: Number(today().slice(8, 10)), autoRenew: true, failures: 0, txns: [], card: { brand: "MasterCard", last4: "2346" }, ...b };
-  await saveUser({ ...(await getUser(u.email))!, plan: "starter", renewedAt: monthKey(), billing });
-  await db.set(cardKey(u.email), { token: "tok_" + randomBytes(16).toString("hex"), last4: "2346", brand: "MasterCard", expMonth: "01", expYear: "38", savedAt: new Date().toISOString(), orderId: 1 });
-  return (await getUser(u.email))!;
+  await saveUser({ ...(await getUser(acct(u)))!, plan: "starter", renewedAt: monthKey(), billing });
+  await db.set(cardKey(acct(u)), { token: "tok_" + randomBytes(16).toString("hex"), last4: "2346", brand: "MasterCard", expMonth: "01", expYear: "38", savedAt: new Date().toISOString(), orderId: 1 });
+  return (await getUser(acct(u)))!;
 }
 const refund = (email: string, b: Record<string, unknown>) => adminPayments.POST(json(`/api/admin/payments/${encodeURIComponent(email)}`, "POST", { action: "refund", ...b }), params({ email: encodeURIComponent(email) }));
 
@@ -110,7 +110,7 @@ describe("a pack's refund never ends a plan (rule 2980)", () => {
     const u = await owner();
     await payAndConfirm({ kind: "plan", plan: "starter" });
     const { obj } = await payAndConfirm({ kind: "topup", credits: 300 });
-    await db.set(cardKey(u.email), { token: "tok_keep", last4: "2346", brand: "MasterCard", expMonth: "01", expYear: "38", savedAt: new Date().toISOString(), orderId: 1 });
+    await db.set(cardKey(acct(u)), { token: "tok_keep", last4: "2346", brand: "MasterCard", expMonth: "01", expYear: "38", savedAt: new Date().toISOString(), orderId: 1 });
     jar().clear();
     await adminSignIn();
     const id = paymentIdFor(obj.id);
@@ -118,11 +118,11 @@ describe("a pack's refund never ends a plan (rule 2980)", () => {
     // The retry: Paymob already refunded, the pack is gone, so `voidPaidTopup` answers topup_not_found.
     const again = await refund(u.email, { id });
     expect(await again.json()).toMatchObject({ ok: true, alreadyRefunded: true, planEnded: false, payment: { id, voidedAt: expect.any(String) } });
-    const after = (await getUser(u.email))!;
+    const after = (await getUser(acct(u)))!;
     expect(after.plan).toBe("starter");
     expect(after.billing).toMatchObject({ status: "active", plan: "starter" });
     expect(trialOver(after)).toBe(false);
-    expect(await db.get(cardKey(u.email))).toMatchObject({ token: "tok_keep" });
+    expect(await db.get(cardKey(acct(u)))).toMatchObject({ token: "tok_keep" });
     expect(fake.calls.filter((c) => c === "/api/acceptance/void_refund/refund")).toHaveLength(1);
   });
 
@@ -130,14 +130,14 @@ describe("a pack's refund never ends a plan (rule 2980)", () => {
     const u = await owner();
     await payAndConfirm({ kind: "plan", plan: "starter" });
     const { obj } = await payAndConfirm({ kind: "topup", credits: 300 });
-    const lot = lotsOf((await getUser(u.email))!).find((l) => l.paymentId === paymentIdFor(obj.id))!;
+    const lot = lotsOf((await getUser(acct(u)))!).find((l) => l.paymentId === paymentIdFor(obj.id))!;
     expect(lot).toBeTruthy();
-    await voidTopup(u.email, lot.id);
+    await voidTopup(acct(u), lot.id);
     jar().clear();
     await adminSignIn();
     const r = await refund(u.email, { id: paymentIdFor(obj.id) });
     expect(await r.json()).toMatchObject({ ok: true, alreadyRefunded: false, planEnded: false, payment: { voidedAt: expect.any(String) } });
-    const after = (await getUser(u.email))!;
+    const after = (await getUser(acct(u)))!;
     expect([after.plan, after.billing?.status]).toEqual(["starter", "active"]);
   });
 });
@@ -145,10 +145,10 @@ describe("a pack's refund never ends a plan (rule 2980)", () => {
 describe("the first online subscription refills the month (rule 2981)", () => {
   it("paying online for the plan held by hand gives that plan's month of credits and renews from today", async () => {
     const u = await owner();
-    await saveUser({ ...(await getUser(u.email))!, plan: "starter", credits: 7, renewedAt: monthKey(), renewedOn: addDays(today(), -25), handPlan: { paidThrough: addDays(today(), 5), by: "key", at: new Date().toISOString() } });
+    await saveUser({ ...(await getUser(acct(u)))!, plan: "starter", credits: 7, renewedAt: monthKey(), renewedOn: addDays(today(), -25), handPlan: { paidThrough: addDays(today(), 5), by: "key", at: new Date().toISOString() } });
     const { answer } = await payAndConfirm({ kind: "plan", plan: "starter" });
     expect(answer.result).toBe("paid");
-    const after = (await getUser(u.email))!;
+    const after = (await getUser(acct(u)))!;
     expect(after.handPlan).toBeUndefined();
     expect(after.credits).toBe(allowanceOf(after));
     expect(after.credits).toBeGreaterThan(7);
@@ -158,18 +158,18 @@ describe("the first online subscription refills the month (rule 2981)", () => {
 
   it("a plan set by hand with no paid-through day, paid online for the first time, is refilled too", async () => {
     const u = await owner();
-    await saveUser({ ...(await getUser(u.email))!, plan: "starter", credits: 3, renewedAt: monthKey(), renewedOn: addDays(today(), -3) });
+    await saveUser({ ...(await getUser(acct(u)))!, plan: "starter", credits: 3, renewedAt: monthKey(), renewedOn: addDays(today(), -3) });
     await payAndConfirm({ kind: "plan", plan: "starter" });
-    const after = (await getUser(u.email))!;
+    const after = (await getUser(acct(u)))!;
     expect(after.credits).toBe(allowanceOf(after));
     expect(after.renewedOn).toBe(today());
   });
 
   it("the same plan paid again while a subscription runs still only adds a month, no second refill (rule 721 unchanged)", async () => {
     const u = await subscribed({ paidThrough: addDays(today(), 10), anchor: 5, autoRenew: false });
-    await saveUser({ ...(await getUser(u.email))!, credits: 9, renewedOn: addDays(today(), -2) });
+    await saveUser({ ...(await getUser(acct(u)))!, credits: 9, renewedOn: addDays(today(), -2) });
     await payAndConfirm({ kind: "plan", plan: "starter" });
-    const after = (await getUser(u.email))!;
+    const after = (await getUser(acct(u)))!;
     expect(after.credits).toBe(9);
     expect(after.renewedOn).toBe(addDays(today(), -2));
     expect(after.billing).toMatchObject({ paidThrough: addMonths(addDays(today(), 10), 1, 5), anchor: 5 });
@@ -211,17 +211,17 @@ describe("a renewal applies only to the plan it was priced for (rule 2983)", () 
   it("a late renewal callback for the old plan after an upgrade adds nothing to the new plan", async () => {
     const u = await subscribed({ paidThrough: today() });
     // The renewal is sent and Paymob has not answered yet (pending).
-    expect(await renewPaymob(u.email)).toBe("paymob_pending");
+    expect(await renewPaymob(acct(u))).toBe("paymob_pending");
     const renewalIntent = fake.intents.at(-1)!;
     // Meanwhile the owner moves to Pro.
     const { answer } = await payAndConfirm({ kind: "plan", plan: "pro" });
     expect(answer.result).toBe("paid");
-    const upgraded = (await getUser(u.email))!;
+    const upgraded = (await getUser(acct(u)))!;
     expect(upgraded.billing).toMatchObject({ plan: "pro", paidThrough: addMonths(today(), 1) });
     // The old Starter renewal's callback arrives.
     const late = await hook(txnObj({ amount: renewalIntent.amount, orderId: renewalIntent.orderId, ref: renewalIntent.ref }));
     expect(await late.json()).toMatchObject({ result: "unapplied" });
-    const after = (await getUser(u.email))!;
+    const after = (await getUser(acct(u)))!;
     expect(after.billing).toMatchObject({ plan: "pro", paidThrough: addMonths(today(), 1) });
     expect(after.billing?.txns).toEqual(upgraded.billing?.txns);
   });
@@ -232,16 +232,16 @@ describe("a renewal charge with no answer keeps its pending guard (rule 2984)", 
     const u = await subscribed({ paidThrough: today() });
     fake.pay = () => { throw new Error("timeout"); };
     const now = Date.now();
-    expect(await renewPaymob(u.email, now)).toBe("paymob_error");
-    const b = (await getUser(u.email))!.billing!;
+    expect(await renewPaymob(acct(u), now)).toBe("paymob_error");
+    const b = (await getUser(acct(u)))!.billing!;
     expect(b.status).toBe("past_due");
     expect(b.pending).toMatchObject({ ref: fake.intents.at(-1)!.ref, day: ksaDay(now) });
-    expect(await renewPaymob(u.email, now + 86400e3)).toBe("paymob_pending");
+    expect(await renewPaymob(acct(u), now + 86400e3)).toBe("paymob_pending");
     expect(fake.calls.filter((c) => c === "/api/acceptance/payments/pay")).toHaveLength(1);
     // The charge did go through: its callback applies it and clears the guard.
     const it = fake.intents.at(-1)!;
     expect(await (await hook(txnObj({ amount: it.amount, orderId: it.orderId, ref: it.ref }))).json()).toMatchObject({ result: "paid" });
-    const after = (await getUser(u.email))!.billing!;
+    const after = (await getUser(acct(u)))!.billing!;
     expect(after).toMatchObject({ status: "active", failures: 0, paidThrough: addMonths(today(), 1, b.anchor) });
     expect(after.pending).toBeUndefined();
   });
@@ -249,8 +249,8 @@ describe("a renewal charge with no answer keeps its pending guard (rule 2984)", 
   it("a definite decline still clears pending (rule 714 unchanged)", async () => {
     const u = await subscribed({ paidThrough: today() });
     fake.pay = (orderId, ref) => txnObj({ amount: fake.intents.at(-1)!.amount, orderId, ref, success: false });
-    expect(await renewPaymob(u.email)).toBe("paymob_declined");
-    const b = (await getUser(u.email))!.billing!;
+    expect(await renewPaymob(acct(u))).toBe("paymob_declined");
+    const b = (await getUser(acct(u)))!.billing!;
     expect(b).toMatchObject({ status: "past_due", failures: 1 });
     expect(b.pending).toBeUndefined();
   });

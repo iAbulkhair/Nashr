@@ -1,5 +1,6 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { jar, json, newUser, signIn } from "./helpers/session";
+import { sc } from "@/lib/auth";
 import { importSalla, sallaStore } from "@/lib/connectors/salla";
 import { getConnection, OAUTH_COOKIE, saveConnection, saveState, type Connection } from "@/lib/connectors/store";
 import { readFile } from "@/lib/files";
@@ -40,9 +41,9 @@ describe("Salla product import (rule 71)", () => {
   it("walks the pages, skips hidden and deleted products, and writes a readable catalog", async () => {
     fakeSalla([[product("عود ملكي", { sale_price: { amount: 99, currency: "SAR" } }), product("مخفي", { status: "hidden" })], [product("مسك أبيض"), product("محذوف", { status: "deleted" })]]);
     const u = await newUser("salla");
-    expect(await importSalla(u.email, conn())).toBe(2);
+    expect(await importSalla(sc(u), conn())).toBe(2);
     expect(calls.filter((c) => c.includes("/products")).map((c) => new URL(c).searchParams.get("page"))).toEqual(["1", "2"]);
-    const md = (await readFile(u.email, "products.md"))!.content;
+    const md = (await readFile(sc(u), "products.md"))!.content;
     expect(md).toContain("# Product catalog (Salla متجر الورد,");
     expect(md).toContain("**عود ملكي** — 99 SAR (was 120 SAR)");
     expect(md).toContain("**مسك أبيض** — 120 SAR");
@@ -55,21 +56,21 @@ describe("Salla product import (rule 71)", () => {
   it("stops after three pages however large the store is", async () => {
     fakeSalla(Array.from({ length: 6 }, (_, i) => [product(`p${i}`)]));
     const u = await newUser("salla");
-    expect(await importSalla(u.email, conn())).toBe(3);
+    expect(await importSalla(sc(u), conn())).toBe(3);
     expect(calls.filter((c) => c.includes("/products"))).toHaveLength(3);
   });
 
   it("fails loudly on a refused request instead of writing an empty catalog", async () => {
     fakeSalla([], { status: 401 });
     const u = await newUser("salla");
-    await expect(importSalla(u.email, conn())).rejects.toThrow("salla 401");
-    expect(await readFile(u.email, "products.md")).toBeNull();
+    await expect(importSalla(sc(u), conn())).rejects.toThrow("salla 401");
+    expect(await readFile(sc(u), "products.md")).toBeNull();
   });
 
   it("imports through the connect route for the signed-in workspace, and a refused token asks for a reconnect", async () => {
     fakeSalla([[product("عود")]]);
     const u = await newUser("sallar");
-    await saveConnection(u.email, conn());
+    await saveConnection(sc(u), conn());
     await signIn(u.email);
     const res = await connectRoute.POST(json("/api/connect/salla", "POST", { action: "import_products" }), { params: Promise.resolve({ provider: "salla" }) });
     expect(await res.json()).toEqual({ ok: true, count: 1 });
@@ -77,7 +78,7 @@ describe("Salla product import (rule 71)", () => {
     fakeSalla([], { status: 401 });
     const bad = await connectRoute.POST(json("/api/connect/salla", "POST", { action: "import_products" }), { params: Promise.resolve({ provider: "salla" }) });
     expect((await bad.json()).error).toBe("reconnect_required");
-    expect((await getConnection(u.email, "salla"))?.needsReconnect).toBeTruthy();
+    expect((await getConnection(sc(u), "salla"))?.needsReconnect).toBeTruthy();
   });
 });
 
@@ -94,12 +95,12 @@ describe("connecting Salla shows the store (rule 71)", () => {
   it("stores the store name on the connection after the OAuth callback", async () => {
     fakeSalla([]);
     const u = await newUser("sallacb");
-    await saveState("s-salla", { email: u.email, provider: "salla", lang: "ar", shop: "", verifier: "" });
+    await saveState("s-salla", { email: sc(u), provider: "salla", lang: "ar", shop: "", verifier: "" });
     await signIn(u.email);
     jar().set(OAUTH_COOKIE, "s-salla");
     const res = await callback.GET(new Request("https://app.test/api/connect/salla/callback?state=s-salla&code=c"), { params: Promise.resolve({ provider: "salla" }) });
     expect(new URL(res.headers.get("location")!).searchParams.get("connected")).toBe("salla");
-    const c = await getConnection(u.email, "salla");
+    const c = await getConnection(sc(u), "salla");
     expect(c?.meta).toMatchObject({ account: "متجر الورد", site: "https://ward.example" });
   });
 });
@@ -143,29 +144,29 @@ describe("Salla orders and abandoned carts, as totals only (rule 72)", () => {
   it("stores the snapshot and writes store-sales.md with no customer detail, and Noor reads it", async () => {
     fakeSales([[order(300, "completed", [{ name: "عود ملكي", quantity: 2 }])]], [[cart(90, [{ name: "مسك أبيض", quantity: 1 }])]], { orderTotal: 40 });
     const u = await newUser("sales");
-    await saveConnection(u.email, conn());
+    await saveConnection(sc(u), conn());
     await signIn(u.email);
     const res = await connectRoute.POST(json("/api/connect/salla", "POST", { action: "sync_sales" }), { params: Promise.resolve({ provider: "salla" }) });
     const j = await res.json();
     expect(j.ok).toBe(true);
     const { getSalesSnapshot } = await import("@/lib/store-sales");
-    expect((await getSalesSnapshot(u.email))?.orders.count).toBe(40);
-    const md = (await readFile(u.email, "store-sales.md"))!.content;
+    expect((await getSalesSnapshot(sc(u)))?.orders.count).toBe(40);
+    const md = (await readFile(sc(u), "store-sales.md"))!.content;
     expect(md).toContain("Orders: 40 (totals below cover the latest 1 of 40)");
     expect(md).toContain("Revenue (excluding 0 canceled or refunded): 300 SAR");
     expect(md).toContain("عود ملكي: 2");
     expect(md).toContain("Value left in them: 90 SAR");
     for (const pii of ["ريم", "العتيبي", "+9665", "reem@example.com", "سلمان", "checkout/secret"]) {
       expect(md).not.toContain(pii);
-      expect(JSON.stringify(await getSalesSnapshot(u.email))).not.toContain(pii);
+      expect(JSON.stringify(await getSalesSnapshot(sc(u)))).not.toContain(pii);
     }
     const { memoryBlock } = await import("@/lib/files");
-    expect(await memoryBlock(u.email)).toContain("--- store-sales.md ---");
+    expect(await memoryBlock(sc(u))).toContain("--- store-sales.md ---");
   });
 
   it("offers the sales sync only to store connectors that read sales", async () => {
     const u = await newUser("sales2");
-    await saveConnection(u.email, { provider: "prestashop", data: { site: "https://p.example", apiKey: "k" }, connectedAt: new Date().toISOString() });
+    await saveConnection(sc(u), { provider: "prestashop", data: { site: "https://p.example", apiKey: "k" }, connectedAt: new Date().toISOString() });
     await signIn(u.email);
     const res = await connectRoute.POST(json("/api/connect/prestashop", "POST", { action: "sync_sales" }), { params: Promise.resolve({ provider: "prestashop" }) });
     expect(res.status).toBe(400);

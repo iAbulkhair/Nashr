@@ -7,6 +7,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createHash } from "node:crypto";
 import { newUser } from "./helpers/session";
+import { acct } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { saveBrand, type Brand } from "@/lib/brand";
 import { SEC_KEYS, getItem } from "@/lib/secretary";
@@ -27,8 +28,8 @@ const linkOf = (over: Partial<CalLink> = {}): CalLink => ({ v: 1, provider: "gca
 
 async function owner(prefix: string): Promise<string> {
   const u = await newUser(prefix);
-  await saveBrand(u.email, BRAND);
-  return u.email;
+  await saveBrand(acct(u), BRAND);
+  return acct(u);
 }
 /** An open item with a reminder at `remindAt`, stored and indexed the way the write path leaves it. */
 async function seed(scope: string, remindAt: number): Promise<string> {

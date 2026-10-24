@@ -1,7 +1,7 @@
 import { statusOf } from "@/lib/instructions-http";
 import { describe, expect, it, vi } from "vitest";
 import { newUser } from "./helpers/session";
-import { saveUser, getUser } from "@/lib/auth";
+import { saveUser, getUser, acct } from "@/lib/auth";
 import { addBrand, scopeFor } from "@/lib/brands";
 import { CAPS, db } from "@/lib/db";
 import { listActivity } from "@/lib/activity";
@@ -38,7 +38,7 @@ import {
  * and every workspace key and feed row goes with the account (941).
  */
 const BY: By = { kind: "owner", email: "owner@test.example" };
-const ws = async (prefix = "ins") => (await newUser(prefix)).email;
+const ws = async (prefix = "ins") => acct(await newUser(prefix));
 const LIMITS = (plan: keyof typeof INSTRUCTION_PLAN) => ({ ...INSTRUCTION_PLAN[plan], chars: 600 as const });
 const d = (text: string, extra: Partial<Draft> = {}): Draft => ({ text, agents: "all", on: true, ...extra });
 const WS = { platform: false };
@@ -524,9 +524,9 @@ describe("feed and activity (rule 940)", () => {
   it("rule 940: a restore is a feed row of action restore; the email is the account's, from a brand scope", async () => {
     const u = await newUser("feed-brand");
     await saveUser({ ...u, plan: "agency" });
-    const brand = await addBrand((await getUser(u.email))!, "Second");
+    const brand = await addBrand((await getUser(acct(u)))!, "Second");
     if ("error" in brand) throw new Error(brand.error);
-    const scope = scopeFor(u.email, brand.id);
+    const scope = scopeFor(acct(u), brand.id);
     expect(scope).toContain("#");
     const a1 = await put(scope, [d("one")]);
     await put(scope, [d("two")]);
@@ -534,7 +534,7 @@ describe("feed and activity (rule 940)", () => {
     if (!r.ok) throw new Error(r.error);
     const feed = (await listFeed()).filter((f) => f.scope === scope);
     expect(feed.map((f) => f.action)).toEqual(["restore", "activate", "activate"]);
-    expect(feed.every((f) => f.email === u.email)).toBe(true);
+    expect(feed.every((f) => f.email === acct(u))).toBe(true);
     const acts = (await listActivity(scope)).rows.filter((x) => x.kind === "instructions_changed");
     expect(acts).toHaveLength(3);
   });
@@ -572,10 +572,10 @@ describe("the layer goes with the account (rule 941)", () => {
   it("rule 941: wipeAccount deletes every workspace key of every brand and the account's feed rows; others stay", async () => {
     const u = await newUser("wipe");
     await saveUser({ ...u, plan: "agency" });
-    const second = await addBrand((await getUser(u.email))!, "Second");
+    const second = await addBrand((await getUser(acct(u)))!, "Second");
     if ("error" in second) throw new Error(second.error);
-    const s1 = u.email;
-    const s2 = scopeFor(u.email, second.id);
+    const s1 = acct(u);
+    const s2 = scopeFor(acct(u), second.id);
     const other = await ws("wipe-other");
 
     await put(s1, [d("a")]);
@@ -583,15 +583,15 @@ describe("the layer goes with the account (rule 941)", () => {
     await saveDraft(s2, [d("draft")], BY, WS);
     await put(other, [d("keep")]);
     await db.lock(`skillslock:${s1}`, 10); // a lock left by a request the platform killed
-    expect((await listFeed()).filter((f) => f.email === u.email)).toHaveLength(2);
+    expect((await listFeed()).filter((f) => f.email === acct(u))).toHaveLength(2);
 
-    await wipeAccount(u.email);
+    await wipeAccount(acct(u));
 
     for (const s of [s1, s2]) for (const k of instructionKeys(s)) expect(await db.get(k), k).toBeNull();
     expect(await db.lrange(`skillshist:${s1}`, 0, -1)).toEqual([]);
     expect(await db.lrange(`skillshist:${s2}`, 0, -1)).toEqual([]);
     const feed = await listFeed();
-    expect(feed.filter((f) => f.email === u.email)).toEqual([]);
+    expect(feed.filter((f) => f.email === acct(u))).toEqual([]);
     expect(feed.filter((f) => f.email === other)).toHaveLength(1);
     expect((await getLayer(other)).active.items.map((i) => i.text)).toEqual(["keep"]);
   });

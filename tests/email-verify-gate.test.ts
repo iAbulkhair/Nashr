@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { createUser, currentUser, currentUserUnverified, emailVerified, getUser, saveUser } from "@/lib/auth";
+import { acct, createUser, currentUser, currentUserUnverified, emailVerified, getUser, saveUser } from "@/lib/auth";
 import { jar, json, newMember, newUser, signIn, signOut } from "./helpers/session";
 import { createHash, randomBytes } from "node:crypto";
 import { db } from "@/lib/db";
@@ -76,7 +76,7 @@ describe("email verification gate", () => {
     const m = await newMember(owner);
     await signIn(m.email);
     expect(await currentUser()).toBeNull();
-    const stored = (await getUser(owner.email))!;
+    const stored = (await getUser(acct(owner)))!;
     stored.emailVerifiedAt = new Date().toISOString();
     await saveUser(stored);
     expect((await currentUser())!.actor!.kind).toBe("member");
@@ -92,7 +92,7 @@ describe("email verification gate", () => {
 
   it("suspended stays null in both resolvers", async () => {
     const u = await newUser("g", { verified: false });
-    const stored = (await getUser(u.email))!;
+    const stored = (await getUser(acct(u)))!;
     stored.suspended = true;
     await saveUser(stored);
     await signIn(u.email);
@@ -202,17 +202,17 @@ describe("password reset and the verification gate", () => {
     signOut();
     const res = await resetWith(u.email, "owner");
     expect(res.status).toBe(200);
-    expect(emailVerified((await getUser(u.email))!)).toBe(true);
+    expect(emailVerified((await getUser(acct(u)))!)).toBe(true);
     expect((await currentUser())!.email).toBe(u.email);
   });
 
   it("a verified owner's reset keeps the first date", async () => {
     const u = await newUser("gr");
-    const stored = (await getUser(u.email))!;
+    const stored = (await getUser(acct(u)))!;
     stored.emailVerifiedAt = "2026-01-02T03:04:05.000Z";
     await saveUser(stored);
     expect((await resetWith(u.email, "owner")).status).toBe(200);
-    expect((await getUser(u.email))!.emailVerifiedAt).toBe("2026-01-02T03:04:05.000Z");
+    expect((await getUser(acct(u)))!.emailVerifiedAt).toBe("2026-01-02T03:04:05.000Z");
   });
 
   it("a member's reset does not verify the owner", async () => {
@@ -223,7 +223,7 @@ describe("password reset and the verification gate", () => {
     // The member's password is saved, but no session while the owner is unverified (rule 767), as login answers.
     expect(res.status).toBe(403);
     expect(await res.json()).toEqual({ ok: false, error: "owner_unverified" });
-    expect((await getUser(owner.email))!.emailVerifiedAt).toBeUndefined();
+    expect((await getUser(acct(owner)))!.emailVerifiedAt).toBeUndefined();
     expect(jar().get("thakeen_session")).toBeUndefined();
   });
 });

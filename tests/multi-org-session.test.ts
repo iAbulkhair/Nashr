@@ -16,7 +16,8 @@ import * as brandsRoute from "@/app/api/brands/route";
 
 // Pins the legacy shape (multi-org M1): this file reads and writes R1's records by address (`user:`/`member:`, address-shaped
 // person ids and actors), so its persons are legacy ones; each still holds a shadow membership unless it says `shadow: false`.
-const newUser = (prefix?: string, o: Parameters<typeof helperNewUser>[1] = {}) => helperNewUser(prefix, { legacy: true, ...o });
+// Since the enable release (rule 3815) a legacy owner here is also an address-id account, as every account made before it.
+const newUser = (prefix?: string, o: Parameters<typeof helperNewUser>[1] = {}) => helperNewUser(prefix, { legacy: true, addressId: true, ...o });
 const newMember = (owner: Parameters<typeof helperNewMember>[0], role?: Parameters<typeof helperNewMember>[1], prefix?: string, o: Parameters<typeof helperNewMember>[3] = {}) => helperNewMember(owner, role, prefix, { legacy: true, ...o });
 
 /**
@@ -428,14 +429,17 @@ describe("rule 2112 (partly): the active account comes only from the session", (
     const p = await twoAccounts();
     await Promise.all([brands(p.A, "a1"), brands(p.B, "b1")]);
     await as(p.email, p.A);
-    const forged = { "x-thakeen-ws": p.B, "x-thakeen-acct": p.B, "x-account": p.B };
+    const forged = { "x-thakeen-acct": p.B, "x-account": p.B };
     const u = await withHeaders(forged, () => currentUser());
     expect(acct(u!)).toBe(p.A);
+    // The workspace header takes a handle only (the switch is on, rule 3810): an account id there is no handle, so the
+    // request answers 404 and opens nothing.
+    await expect(withHeaders({ "x-thakeen-ws": p.B }, () => currentUser())).rejects.toThrow("NEXT_HTTP_ERROR_FALLBACK;404");
     const res = await brandsRoute.GET();
     const body = await res.json();
     expect(body.brands.map((b: { id: string }) => b.id).sort()).toEqual(["a1", "default"]);
     // A switch whose body names B's brand and B itself: B's brand is not A's, so nothing is chosen anywhere.
-    const r = await brandsRoute.POST(json(`/api/brands?acct=${encodeURIComponent(p.B)}`, "POST", { action: "switch", id: "b1", acct: p.B, aid: p.B }, forged));
+    const r = await brandsRoute.POST(json(`/api/brands?acct=${encodeURIComponent(p.B)}`, "POST", { action: "switch", id: "b1", acct: p.B, aid: p.B }, { ...forged, "x-thakeen-ws": p.B }));
     expect(r.status).toBe(404);
     expect(await db.get(personKey.activeBrand(p.pid, p.B))).toBeNull();
     expect(await db.get(personKey.activeBrand(p.pid, p.A))).toBeNull();

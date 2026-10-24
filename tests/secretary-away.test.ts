@@ -5,8 +5,8 @@ import { renderToReadableStream } from "react-dom/server.edge";
 import { claudeOn } from "./helpers/model";
 import { json, newMember, newUser, params, signIn, signOut, type Fixture, seedActiveBrand } from "./helpers/session";
 import { db } from "@/lib/db";
-import { type User } from "@/lib/auth";
-import { storedPersonId } from "@/lib/keys";
+import { type User, acct } from "@/lib/auth";
+import { ownerOf } from "@/lib/membership";
 import { AGENT_IDS } from "@/lib/agents";
 import { appDict } from "@/lib/app-i18n";
 import { saveBrand, type Brand } from "@/lib/brand";
@@ -72,8 +72,9 @@ const awayEntry = (label: string, until: string) => ({ label, until, by: "owner@
 const OWNER: Who & { source: "owner" } = { actor: "owner", via: "web", source: "owner" };
 async function owner(prefix: string, brand: Brand = BRAND, fx: Fixture = {}): Promise<User> {
   const u = await newUser(prefix, fx);
-  await saveBrand(u.email, brand);
-  return u;
+  await saveBrand(acct(u), brand);
+  // A session or a job hands the code the user with the scope it works in (`runAsAccount`); the default brand's is the account id.
+  return { ...u, scope: acct(u) };
 }
 async function make(u: User, raw: Record<string, unknown>): Promise<SecItem> {
   const r = await createItem(u, raw, OWNER);
@@ -87,22 +88,22 @@ const expectDay = (it: SecItem | null) => (it?.expectBy ? zoneDay(Date.parse(it.
 describe("rule 478: the brand's work calendar and away map are read wherever the agenda or a date is computed", () => {
   it("calFor reads the brand, sec:cal and sec:away: the zone, the effective calendar, and the away map with endedAt once until has passed (ruling R3)", async () => {
     const u = await owner("awcal", DUBAI_BRAND);
-    await db.set(SEC_KEYS.cal(u.email), settings({ weekend: [5] }));
+    await db.set(SEC_KEYS.cal(acct(u)), settings({ weekend: [5] }));
     await Promise.all([
-      db.hset(SEC_KEYS.away(u.email), partyKey("أحمد")!, awayEntry("أحمد", "2026-10-08")),
+      db.hset(SEC_KEYS.away(acct(u)), partyKey("أحمد")!, awayEntry("أحمد", "2026-10-08")),
       // Stored as a JSON string: read the same way.
-      db.hset(SEC_KEYS.away(u.email), partyKey("Dana K")!, JSON.stringify(awayEntry("Dana K", "2026-10-06"))),
-      db.hset(SEC_KEYS.away(u.email), partyKey("Sara")!, awayEntry("Sara", "2026-10-05")),
+      db.hset(SEC_KEYS.away(acct(u)), partyKey("Dana K")!, JSON.stringify(awayEntry("Dana K", "2026-10-06"))),
+      db.hset(SEC_KEYS.away(acct(u)), partyKey("Sara")!, awayEntry("Sara", "2026-10-05")),
       // Malformed values are left out, silently.
-      db.hset(SEC_KEYS.away(u.email), "bad1", "{not json"),
-      db.hset(SEC_KEYS.away(u.email), "bad2", awayEntry("X", "2026-13-01")),
-      db.hset(SEC_KEYS.away(u.email), "bad3", { until: "2026-10-08" }),
-      db.hset(SEC_KEYS.away(u.email), "bad4", ["2026-10-08"]),
-      db.hset(SEC_KEYS.away(u.email), "bad5", { label: "Y", until: "8 Oct" }),
+      db.hset(SEC_KEYS.away(acct(u)), "bad1", "{not json"),
+      db.hset(SEC_KEYS.away(acct(u)), "bad2", awayEntry("X", "2026-13-01")),
+      db.hset(SEC_KEYS.away(acct(u)), "bad3", { until: "2026-10-08" }),
+      db.hset(SEC_KEYS.away(acct(u)), "bad4", ["2026-10-08"]),
+      db.hset(SEC_KEYS.away(acct(u)), "bad5", { label: "Y", until: "8 Oct" }),
     ]);
     const gets = vi.spyOn(db, "get"), hashes = vi.spyOn(db, "hgetall");
     // Tuesday 6 October 2026 in Dubai.
-    const c = await calFor(u.email, local("2026-10-06T12:00", "Asia/Dubai"));
+    const c = await calFor(acct(u), local("2026-10-06T12:00", "Asia/Dubai"));
     expect(c.zone).toBe("Asia/Dubai");
     expect(c.cal.weekend).toEqual([5]);
     expect(c.cal.weekStart).toBe(6);
@@ -112,13 +113,13 @@ describe("rule 478: the brand's work calendar and away map are read wherever the
       "dana k": { label: "Dana K", until: "2026-10-06" },
       sara: { label: "Sara", until: "2026-10-05", endedAt: "2026-10-05" },
     });
-    expect(gets.mock.calls.filter(([k]) => k === SEC_KEYS.cal(u.email))).toHaveLength(1);
-    expect(hashes.mock.calls.filter(([k]) => k === SEC_KEYS.away(u.email))).toHaveLength(1);
+    expect(gets.mock.calls.filter(([k]) => k === SEC_KEYS.cal(acct(u)))).toHaveLength(1);
+    expect(hashes.mock.calls.filter(([k]) => k === SEC_KEYS.away(acct(u)))).toHaveLength(1);
 
     // Nothing stored, or a value that is not settings: the country's defaults and nobody away.
     const v = await owner("awcal0", DUBAI_BRAND);
-    await db.set(SEC_KEYS.cal(v.email), "weekend=5");
-    const d = await calFor(v.email, local("2026-10-06T12:00", "Asia/Dubai"));
+    await db.set(SEC_KEYS.cal(acct(v)), "weekend=5");
+    const d = await calFor(acct(v), local("2026-10-06T12:00", "Asia/Dubai"));
     expect(d).toMatchObject({ zone: "Asia/Dubai", away: {} });
     expect(d.cal.weekend).toEqual([6, 0]);
     expect(d.cal.weekStart).toBe(1);
@@ -127,14 +128,14 @@ describe("rule 478: the brand's work calendar and away map are read wherever the
   it("agendaFor classifies with the brand's calendar and away map, and returns both", async () => {
     // A Riyadh brand whose weekend is Friday alone: Saturday is a working day.
     const u = await owner("awagenda");
-    await db.set(SEC_KEYS.cal(u.email), settings({ weekend: [5] }));
-    await db.hset(SEC_KEYS.away(u.email), partyKey("سارة")!, awayEntry("سارة", "2026-10-08"));
+    await db.set(SEC_KEYS.cal(acct(u)), settings({ weekend: [5] }));
+    await db.hset(SEC_KEYS.away(acct(u)), partyKey("سارة")!, awayEntry("سارة", "2026-10-08"));
     await at(local("2026-10-01T09:00"), async () => {
       await make(u, { title: "Quote", direction: "they_owe", owedBy: "أحمد", dueAt: "2026-10-01T10:00" });
       await make(u, { title: "Samples", direction: "they_owe", owedBy: "ساره", dueAt: "2026-10-01T10:00" });
     });
     // Saturday 3 October 12:00: the zone's own weekend would hold the quote until Sunday; this brand's does not.
-    const a = await agendaFor(u.email, local("2026-10-03T12:00"));
+    const a = await agendaFor(acct(u), local("2026-10-03T12:00"));
     expect(a.buckets.overdue.map((e) => e.item.title)).toEqual(["Quote"]);
     const away = a.buckets.waiting.find((e) => e.item.title === "Samples");
     // Back after Thursday 8 October; Friday 9 is this brand's weekend, so the chase is Saturday 10 October at 08:00.
@@ -161,13 +162,13 @@ describe("rule 478: the brand's work calendar and away map are read wherever the
       // The chat and MCP tools reach the same two functions.
       const out = await runTool(u, "todo_create", { title: "From chat", direction: "they_owe", owed_by: "أحمد" }, [], [], undefined, { lang: "en" });
       const id = /\[id=(s[a-f0-9]{16})\]/.exec(out)![1];
-      expect(expectDay(await getItem(u.email, id))).toBe("2027-03-15");
+      expect(expectDay(await getItem(acct(u), id))).toBe("2027-03-15");
       const mine = await make(u, { title: "Mine, then theirs" });
       expect(await runTool(u, "todo_update", { id: mine.id, direction: "they_owe", owed_by: "أحمد" }, [], [], undefined, { lang: "en" })).toMatch(/^Updated/);
-      expect(expectDay(await getItem(u.email, mine.id))).toBe("2027-03-15");
+      expect(expectDay(await getItem(acct(u), mine.id))).toBe("2027-03-15");
       // A caller that passes no calendar: changeItem reads it (with the zone) for a change that starts a chase clock.
       const dated = await make(u, { title: "Dated", direction: "they_owe", owedBy: "أحمد", dueAt: "2027-03-20T10:00" });
-      const r = await changeItem(u.email, dated.id, { action: "reschedule", dueAt: null, allDay: false }, OWNER);
+      const r = await changeItem(acct(u), dated.id, { action: "reschedule", dueAt: null, allDay: false }, OWNER);
       expect(r.ok && expectDay(r.item)).toBe("2027-03-15");
     });
   });
@@ -176,7 +177,7 @@ describe("rule 478: the brand's work calendar and away map are read wherever the
     // Thursday 1 October 2026. The login is made at the faked time too: a session older than its user is refused.
     await at(local("2026-10-01T10:00"), async () => {
       const u = await owner("awpatch");
-      await db.set(SEC_KEYS.cal(u.email), settings({ weekend: [5] }));
+      await db.set(SEC_KEYS.cal(acct(u)), settings({ weekend: [5] }));
       await signIn(u.email);
       const it = await make(u, { title: "Call back" });
       const gets = vi.spyOn(db, "get");
@@ -184,7 +185,7 @@ describe("rule 478: the brand's work calendar and away map are read wherever the
       expect(r.status).toBe(200);
       // A Friday-only weekend starts the week on Saturday: next week is Saturday 3 October 09:00, not Sunday.
       expect((await r.json()).item.snoozeUntil).toBe(iso(local("2026-10-03T09:00")));
-      expect(gets.mock.calls.filter(([k]) => k === SEC_KEYS.cal(u.email))).toHaveLength(1);
+      expect(gets.mock.calls.filter(([k]) => k === SEC_KEYS.cal(acct(u)))).toHaveLength(1);
       gets.mockRestore();
     });
 
@@ -198,7 +199,7 @@ describe("rule 478: the brand's work calendar and away map are read wherever the
       const r = await patch(debt.id, { action: "reschedule", dueAt: null });
       expect(r.status).toBe(200);
       expect(expectDay((await r.json()).item)).toBe("2027-03-15");
-      expect(gets.mock.calls.filter(([k]) => k === SEC_KEYS.cal(v.email))).toHaveLength(1);
+      expect(gets.mock.calls.filter(([k]) => k === SEC_KEYS.cal(acct(v)))).toHaveLength(1);
     });
   });
 
@@ -211,9 +212,9 @@ describe("rule 478: the brand's work calendar and away map are read wherever the
     });
     // Tuesday's wrap: "tomorrow" is Wednesday 09:00.
     const now = local("2026-10-06T18:00", "Asia/Dubai");
-    expect((await buildWrap(u.email, now)).tomorrow.sort()).toEqual(["Invoice from Sara", "Quote from Ahmad"]);
-    await db.hset(SEC_KEYS.away(u.email), partyKey("Ahmad")!, awayEntry("Ahmad", "2026-10-08"));
-    expect((await buildWrap(u.email, now)).tomorrow).toEqual(["Invoice from Sara"]);
+    expect((await buildWrap(acct(u), now)).tomorrow.sort()).toEqual(["Invoice from Sara", "Quote from Ahmad"]);
+    await db.hset(SEC_KEYS.away(acct(u)), partyKey("Ahmad")!, awayEntry("Ahmad", "2026-10-08"));
+    expect((await buildWrap(acct(u), now)).tomorrow).toEqual(["Invoice from Sara"]);
   });
 
   it("the wrap lists a contact's debt that fell due inside a pause when its chase moment comes: Riyadh, due Friday 2 October 10:00, in Sunday's wrap only", async () => {
@@ -223,10 +224,10 @@ describe("rule 478: the brand's work calendar and away map are read wherever the
       await make(u, { title: "My own report", dueAt: "2026-10-02T10:00" });
     });
     // Friday 18:00: the owner's own item fell overdue at its due time; the debt waits for Sunday 08:00.
-    expect((await buildWrap(u.email, local("2026-10-02T18:00"))).fellOverdue).toEqual(["My own report"]);
-    expect((await buildWrap(u.email, local("2026-10-03T18:00"))).fellOverdue).toEqual([]);
+    expect((await buildWrap(acct(u), local("2026-10-02T18:00"))).fellOverdue).toEqual(["My own report"]);
+    expect((await buildWrap(acct(u), local("2026-10-03T18:00"))).fellOverdue).toEqual([]);
     // Sunday 18:00: its chase moment, Sunday 08:00, is inside (Saturday 18:00, Sunday 18:00].
-    expect((await buildWrap(u.email, local("2026-10-04T18:00"))).fellOverdue).toEqual(["Samples from the supplier"]);
+    expect((await buildWrap(acct(u), local("2026-10-04T18:00"))).fellOverdue).toEqual(["Samples from the supplier"]);
   });
 
   it("in Ramadan the 21:30 wrap lists a debt that became chaseable today, by its anchor, and puts it first for tomorrow at the 10:00 window (ruling R12)", async () => {
@@ -240,14 +241,14 @@ describe("rule 478: the brand's work calendar and away map are read wherever the
     const now = local("2027-02-23T21:30");
     // At 21:30 the debt has been chaseable since 11:00 (its anchor), but chasing waits for tomorrow's window (its `at`):
     // the agenda shows it waiting, so neither `at` nor the overdue bucket alone would list it.
-    const e = (await agendaFor(u.email, now)).buckets.waiting.find((x) => x.item.title === "Quote");
+    const e = (await agendaFor(acct(u), now)).buckets.waiting.find((x) => x.item.title === "Quote");
     expect(e?.moment).toMatchObject({ anchor: local("2027-02-23T11:00"), at: local("2027-02-24T10:00"), why: "ramadan" });
-    const w = await buildWrap(u.email, now);
+    const w = await buildWrap(acct(u), now);
     expect(w.fellOverdue).toEqual(["Quote"]);
     // "Tomorrow" is read at Wednesday's first working moment, 10:00, not at 09:00 when chasing still waits.
     expect(w.tomorrow).toEqual(["Quote"]);
     // The next evening it is not listed again: its anchor is before that window.
-    expect((await buildWrap(u.email, local("2027-02-24T21:30"))).fellOverdue).toEqual([]);
+    expect((await buildWrap(acct(u), local("2027-02-24T21:30"))).fellOverdue).toEqual([]);
   });
 
   it("a Riyadh Thursday wrap reads 'tomorrow' at Sunday 08:00, the next working morning, so a chaseable debt is listed (ruling R12)", async () => {
@@ -260,9 +261,9 @@ describe("rule 478: the brand's work calendar and away map are read wherever the
     });
     // Friday 09:00 (the old "tomorrow") is the weekend: the quote has been chaseable since Wednesday 10:00 (anchor) but
     // waits for Sunday 08:00 (at).
-    const fri = (await agendaFor(u.email, local("2026-10-09T09:00"))).buckets.waiting.find((x) => x.item.title === "Quote from Ahmad");
+    const fri = (await agendaFor(acct(u), local("2026-10-09T09:00"))).buckets.waiting.find((x) => x.item.title === "Quote from Ahmad");
     expect(fri?.moment).toMatchObject({ anchor: local("2026-10-07T10:00"), at: local("2026-10-11T08:00"), why: "quiet" });
-    expect((await buildWrap(u.email, local("2026-10-08T18:00"))).tomorrow).toEqual(["Quote from Ahmad", "My report"]);
+    expect((await buildWrap(acct(u), local("2026-10-08T18:00"))).tomorrow).toEqual(["Quote from Ahmad", "My report"]);
   });
 
   it("agenda_get JSON-quotes a contact's name after 'owed by' and 'for', never an agent's", async () => {
@@ -280,20 +281,20 @@ describe("rule 478: the brand's work calendar and away map are read wherever the
 
   it("account deletion removes sec:cal and sec:away of every brand scope (extends rules 201 and 306)", async () => {
     const u = await owner("awwipe");
-    await saveBrands(u.email, [{ id: "default", name: "", createdAt: new Date().toISOString(), status: "active" }, { id: "b2", name: "Two", createdAt: new Date().toISOString(), status: "active" }]);
-    const scopes = [u.email, scopeFor(u.email, "b2")];
+    await saveBrands(acct(u), [{ id: "default", name: "", createdAt: new Date().toISOString(), status: "active" }, { id: "b2", name: "Two", createdAt: new Date().toISOString(), status: "active" }]);
+    const scopes = [acct(u), scopeFor(acct(u), "b2")];
     await Promise.all(scopes.flatMap((s) => [db.set(SEC_KEYS.cal(s), settings({ weekend: [5] })), db.hset(SEC_KEYS.away(s), "sara", awayEntry("Sara", "2026-10-08"))]));
-    expect(SEC_KEYS.cal(u.email)).toBe(`sec:cal:${u.email}`);
-    expect(SEC_KEYS.away(u.email)).toBe(`sec:away:${u.email}`);
-    await wipeAccount(u.email);
+    expect(SEC_KEYS.cal(acct(u))).toBe(`sec:cal:${acct(u)}`);
+    expect(SEC_KEYS.away(acct(u))).toBe(`sec:away:${acct(u)}`);
+    await wipeAccount(acct(u));
     expect(await Promise.all(scopes.map((s) => db.get(SEC_KEYS.cal(s))))).toEqual([null, null]);
     expect(await Promise.all(scopes.map((s) => db.hgetall(SEC_KEYS.away(s))))).toEqual([{}, {}]);
   });
 
   it("GET /api/secretary keeps the calendar and the away map on the server (ruling R11)", async () => {
     const u = await owner("awget");
-    await db.set(SEC_KEYS.cal(u.email), settings({ weekend: [5] }));
-    await db.hset(SEC_KEYS.away(u.email), partyKey("Sara Q")!, awayEntry("Sara Q", "2099-01-01"));
+    await db.set(SEC_KEYS.cal(acct(u)), settings({ weekend: [5] }));
+    await db.hset(SEC_KEYS.away(acct(u)), partyKey("Sara Q")!, awayEntry("Sara Q", "2099-01-01"));
     await signIn(u.email);
     const j = await (await listRoute.GET(json("/api/secretary", "GET"))).json();
     expect(j.ok).toBe(true);
@@ -307,8 +308,8 @@ describe("rule 478: the brand's work calendar and away map are read wherever the
     const errors = vi.spyOn(console, "error").mockImplementation(() => {});
     for (const bad of [{ v: 1, holidays: { add: "x" } }, { v: 1, weekend: [5], ramadanHours: [null] }]) {
       const u = await owner("awbad");
-      await db.set(SEC_KEYS.cal(u.email), bad);
-      const a = await agendaFor(u.email, local("2026-10-01T12:00"));
+      await db.set(SEC_KEYS.cal(acct(u)), bad);
+      const a = await agendaFor(acct(u), local("2026-10-01T12:00"));
       expect(a.cal.weekend, JSON.stringify(bad)).toEqual(bad.weekend ?? [5, 6]);
       expect(a.cal.ramadanHours).toEqual([{ from: "10:00", to: "15:00" }]);
       expect(a.open).toBe(0);
@@ -322,9 +323,9 @@ describe("rule 478: the brand's work calendar and away map are read wherever the
     const bad: unknown[] = [[{ from: 5 }], [{ from: "10:00" }], [{ from: "15:00", to: "10:00" }], [{ from: "10:10", to: "15:00" }], [{ from: "09:00", to: "12:00" }, { from: "11:00", to: "13:00" }]];
     for (const hours of bad) {
       const u = await owner("awhours");
-      await db.set(SEC_KEYS.cal(u.email), settings({ ramadanHours: hours as SecCalendar["ramadanHours"] }));
+      await db.set(SEC_KEYS.cal(acct(u)), settings({ ramadanHours: hours as SecCalendar["ramadanHours"] }));
       await make(u, { title: "Quote", direction: "they_owe", owedBy: "أحمد", dueAt: "2027-02-23T07:00" });
-      const a = await at(local("2027-02-23T08:00"), () => agendaFor(u.email, local("2027-02-23T08:00")));
+      const a = await at(local("2027-02-23T08:00"), () => agendaFor(acct(u), local("2027-02-23T08:00")));
       expect(a.cal.ramadanHours, JSON.stringify(hours)).toEqual([{ from: "10:00", to: "15:00" }]);
       expect(a.buckets.waiting[0].moment, JSON.stringify(hours)).toMatchObject({ at: local("2027-02-23T10:00"), why: "ramadan" });
     }
@@ -355,7 +356,7 @@ describe("rule 478: the brand's work calendar and away map are read wherever the
     }));
     try {
       const u = await owner("awchat");
-      await db.set(SEC_KEYS.cal(u.email), settings({ weekend: [5] }));
+      await db.set(SEC_KEYS.cal(acct(u)), settings({ weekend: [5] }));
       const { chat } = await import("@/lib/chat");
       await chat(u, "وش عندي هالأسبوع؟", undefined, "reem");
       expect(sent).toHaveLength(1);
@@ -363,7 +364,7 @@ describe("rule 478: the brand's work calendar and away map are read wherever the
       // Ruling R13: a record the calendar cannot be built from never stops a chat turn; the zone's own week start is used.
       vi.spyOn(console, "error").mockImplementation(() => {});
       const v = await owner("awchatbad");
-      await db.set(SEC_KEYS.cal(v.email), { v: 1, holidays: { add: "x" } });
+      await db.set(SEC_KEYS.cal(acct(v)), { v: 1, holidays: { add: "x" } });
       await chat(v, "مرحبا", undefined, "noor");
       expect(sent).toHaveLength(2);
       expect(sent[1].system[2].text).toContain("The work week starts on Sunday.");
@@ -390,26 +391,26 @@ describe("rule 481: an away contact is matched by partyKey, and only a contact c
     const forms = ["احمد", "إحمد", "أح­مد", "أحمد", "أحمد "];
     expect(new Set(forms.map((f) => partyKey(f)))).toEqual(new Set(["احمد"]));
     const u = await owner("aw481a");
-    for (const label of forms) expect((await setAway(u.email, { label, until: "2026-10-08" }, PERSON, NOW, "Asia/Riyadh")).ok, label).toBe(true);
-    expect(await awayKeys(u.email)).toEqual(["احمد"]);
+    for (const label of forms) expect((await setAway(acct(u), { label, until: "2026-10-08" }, PERSON, NOW, "Asia/Riyadh")).ok, label).toBe(true);
+    expect(await awayKeys(acct(u))).toEqual(["احمد"]);
     // The last write wins, its label cleaned the way an item's party is.
-    expect(await db.hgetall(SEC_KEYS.away(u.email))).toEqual({ احمد: { label: "أحمد", until: "2026-10-08", by: PERSON.login, via: "web", at: iso(NOW) } });
+    expect(await db.hgetall(SEC_KEYS.away(acct(u)))).toEqual({ احمد: { label: "أحمد", until: "2026-10-08", by: PERSON.login, via: "web", at: iso(NOW) } });
   });
 
   it("refuses the owner and every agent as not_contact, however they are written: «ＤＡＮＡ», 'owner', «أنا», 'reem', 'Me', «انا»; nothing is written", async () => {
     const u = await owner("aw481b");
     for (const label of ["ＤＡＮＡ", "owner", "أنا", "reem", "Me", " YOU ", "انا", ...AGENT_IDS, ...OWNER_ALIASES]) {
-      expect(await setAway(u.email, { label, until: "2026-10-08" }, PERSON, NOW, "Asia/Riyadh"), label).toMatchObject({ ok: false, error: "not_contact", field: "label", status: 400 });
+      expect(await setAway(acct(u), { label, until: "2026-10-08" }, PERSON, NOW, "Asia/Riyadh"), label).toMatchObject({ ok: false, error: "not_contact", field: "label", status: 400 });
     }
-    expect(await awayKeys(u.email)).toEqual([]);
-    expect(await auditLines(u.email)).toEqual([]);
+    expect(await awayKeys(acct(u))).toEqual([]);
+    expect(await auditLines(acct(u))).toEqual([]);
     // A contact whose name holds an agent's is a contact.
-    expect((await setAway(u.email, { label: "Dana Khalid", until: "2026-10-08" }, PERSON, NOW, "Asia/Riyadh")).ok).toBe(true);
+    expect((await setAway(acct(u), { label: "Dana Khalid", until: "2026-10-08" }, PERSON, NOW, "Asia/Riyadh")).ok).toBe(true);
   });
 
   it("a key of 81 characters is too_long (also when NFKC makes a short label long); an empty, invisible or non-string label is bad_request", async () => {
     const u = await owner("aw481c");
-    const put = (label: unknown) => setAway(u.email, { label, until: "2026-10-08" }, PERSON, NOW, "Asia/Riyadh");
+    const put = (label: unknown) => setAway(acct(u), { label, until: "2026-10-08" }, PERSON, NOW, "Asia/Riyadh");
     expect(await put("a".repeat(81))).toMatchObject({ ok: false, error: "too_long", field: "label", status: 400 });
     // Five characters, each «صلى الله عليه وسلم» once folded: a 90-character key.
     expect(partyKey("ﷺ".repeat(5))).toBeNull();
@@ -417,30 +418,30 @@ describe("rule 481: an away contact is matched by partyKey, and only a contact c
     for (const label of ["", "   ", "­​", 42, null, undefined, ["Sara"]]) {
       expect(await put(label), JSON.stringify(label)).toMatchObject({ ok: false, error: "bad_request", field: "label", status: 400 });
     }
-    expect(await awayKeys(u.email)).toEqual([]);
+    expect(await awayKeys(acct(u))).toEqual([]);
     expect((await put("a".repeat(80))).ok).toBe(true);
   });
 
   it("a label whose key is __proto__, constructor or prototype is bad_request on set, end and proposal (ruling R22): the store's HGETALL would hide such a field", async () => {
     const u = await owner("aw481e");
     for (const label of ["__proto__", "constructor", "prototype", "Constructor", " PROTOTYPE ", "__PROTO__"]) {
-      expect(await setAway(u.email, { label, until: "2026-10-08" }, PERSON, NOW, "Asia/Riyadh"), label).toMatchObject({ ok: false, error: "bad_request", field: "label", status: 400 });
-      expect(await endAway(u.email, label, PERSON, NOW, "Asia/Riyadh"), label).toMatchObject({ ok: false, error: "bad_request", field: "label", status: 400 });
-      expect(await proposeAway(u.email, { name: label, until: "2026-10-08" }, NOW, "Asia/Riyadh"), label).toMatchObject({ ok: false, error: "bad_request", field: "name", status: 400 });
+      expect(await setAway(acct(u), { label, until: "2026-10-08" }, PERSON, NOW, "Asia/Riyadh"), label).toMatchObject({ ok: false, error: "bad_request", field: "label", status: 400 });
+      expect(await endAway(acct(u), label, PERSON, NOW, "Asia/Riyadh"), label).toMatchObject({ ok: false, error: "bad_request", field: "label", status: 400 });
+      expect(await proposeAway(acct(u), { name: label, until: "2026-10-08" }, NOW, "Asia/Riyadh"), label).toMatchObject({ ok: false, error: "bad_request", field: "name", status: 400 });
     }
-    expect(await awayKeys(u.email)).toEqual([]);
-    expect(await db.smembers(SEC_KEYS.awayProps(u.email))).toEqual([]);
-    expect(await auditLines(u.email)).toEqual([]);
+    expect(await awayKeys(acct(u))).toEqual([]);
+    expect(await db.smembers(SEC_KEYS.awayProps(acct(u)))).toEqual([]);
+    expect(await auditLines(acct(u))).toEqual([]);
     // A name that only holds one of them is a contact.
-    expect((await setAway(u.email, { label: "Constructor Co", until: "2026-10-08" }, PERSON, NOW, "Asia/Riyadh")).ok).toBe(true);
+    expect((await setAway(acct(u), { label: "Constructor Co", until: "2026-10-08" }, PERSON, NOW, "Asia/Riyadh")).ok).toBe(true);
   });
 
   it("an item owed by «احمد» shows as away when the entry is «أحمد»", async () => {
     const u = await owner("aw481d");
     await at(local("2026-10-01T09:00"), () => make(u, { title: "Quote", direction: "they_owe", owedBy: "احمد", dueAt: "2026-10-05T10:00" }));
-    expect((await agendaFor(u.email, NOW)).buckets.overdue.map((e) => e.item.title)).toEqual(["Quote"]);
-    expect((await setAway(u.email, { label: "أحمد", until: "2026-10-08" }, PERSON, NOW, "Asia/Riyadh")).ok).toBe(true);
-    const e = (await agendaFor(u.email, NOW)).buckets.waiting.find((x) => x.item.title === "Quote");
+    expect((await agendaFor(acct(u), NOW)).buckets.overdue.map((e) => e.item.title)).toEqual(["Quote"]);
+    expect((await setAway(acct(u), { label: "أحمد", until: "2026-10-08" }, PERSON, NOW, "Asia/Riyadh")).ok).toBe(true);
+    const e = (await agendaFor(acct(u), NOW)).buckets.waiting.find((x) => x.item.title === "Quote");
     // Back after Thursday 8 October; Friday and Saturday are the Riyadh weekend: chased Sunday 11 October at 08:00.
     expect(e?.moment).toMatchObject({ why: "away", until: "2026-10-08", at: local("2026-10-11T08:00") });
   });
@@ -450,11 +451,11 @@ describe("rule 482: the away list's limits: dates, the 200-field cap, the note, 
   it(`until is today to today + ${AWAY_AHEAD_DAYS} days in the brand's zone: yesterday and today + 367 are away_range, a day that is not one is bad_date`, async () => {
     expect([AWAY_MAX, AWAY_AHEAD_DAYS, AWAY_KEEP_DAYS]).toEqual([200, 366, 30]);
     const u = await owner("aw482a");
-    const put = (until: unknown, now = NOW, zone: "Asia/Riyadh" | "Asia/Dubai" = "Asia/Riyadh") => setAway(u.email, { label: "Sara", until }, PERSON, now, zone);
+    const put = (until: unknown, now = NOW, zone: "Asia/Riyadh" | "Asia/Dubai" = "Asia/Riyadh") => setAway(acct(u), { label: "Sara", until }, PERSON, now, zone);
     expect(await put("2026-10-05")).toMatchObject({ ok: false, error: "away_range", field: "until", status: 400 });
     expect(await put(addDays("2026-10-06", 367))).toMatchObject({ ok: false, error: "away_range", field: "until" });
     for (const bad of ["2026-02-30", "8 Oct", "2026-10-08T10:00", 20261008, undefined]) expect(await put(bad), String(bad)).toMatchObject({ ok: false, error: "bad_date", field: "until" });
-    expect(await awayKeys(u.email)).toEqual([]);
+    expect(await awayKeys(acct(u))).toEqual([]);
     expect(await put("2026-10-06")).toMatchObject({ ok: true, entry: { until: "2026-10-06" } });
     expect(await put(addDays("2026-10-06", 366))).toMatchObject({ ok: true, entry: { until: "2027-10-07" } });
     // 20:30 UTC is 23:30 in Riyadh and already 00:30 on Wednesday 7 October in Dubai: "today" is the brand's.
@@ -466,68 +467,68 @@ describe("rule 482: the away list's limits: dates, the 200-field cap, the note, 
   it("the 201st field is away_limit even when earlier entries have ended; replacing a stored contact adds no field", async () => {
     const u = await owner("aw482b");
     // 200 fields, three quarters of them ended.
-    await Promise.all(Array.from({ length: AWAY_MAX }, (_, i) => db.hset(SEC_KEYS.away(u.email), `c${i}`, awayEntry(`C${i}`, i < 150 ? "2026-09-20" : "2026-10-20"))));
-    expect(await setAway(u.email, { label: "New contact", until: "2026-10-09" }, PERSON, NOW, "Asia/Riyadh")).toMatchObject({ ok: false, error: "away_limit", status: 409 });
-    expect(await awayKeys(u.email)).toHaveLength(AWAY_MAX);
-    expect(await setAway(u.email, { label: "c3", until: "2026-10-09" }, PERSON, NOW, "Asia/Riyadh")).toMatchObject({ ok: true, entry: { label: "c3", until: "2026-10-09" } });
-    expect(await awayKeys(u.email)).toHaveLength(AWAY_MAX);
+    await Promise.all(Array.from({ length: AWAY_MAX }, (_, i) => db.hset(SEC_KEYS.away(acct(u)), `c${i}`, awayEntry(`C${i}`, i < 150 ? "2026-09-20" : "2026-10-20"))));
+    expect(await setAway(acct(u), { label: "New contact", until: "2026-10-09" }, PERSON, NOW, "Asia/Riyadh")).toMatchObject({ ok: false, error: "away_limit", status: 409 });
+    expect(await awayKeys(acct(u))).toHaveLength(AWAY_MAX);
+    expect(await setAway(acct(u), { label: "c3", until: "2026-10-09" }, PERSON, NOW, "Asia/Riyadh")).toMatchObject({ ok: true, entry: { label: "c3", until: "2026-10-09" } });
+    expect(await awayKeys(acct(u))).toHaveLength(AWAY_MAX);
   });
 
   it("two concurrent PUTs at 199 fields leave 200: one is saved, the other is away_limit", async () => {
     await at(NOW, async () => {
       const u = await owner("aw482c");
       await signIn(u.email);
-      await Promise.all(Array.from({ length: AWAY_MAX - 1 }, (_, i) => db.hset(SEC_KEYS.away(u.email), `c${i}`, awayEntry(`C${i}`, "2026-10-20"))));
+      await Promise.all(Array.from({ length: AWAY_MAX - 1 }, (_, i) => db.hset(SEC_KEYS.away(acct(u)), `c${i}`, awayEntry(`C${i}`, "2026-10-20"))));
       const rs = await Promise.all([awayPut({ label: "Sara", until: "2026-10-09" }), awayPut({ label: "Huda", until: "2026-10-09" })]);
       expect(rs.map((r) => r.status).sort()).toEqual([200, 409]);
-      expect(await awayKeys(u.email)).toHaveLength(AWAY_MAX);
+      expect(await awayKeys(acct(u))).toHaveLength(AWAY_MAX);
     });
   });
 
   it("the note goes through cleanLine and is at most 200 characters after cleaning", async () => {
     const u = await owner("aw482d");
-    const put = (note: unknown) => setAway(u.email, { label: "Sara", until: "2026-10-09", note }, PERSON, NOW, "Asia/Riyadh");
+    const put = (note: unknown) => setAway(acct(u), { label: "Sara", until: "2026-10-09", note }, PERSON, NOW, "Asia/Riyadh");
     expect(await put("  Hajj‮ trip \n back\tSunday  ")).toMatchObject({ ok: true, entry: { note: "Hajj trip back Sunday" } });
-    expect((await db.hgetall<{ note?: string }>(SEC_KEYS.away(u.email))).sara.note).toBe("Hajj trip back Sunday");
+    expect((await db.hgetall<{ note?: string }>(SEC_KEYS.away(acct(u)))).sara.note).toBe("Hajj trip back Sunday");
     expect(await put("x".repeat(201))).toMatchObject({ ok: false, error: "too_long", field: "note", status: 400 });
     expect(await put("x".repeat(200) + "​​")).toMatchObject({ ok: true, entry: { note: "x".repeat(200) } });
     expect(await put(42)).toMatchObject({ ok: false, error: "bad_text", field: "note" });
     // A blank note, or none, is no note.
     const blank = await put("  \n ");
     expect(blank.ok && blank.entry).not.toHaveProperty("note");
-    expect((await db.hgetall<object>(SEC_KEYS.away(u.email))).sara).not.toHaveProperty("note");
+    expect((await db.hgetall<object>(SEC_KEYS.away(acct(u)))).sara).not.toHaveProperty("note");
   });
 
   it("ending keeps the field with until set to yesterday (the back alert reads it); ending it again changes nothing, and only remove: true deletes a field (rulings R19, R21); an unknown name is not_found", async () => {
     const u = await owner("aw482e");
-    await setAway(u.email, { label: "Sara", until: "2026-10-20", note: "Leave" }, PERSON, NOW, "Asia/Riyadh");
-    const ended = await endAway(u.email, " SARA ", PERSON, NOW, "Asia/Riyadh");
+    await setAway(acct(u), { label: "Sara", until: "2026-10-20", note: "Leave" }, PERSON, NOW, "Asia/Riyadh");
+    const ended = await endAway(acct(u), " SARA ", PERSON, NOW, "Asia/Riyadh");
     expect(ended).toMatchObject({ ok: true, removed: false, changed: true, entry: { label: "Sara", until: "2026-10-05", note: "Leave" } });
     const stored = { sara: { label: "Sara", until: "2026-10-05", note: "Leave", by: PERSON.login, via: "web", at: iso(NOW) } };
-    expect(await db.hgetall(SEC_KEYS.away(u.email))).toEqual(stored);
-    expect((await calFor(u.email, NOW)).away.sara).toEqual({ label: "Sara", until: "2026-10-05", endedAt: "2026-10-05" });
+    expect(await db.hgetall(SEC_KEYS.away(acct(u)))).toEqual(stored);
+    expect((await calFor(acct(u), NOW)).away.sara).toEqual({ label: "Sara", until: "2026-10-05", endedAt: "2026-10-05" });
     // Two ends in a row (a double click on "End now", or the next day): the entry stays as the first end left it, with
     // its back alert.
-    expect(await endAway(u.email, "Sara", PERSON, NOW, "Asia/Riyadh")).toMatchObject({ ok: true, removed: false, changed: false, entry: { until: "2026-10-05" } });
-    expect(await endAway(u.email, "sara", PERSON, NOW + 864e5, "Asia/Riyadh")).toMatchObject({ ok: true, removed: false, changed: false });
-    expect(await db.hgetall(SEC_KEYS.away(u.email))).toEqual(stored);
+    expect(await endAway(acct(u), "Sara", PERSON, NOW, "Asia/Riyadh")).toMatchObject({ ok: true, removed: false, changed: false, entry: { until: "2026-10-05" } });
+    expect(await endAway(acct(u), "sara", PERSON, NOW + 864e5, "Asia/Riyadh")).toMatchObject({ ok: true, removed: false, changed: false });
+    expect(await db.hgetall(SEC_KEYS.away(acct(u)))).toEqual(stored);
     // Today was the last away day: ending it now still makes yesterday the last one.
-    await setAway(u.email, { label: "Huda", until: "2026-10-06" }, PERSON, NOW, "Asia/Riyadh");
-    expect(await endAway(u.email, "Huda", PERSON, NOW, "Asia/Riyadh")).toMatchObject({ ok: true, removed: false, changed: true, entry: { until: "2026-10-05" } });
+    await setAway(acct(u), { label: "Huda", until: "2026-10-06" }, PERSON, NOW, "Asia/Riyadh");
+    expect(await endAway(acct(u), "Huda", PERSON, NOW, "Asia/Riyadh")).toMatchObject({ ok: true, removed: false, changed: true, entry: { until: "2026-10-05" } });
     // Only an explicit remove deletes the field: an ended one (freeing it for the cap), or a running one.
-    expect(await endAway(u.email, "Sara", PERSON, NOW, "Asia/Riyadh", { remove: true })).toMatchObject({ ok: true, removed: true, changed: true, entry: { label: "Sara" } });
-    await setAway(u.email, { label: "Nour", until: "2026-10-20" }, PERSON, NOW, "Asia/Riyadh");
-    expect(await endAway(u.email, "Nour", PERSON, NOW, "Asia/Riyadh", { remove: true })).toMatchObject({ ok: true, removed: true });
-    expect(await awayKeys(u.email)).toEqual(["huda"]);
-    expect(await endAway(u.email, "Sara", PERSON, NOW, "Asia/Riyadh", { remove: true })).toMatchObject({ ok: false, error: "not_found", status: 404 });
-    expect(await endAway(u.email, "Nobody", PERSON, NOW, "Asia/Riyadh")).toMatchObject({ ok: false, error: "not_found", status: 404 });
-    expect(await endAway(u.email, 42, PERSON, NOW, "Asia/Riyadh")).toMatchObject({ ok: false, error: "bad_request", field: "label" });
-    expect(await endAway(u.email, "a".repeat(81), PERSON, NOW, "Asia/Riyadh")).toMatchObject({ ok: false, error: "too_long", field: "label" });
+    expect(await endAway(acct(u), "Sara", PERSON, NOW, "Asia/Riyadh", { remove: true })).toMatchObject({ ok: true, removed: true, changed: true, entry: { label: "Sara" } });
+    await setAway(acct(u), { label: "Nour", until: "2026-10-20" }, PERSON, NOW, "Asia/Riyadh");
+    expect(await endAway(acct(u), "Nour", PERSON, NOW, "Asia/Riyadh", { remove: true })).toMatchObject({ ok: true, removed: true });
+    expect(await awayKeys(acct(u))).toEqual(["huda"]);
+    expect(await endAway(acct(u), "Sara", PERSON, NOW, "Asia/Riyadh", { remove: true })).toMatchObject({ ok: false, error: "not_found", status: 404 });
+    expect(await endAway(acct(u), "Nobody", PERSON, NOW, "Asia/Riyadh")).toMatchObject({ ok: false, error: "not_found", status: 404 });
+    expect(await endAway(acct(u), 42, PERSON, NOW, "Asia/Riyadh")).toMatchObject({ ok: false, error: "bad_request", field: "label" });
+    expect(await endAway(acct(u), "a".repeat(81), PERSON, NOW, "Asia/Riyadh")).toMatchObject({ ok: false, error: "too_long", field: "label" });
   });
 
   it(`cleanAway removes only fields whose until is more than ${AWAY_KEEP_DAYS} days past (and values that are not entries), all in one round of HDEL`, async () => {
     const u = await owner("aw482f");
-    const key = SEC_KEYS.away(u.email);
+    const key = SEC_KEYS.away(acct(u));
     await Promise.all([
       db.hset(key, "old31", awayEntry("Old 31", "2026-09-05")),
       db.hset(key, "old30", awayEntry("Old 30", "2026-09-06")),
@@ -541,27 +542,27 @@ describe("rule 482: the away list's limits: dates, the 200-field cap, the note, 
     const gate = new Promise<void>((r) => { open = r; });
     const real = db.hdel.bind(db);
     const hdel = vi.spyOn(db, "hdel").mockImplementation(async (k, f) => { await gate; return real(k, f); });
-    const run = cleanAway(u.email, NOW, "Asia/Riyadh");
+    const run = cleanAway(acct(u), NOW, "Asia/Riyadh");
     await vi.waitFor(() => expect(hdel).toHaveBeenCalledTimes(2));
     open();
     expect(await run).toBe(2);
     expect(hdel.mock.calls.map((c) => c[1]).sort()).toEqual(["junk", "old31"]);
-    expect(await awayKeys(u.email)).toEqual(["ended8", "later", "old30", "today"]);
-    expect((await auditLines(u.email)).map((l) => [l.action, l.actor, l.diff])).toEqual([["away_clean", "cron", "2 away contact(s) ended over 30 days ago"]]);
+    expect(await awayKeys(acct(u))).toEqual(["ended8", "later", "old30", "today"]);
+    expect((await auditLines(acct(u))).map((l) => [l.action, l.actor, l.diff])).toEqual([["away_clean", "cron", "2 away contact(s) ended over 30 days ago"]]);
     hdel.mockRestore();
     // Nothing left to remove: one read, no lock, no audit line.
     const lock = vi.spyOn(db, "lock");
-    expect(await cleanAway(u.email, NOW, "Asia/Riyadh")).toBe(0);
+    expect(await cleanAway(acct(u), NOW, "Asia/Riyadh")).toBe(0);
     expect(lock).not.toHaveBeenCalled();
-    expect(await auditLines(u.email)).toHaveLength(1);
+    expect(await auditLines(acct(u))).toHaveLength(1);
   });
 
   it("secretaryDaily runs the clean-up next to the purge", async () => {
     const u = await owner("aw482g");
-    await Promise.all([db.hset(SEC_KEYS.away(u.email), "old", awayEntry("Old", "2026-08-01")), db.hset(SEC_KEYS.away(u.email), "sara", awayEntry("Sara", "2026-10-09"))]);
-    const r = await secretaryDaily(u.email, NOW);
+    await Promise.all([db.hset(SEC_KEYS.away(acct(u)), "old", awayEntry("Old", "2026-08-01")), db.hset(SEC_KEYS.away(acct(u)), "sara", awayEntry("Sara", "2026-10-09"))]);
+    const r = await secretaryDaily(acct(u), NOW);
     expect(r).toMatchObject({ purged: 0, closed: 0, awayCleaned: 1 });
-    expect(await awayKeys(u.email)).toEqual(["sara"]);
+    expect(await awayKeys(acct(u))).toEqual(["sara"]);
     // A store failure in the clean-up does not stop the daily job (the agenda and the auto-close still run). Fresh
     // modules: an earlier test resets the registry, and the daily job loads secretary-away.ts (and its `db`) by a dynamic
     // import, so the spy must sit on the instance that graph uses. The clean-up's read is the job's first HGETALL.
@@ -569,24 +570,24 @@ describe("rule 482: the away list's limits: dates, the 200-field cap, the note, 
     const fresh = { db: (await import("@/lib/db")).db, daily: (await import("@/lib/secretary")).secretaryDaily };
     const errors = vi.spyOn(console, "error").mockImplementation(() => {});
     vi.spyOn(fresh.db, "hgetall").mockRejectedValueOnce(new TypeError("store down"));
-    await db.hset(SEC_KEYS.away(u.email), "old", awayEntry("Old", "2026-08-01"));
-    expect(await fresh.daily(u.email, NOW)).toMatchObject({ awayCleaned: 0, closed: 0 });
+    await db.hset(SEC_KEYS.away(acct(u)), "old", awayEntry("Old", "2026-08-01"));
+    expect(await fresh.daily(acct(u), NOW)).toMatchObject({ awayCleaned: 0, closed: 0 });
     expect(errors.mock.calls).toContainEqual(["sec away clean-up failed", { error: "TypeError" }]);
-    expect(await awayKeys(u.email)).toEqual(["old", "sara"]);
+    expect(await awayKeys(acct(u))).toEqual(["old", "sara"]);
   });
 
   it("every write leaves an away or away_end audit line with the login, the label and the date", async () => {
     const u = await owner("aw482h");
-    await setAway(u.email, { label: "أحمد", until: "2026-10-08", note: "Private note" }, PERSON, NOW, "Asia/Riyadh");
-    await setAway(u.email, { label: "احمد", until: "2026-10-09" }, PERSON, NOW, "Asia/Riyadh");
-    await endAway(u.email, "أحمد", PERSON, NOW, "Asia/Riyadh");
+    await setAway(acct(u), { label: "أحمد", until: "2026-10-08", note: "Private note" }, PERSON, NOW, "Asia/Riyadh");
+    await setAway(acct(u), { label: "احمد", until: "2026-10-09" }, PERSON, NOW, "Asia/Riyadh");
+    await endAway(acct(u), "أحمد", PERSON, NOW, "Asia/Riyadh");
     // Ending it again changes nothing, so it writes no line (ruling R21); removing it does.
-    await endAway(u.email, "أحمد", PERSON, NOW, "Asia/Riyadh");
-    await endAway(u.email, "أحمد", PERSON, NOW, "Asia/Riyadh", { remove: true });
+    await endAway(acct(u), "أحمد", PERSON, NOW, "Asia/Riyadh");
+    await endAway(acct(u), "أحمد", PERSON, NOW, "Asia/Riyadh", { remove: true });
     // Refusals write nothing.
-    await setAway(u.email, { label: "reem", until: "2026-10-08" }, PERSON, NOW, "Asia/Riyadh");
-    await endAway(u.email, "Nobody", PERSON, NOW, "Asia/Riyadh");
-    const lines = await auditLines(u.email);
+    await setAway(acct(u), { label: "reem", until: "2026-10-08" }, PERSON, NOW, "Asia/Riyadh");
+    await endAway(acct(u), "Nobody", PERSON, NOW, "Asia/Riyadh");
+    const lines = await auditLines(acct(u));
     expect(lines.map((l) => [l.action, l.actor, l.via, l.login, l.diff])).toEqual([
       ["away", "owner", "web", PERSON.login, 'label="أحمد"; until=2026-10-08'],
       ["away", "owner", "web", PERSON.login, 'label="احمد"; until=2026-10-09'],
@@ -629,28 +630,28 @@ describe("rule 483: the away route (GET, PUT, DELETE /api/secretary/away): a ses
       expect(r.status).toBe(200);
       const entry = { label: "Sara", until: "2026-10-09", note: "Leave", by: m.email, via: "web", at: iso(NOW) };
       expect((await r.json()).entry).toEqual(entry);
-      expect(await db.hgetall(SEC_KEYS.away(o.email))).toEqual({ sara: entry });
+      expect(await db.hgetall(SEC_KEYS.away(acct(o)))).toEqual({ sara: entry });
       expect(await db.hgetall(SEC_KEYS.away("other@test.example"))).toEqual({});
       expect(await (await awayGet()).json()).toEqual({ ok: true, entries: [{ ...entry, ended: false }] });
       const d = await awayDel({ label: "sara", until: "2027-01-01" });
       expect(d.status).toBe(200);
       expect(await d.json()).toMatchObject({ ok: true, removed: false, changed: true, entry: { label: "Sara", until: "2026-10-05" } });
       expect((await (await awayGet()).json()).entries).toEqual([{ ...entry, until: "2026-10-05", ended: true }]);
-      expect((await auditLines(o.email)).map((l) => [l.action, l.login])).toEqual([["away", m.email], ["away_end", m.email]]);
+      expect((await auditLines(acct(o))).map((l) => [l.action, l.login])).toEqual([["away", m.email], ["away_end", m.email]]);
       // DELETE is idempotent (ruling R21): a second "End now" is 200 and keeps the ended entry; removing it takes
       // `remove: true`, which must be a boolean.
       const again = await awayDel({ label: "Sara" });
       expect(again.status).toBe(200);
       expect(await again.json()).toMatchObject({ ok: true, removed: false, changed: false, entry: { until: "2026-10-05" } });
       expect((await (await awayGet()).json()).entries).toEqual([{ ...entry, until: "2026-10-05", ended: true }]);
-      expect(await auditLines(o.email)).toHaveLength(2);
+      expect(await auditLines(acct(o))).toHaveLength(2);
       for (const remove of ["yes", 1, null]) expect((await awayDel({ label: "Sara", remove })).status, JSON.stringify(remove)).toBe(400);
-      expect(await awayKeys(o.email)).toEqual(["sara"]);
+      expect(await awayKeys(acct(o))).toEqual(["sara"]);
       const gone = await awayDel({ label: "Sara", remove: true });
       expect(gone.status).toBe(200);
       expect(await gone.json()).toMatchObject({ ok: true, removed: true, changed: true });
       expect((await (await awayGet()).json()).entries).toEqual([]);
-      expect((await auditLines(o.email)).map((l) => [l.action, l.login, l.diff])).toEqual([["away", m.email, 'label="Sara"; until=2026-10-09'], ["away_end", m.email, 'label="Sara"; until=2026-10-05'], ["away_end", m.email, 'label="Sara"; removed']]);
+      expect((await auditLines(acct(o))).map((l) => [l.action, l.login, l.diff])).toEqual([["away", m.email, 'label="Sara"; until=2026-10-09'], ["away_end", m.email, 'label="Sara"; until=2026-10-05'], ["away_end", m.email, 'label="Sara"; removed']]);
       // Refusals keep their code and field; a body that is not an object is bad_request.
       expect(await (await awayPut({ label: "reem", until: "2026-10-09" })).json()).toEqual({ ok: false, error: "not_contact", field: "label" });
       expect((await awayPut({ label: "Huda", until: "2026-10-05" })).status).toBe(400);
@@ -666,27 +667,27 @@ describe("rule 483: the away route (GET, PUT, DELETE /api/secretary/away): a ses
     await at(NOW, async () => {
       const u = await owner("aw483b");
       await signIn(u.email);
-      await db.hset(SEC_KEYS.away(u.email), "sara", awayEntry("Sara", "2026-10-09"));
+      await db.hset(SEC_KEYS.away(acct(u)), "sara", awayEntry("Sara", "2026-10-09"));
       await db.set(`rate:sec:read:${u.email}`, SEC_READS_PER_HOUR, 3600);
       expect((await awayGet()).status).toBe(429);
       await db.set(`rate:sec:write:${u.email}`, SEC_WRITES_PER_HOUR, 3600);
       expect((await awayPut({ label: "Huda", until: "2026-10-09" })).status).toBe(429);
       expect((await awayDel({ label: "Sara" })).status).toBe(429);
-      expect(await db.hgetall(SEC_KEYS.away(u.email))).toEqual({ sara: awayEntry("Sara", "2026-10-09") });
+      expect(await db.hgetall(SEC_KEYS.away(acct(u)))).toEqual({ sara: awayEntry("Sara", "2026-10-09") });
     });
   });
 
   it("a PUT in brand A never touches brand B's hash, whatever the body names, and a DELETE in A cannot end B's entry", async () => {
     await at(NOW, async () => {
       const u = await owner("aw483c", BRAND);
-      const b2 = scopeFor(u.email, "b2");
-      await saveBrands(u.email, [{ id: "default", name: "", createdAt: new Date().toISOString(), status: "active" }, { id: "b2", name: "Two", createdAt: new Date().toISOString(), status: "active" }]);
+      const b2 = scopeFor(acct(u), "b2");
+      await saveBrands(acct(u), [{ id: "default", name: "", createdAt: new Date().toISOString(), status: "active" }, { id: "b2", name: "Two", createdAt: new Date().toISOString(), status: "active" }]);
       await saveBrand(b2, { ...BRAND, name: "Two" });
       await signIn(u.email);
       await seedActiveBrand(u.email, "b2");
-      expect((await awayPut({ label: "Sara", until: "2026-10-09", scope: u.email })).status).toBe(200);
+      expect((await awayPut({ label: "Sara", until: "2026-10-09", scope: acct(u) })).status).toBe(200);
       expect(await awayKeys(b2)).toEqual(["sara"]);
-      expect(await awayKeys(u.email)).toEqual([]);
+      expect(await awayKeys(acct(u))).toEqual([]);
       await seedActiveBrand(u.email, "default");
       expect((await awayDel({ label: "Sara", scope: b2 })).status).toBe(404);
       expect((await (await awayGet()).json()).entries).toEqual([]);
@@ -698,7 +699,7 @@ describe("rule 483: the away route (GET, PUT, DELETE /api/secretary/away): a ses
     await at(NOW, async () => {
       const u = await owner("aw483d");
       await signIn(u.email);
-      const key = SEC_KEYS.away(u.email);
+      const key = SEC_KEYS.away(acct(u));
       await Promise.all([
         db.hset(key, "a", awayEntry("A", "2026-10-20")),
         db.hset(key, "b", awayEntry("B", "2026-10-06")),
@@ -708,7 +709,7 @@ describe("rule 483: the away route (GET, PUT, DELETE /api/secretary/away): a ses
       ]);
       const j = await (await awayGet()).json();
       expect(j.entries.map((e: { label: string; ended: boolean }) => [e.label, e.ended])).toEqual([["B", false], ["A", false], ["C", true], ["D", true]]);
-      expect(await listAway(u.email, NOW, "Asia/Riyadh")).toEqual(j.entries);
+      expect(await listAway(acct(u), NOW, "Asia/Riyadh")).toEqual(j.entries);
     });
   });
 });
@@ -743,8 +744,8 @@ describe("rule 484: the Working days route (GET, PUT /api/secretary/calendar): a
       const r = await calPut({ weekend: [5] });
       expect(r.status).toBe(403);
       expect(await r.json()).toEqual({ error: "forbidden" });
-      expect(await storedCal(o.email)).toBeNull();
-      expect(await auditLines(o.email)).toEqual([]);
+      expect(await storedCal(acct(o))).toBeNull();
+      expect(await auditLines(acct(o))).toEqual([]);
       expect(await db.get(`rate:sec:cal:${o.email}`)).toBeNull();
     });
   });
@@ -758,15 +759,15 @@ describe("rule 484: the Working days route (GET, PUT /api/secretary/calendar): a
       const body = { weekend: [5], ramadanHours: [{ from: "10:00", to: "14:00" }], holidays: { add: ["2026-12-24", "05-01"], remove: ["02-22"] } };
       const r = await calPut(body);
       expect(r.status).toBe(200);
-      const saved = await storedCal(o.email);
+      const saved = await storedCal(acct(o));
       expect(saved).toEqual(parsed(body, NOW, a.email));
       expect(saved).toEqual({
         v: 1, weekend: [5], ramadanHours: [{ from: "10:00", to: "14:00" }], hijriFix: {}, holidays: { add: ["2026-12-24", "05-01"], remove: ["02-22"] },
         updatedAt: iso(NOW), updatedBy: a.email,
       });
-      expect(locks).toHaveBeenCalledWith(SEC_KEYS.lock(o.email, "cal"), expect.any(Number));
-      expect((await auditLines(o.email)).map((l) => [l.action, l.actor, l.via, l.login, l.id])).toEqual([["calendar", "owner", "web", a.email, "-"]]);
-      expect((await auditLines(o.email))[0].diff).toBe("weekend=[5]; ramadanHours=10:00-14:00; hijriFix=none; holidays +2 -1");
+      expect(locks).toHaveBeenCalledWith(SEC_KEYS.lock(acct(o), "cal"), expect.any(Number));
+      expect((await auditLines(acct(o))).map((l) => [l.action, l.actor, l.via, l.login, l.id])).toEqual([["calendar", "owner", "web", a.email, "-"]]);
+      expect((await auditLines(acct(o)))[0].diff).toBe("weekend=[5]; ramadanHours=10:00-14:00; hijriFix=none; holidays +2 -1");
       // The answer is what GET gives, so the page can show the new effective week and the next quiet days without a second request.
       const j = await r.json();
       expect(j).toMatchObject({ ok: true, calendar: saved, effective: { country: "SA", zone: "Asia/Riyadh", weekend: [5], defaultWeekend: [5, 6], weekStart: 6, ramadanHours: [{ from: "10:00", to: "14:00" }] } });
@@ -775,7 +776,7 @@ describe("rule 484: the Working days route (GET, PUT /api/secretary/calendar): a
       // The owner of the account saves too.
       await signIn(o.email);
       expect((await calPut({ weekend: [6] })).status).toBe(200);
-      expect((await storedCal(o.email))?.updatedBy).toBe(o.email);
+      expect((await storedCal(acct(o)))?.updatedBy).toBe(o.email);
     });
   });
 
@@ -787,8 +788,8 @@ describe("rule 484: the Working days route (GET, PUT /api/secretary/calendar): a
       const r = await calPut({ weekend: [3] });
       expect(r.status).toBe(429);
       expect(await r.json()).toEqual({ ok: false, error: "too_many" });
-      expect((await storedCal(o.email))?.weekend).toEqual([5]);
-      expect(await auditLines(o.email)).toHaveLength(30);
+      expect((await storedCal(acct(o)))?.weekend).toEqual([5]);
+      expect(await auditLines(acct(o))).toHaveLength(30);
       expect((await calGet()).status).toBe(200);
       await db.set(`rate:sec:read:${o.email}`, SEC_READS_PER_HOUR, 3600);
       expect((await calGet()).status).toBe(429);
@@ -844,8 +845,8 @@ describe("rule 484: the Working days route (GET, PUT /api/secretary/calendar): a
         expect(r.status, JSON.stringify(body)).toBe(400);
         expect(await r.json(), JSON.stringify(body)).toEqual({ ok: false, ...want });
       }
-      expect(await storedCal(o.email)).toBeNull();
-      expect(await auditLines(o.email)).toEqual([]);
+      expect(await storedCal(acct(o))).toBeNull();
+      expect(await auditLines(acct(o))).toEqual([]);
       // A request with no body at all, or one that is not JSON, is bad_request too.
       expect((await calRoute.PUT(new Request("https://nashr.test/api/secretary/calendar", { method: "PUT" }))).status).toBe(400);
       expect((await calRoute.PUT(new Request("https://nashr.test/api/secretary/calendar", { method: "PUT", body: "{not json" }))).status).toBe(400);
@@ -871,14 +872,14 @@ describe("rule 484: the Working days route (GET, PUT /api/secretary/calendar): a
       // GET → PUT, the whole object as it came, `v`, `updatedAt` and `updatedBy` included.
       const r = await calPut(got);
       expect(r.status).toBe(200);
-      expect(await storedCal(o.email)).toEqual({ ...got, updatedAt: iso(t2), updatedBy: second.email });
+      expect(await storedCal(acct(o))).toEqual({ ...got, updatedAt: iso(t2), updatedBy: second.email });
       expect((await r.json()).calendar).toEqual({ ...got, updatedAt: iso(t2), updatedBy: second.email });
       // Nothing saved yet: GET says null, and the defaults the page then shows save as they are.
       const v = await owner("c484t0");
       await signIn(v.email);
       expect((await (await calGet()).json()).calendar).toBeNull();
       expect((await calPut({})).status).toBe(200);
-      expect(await storedCal(v.email)).toEqual({ v: 1, weekend: null, ramadanHours: null, hijriFix: {}, holidays: { add: [], remove: [] }, updatedAt: iso(t2), updatedBy: v.email });
+      expect(await storedCal(acct(v))).toEqual({ v: 1, weekend: null, ramadanHours: null, hijriFix: {}, holidays: { add: [], remove: [] }, updatedAt: iso(t2), updatedBy: v.email });
       expect((await (await calGet()).json()).effective.weekend).toEqual([5, 6]);
     });
   });
@@ -889,7 +890,7 @@ describe("rule 484: the Working days route (GET, PUT /api/secretary/calendar): a
       const o = await owner("c484bad");
       await signIn(o.email);
       for (const bad of ["weekend=5", ["x"], { v: 1, holidays: { add: "x" } }]) {
-        await db.set(SEC_KEYS.cal(o.email), bad);
+        await db.set(SEC_KEYS.cal(acct(o)), bad);
         const r = await calGet();
         expect(r.status, JSON.stringify(bad)).toBe(200);
         const j = await r.json();
@@ -899,7 +900,7 @@ describe("rule 484: the Working days route (GET, PUT /api/secretary/calendar): a
       // Only the error's name is logged, never the stored value.
       expect(errors.mock.calls).toEqual([["sec calendar unreadable, defaults used", { error: "TypeError" }]]);
       expect((await calPut({ weekend: [5] })).status).toBe(200);
-      expect((await storedCal(o.email))?.weekend).toEqual([5]);
+      expect((await storedCal(acct(o)))?.weekend).toEqual([5]);
     });
   });
 
@@ -911,13 +912,13 @@ describe("rule 484: the Working days route (GET, PUT /api/secretary/calendar): a
       expect((await calPut({ holidays: { add: [], remove: ["2027-05-18"] } })).status).toBe(200);
       const adha: EidDay = (await (await calGet()).json()).eids.find((e: EidDay) => e.year === 1448 && e.kind === "eid_adha");
       expect(adha).toMatchObject({ uq: "2027-05-07", earlier: "2027-05-06" });
-      const earlier = await calPut(withEid(await storedCal(k.email), adha, adha.earlier!));
+      const earlier = await calPut(withEid(await storedCal(acct(k)), adha, adha.earlier!));
       expect(earlier.status).toBe(200);
-      expect(await storedCal(k.email)).toMatchObject({ hijriFix: { "1448": { dhulhijja1: "2027-05-06" } }, holidays: { remove: ["2027-05-18"] } });
+      expect(await storedCal(acct(k))).toMatchObject({ hijriFix: { "1448": { dhulhijja1: "2027-05-06" } }, holidays: { remove: ["2027-05-18"] } });
       // "Turn on" takes it out; turning it off again is a new removal no default produces now, so it is refused.
-      expect((await calPut(withHolidayOff(await storedCal(k.email), "2027-05-18", false))).status).toBe(200);
-      expect((await storedCal(k.email))?.holidays.remove).toEqual([]);
-      const again = await calPut(withHolidayOff(await storedCal(k.email), "2027-05-18", true));
+      expect((await calPut(withHolidayOff(await storedCal(acct(k)), "2027-05-18", false))).status).toBe(200);
+      expect((await storedCal(acct(k)))?.holidays.remove).toEqual([]);
+      const again = await calPut(withHolidayOff(await storedCal(acct(k)), "2027-05-18", true));
       expect(again.status).toBe(400);
       expect(await again.json()).toEqual({ ok: false, error: "holidays_invalid", field: "holidays.remove" });
 
@@ -926,14 +927,14 @@ describe("rule 484: the Working days route (GET, PUT /api/secretary/calendar): a
       const s = await owner("c484sa");
       await signIn(s.email);
       expect((await calPut({ holidays: { add: [], remove: ["2027-02-22", "2027-09-23"] } })).status).toBe(200);
-      await saveBrand(s.email, DUBAI_BRAND);
+      await saveBrand(acct(s), DUBAI_BRAND);
       const got = (await (await calGet()).json()).calendar as SecCalendar;
       expect(got.holidays.remove).toEqual(["2027-02-22", "2027-09-23"]);
       expect((await calPut(got)).status).toBe(200);
       expect((await calPut(withWeekend(got, [5, 6], [6, 0]))).status).toBe(200);
-      expect((await calPut(withHolidayOff(await storedCal(s.email), "2027-02-22", false))).status).toBe(200);
-      expect(await storedCal(s.email)).toMatchObject({ weekend: [5, 6], holidays: { remove: ["2027-09-23"] } });
-      const unknown = await calPut(withHolidayOff(await storedCal(s.email), "2027-09-24", true));
+      expect((await calPut(withHolidayOff(await storedCal(acct(s)), "2027-02-22", false))).status).toBe(200);
+      expect(await storedCal(acct(s))).toMatchObject({ weekend: [5, 6], holidays: { remove: ["2027-09-23"] } });
+      const unknown = await calPut(withHolidayOff(await storedCal(acct(s)), "2027-09-24", true));
       expect(unknown.status).toBe(400);
       expect(await unknown.json()).toEqual({ ok: false, error: "holidays_invalid", field: "holidays.remove" });
       // The panel lists the stored removal no default produces, with its "make it a day off again" button.
@@ -950,19 +951,19 @@ describe("rule 484: the Working days route (GET, PUT /api/secretary/calendar): a
   it("a PUT in brand B stores under B's scope alone, whatever the body names, and each brand's GET reads its own", async () => {
     await at(NOW, async () => {
       const u = await owner("c484b", BRAND);
-      const b2 = scopeFor(u.email, "b2");
-      await saveBrands(u.email, [{ id: "default", name: "", createdAt: new Date().toISOString(), status: "active" }, { id: "b2", name: "Two", createdAt: new Date().toISOString(), status: "active" }]);
+      const b2 = scopeFor(acct(u), "b2");
+      await saveBrands(acct(u), [{ id: "default", name: "", createdAt: new Date().toISOString(), status: "active" }, { id: "b2", name: "Two", createdAt: new Date().toISOString(), status: "active" }]);
       await saveBrand(b2, { ...BRAND, name: "Two" });
       await signIn(u.email);
       await seedActiveBrand(u.email, "b2");
-      expect((await calPut({ weekend: [5], scope: u.email })).status).toBe(400);
-      expect(await Promise.all([storedCal(u.email), storedCal(b2)])).toEqual([null, null]);
+      expect((await calPut({ weekend: [5], scope: acct(u) })).status).toBe(400);
+      expect(await Promise.all([storedCal(acct(u)), storedCal(b2)])).toEqual([null, null]);
       expect((await calPut({ weekend: [5] })).status).toBe(200);
       expect((await storedCal(b2))?.weekend).toEqual([5]);
-      expect(await storedCal(u.email)).toBeNull();
+      expect(await storedCal(acct(u))).toBeNull();
       expect((await (await calGet()).json()).calendar.weekend).toEqual([5]);
       expect((await auditLines(b2)).map((l) => l.action)).toEqual(["calendar"]);
-      expect(await auditLines(u.email)).toEqual([]);
+      expect(await auditLines(acct(u))).toEqual([]);
       await seedActiveBrand(u.email, "default");
       const j = await (await calGet()).json();
       expect(j.calendar).toBeNull();
@@ -976,22 +977,22 @@ describe("rule 484: the Working days route (GET, PUT /api/secretary/calendar): a
       await signIn(o.email);
       const rs = await Promise.all([calPut({ weekend: [5] }), calPut({ weekend: [4] })]);
       expect(rs.map((r) => r.status)).toEqual([200, 200]);
-      expect([[5], [4]]).toContainEqual((await storedCal(o.email))?.weekend);
-      expect(await auditLines(o.email)).toHaveLength(2);
+      expect([[5], [4]]).toContainEqual((await storedCal(acct(o)))?.weekend);
+      expect(await auditLines(acct(o))).toHaveLength(2);
     });
     vi.useFakeTimers();
     vi.setSystemTime(NOW);
     try {
       const o = await owner("c484l");
       await signIn(o.email);
-      expect(await db.lock(SEC_KEYS.lock(o.email, "cal"), 30)).toBe(true);
+      expect(await db.lock(SEC_KEYS.lock(acct(o), "cal"), 30)).toBe(true);
       const p = calPut({ weekend: [5] });
       await vi.advanceTimersByTimeAsync(4000);
       const r = await p;
       expect(r.status).toBe(503);
       expect(await r.json()).toEqual({ ok: false, error: "lock_timeout" });
-      expect(await storedCal(o.email)).toBeNull();
-      expect(await auditLines(o.email)).toEqual([]);
+      expect(await storedCal(acct(o))).toBeNull();
+      expect(await auditLines(acct(o))).toEqual([]);
     } finally {
       vi.useRealTimers();
     }
@@ -1005,7 +1006,7 @@ describe("rule 484: the Working days route (GET, PUT /api/secretary/calendar): a
       await signIn(a.email);
       // Expected on Saturday 3 October 10:00: the zone's own weekend (Friday and Saturday) holds it until Sunday 08:00.
       await make(o, { title: "Quote", direction: "they_owe", owedBy: "أحمد", expectBy: "2026-10-03T10:00" });
-      const before = await agendaFor(o.email, sat);
+      const before = await agendaFor(acct(o), sat);
       expect(before.buckets.chase).toEqual([]);
       expect(before.buckets.waiting.map((e) => [e.item.title, e.next, e.moment?.why, e.moment?.at])).toEqual([["Quote", "wait", "quiet", local("2026-10-04T08:00")]]);
       const put = await calPut({ weekend: [5] });
@@ -1013,7 +1014,7 @@ describe("rule 484: the Working days route (GET, PUT /api/secretary/calendar): a
       // The week in force is Friday alone; the zone's own weekend, which the page marks as the default, is still Friday and Saturday.
       expect((await put.json()).effective).toMatchObject({ weekend: [5], defaultWeekend: [5, 6], weekStart: 6 });
       // The same list at the same instant, read again: Friday alone is the weekend, so Saturday is a working day.
-      const after = await agendaFor(o.email, sat);
+      const after = await agendaFor(acct(o), sat);
       expect(after.buckets.waiting).toEqual([]);
       expect(after.buckets.chase.map((e) => [e.item.title, e.next, e.moment?.why, e.moment?.at])).toEqual([["Quote", "chase", "normal", local("2026-10-03T10:00")]]);
       expect(after.cal.weekend).toEqual([5]);
@@ -1042,17 +1043,17 @@ describe("rule 485: contact_away proposes an absence on a card in Reem's chat, a
       const q = await make(u, { title: "Quote", direction: "they_owe", owedBy: "احمد", dueAt: "2026-10-05T10:00" });
       await make(u, { title: "Invoice", direction: "they_owe", owedBy: "أحمد" });
       const closed = await make(u, { title: "Old", direction: "they_owe", owedBy: "احمد" });
-      expect((await changeItem(u.email, closed.id, { action: "complete", result: "ok" }, PERSON)).ok).toBe(true);
+      expect((await changeItem(acct(u), closed.id, { action: "complete", result: "ok" }, PERSON)).ok).toBe(true);
       await make(u, { title: "Other", direction: "they_owe", owedBy: "Sara" });
       await make(u, { title: "Mine" });
       return q;
     });
     await at(NOW, async () => {
-      const before = await auditLines(u.email);
+      const before = await auditLines(acct(u));
       const { text, awayProposed, actions, p } = await contactAway(u, { name: "إحمد", until: "2026-10-08" });
       // Nothing saved: no field, no audit line.
-      expect(await db.hgetall(SEC_KEYS.away(u.email))).toEqual({});
-      expect(await auditLines(u.email)).toEqual(before);
+      expect(await db.hgetall(SEC_KEYS.away(acct(u)))).toEqual({});
+      expect(await auditLines(acct(u))).toEqual(before);
       expect(awayProposed).toHaveLength(1);
       // Two open items are owed by that contact however it is written; the closed one and Sara's are not counted.
       expect(p).toEqual({ id: expect.stringMatching(/^[a-f0-9]{16}$/), label: "إحمد", key: "احمد", until: "2026-10-08", openItems: 2, contact: quote.owedBy, at: iso(NOW) });
@@ -1064,12 +1065,12 @@ describe("rule 485: contact_away proposes an absence on a card in Reem's chat, a
       expect(text).toContain("2 open items");
       // Stored for 7 days under the caller's scope, its id in the scope's index (for the account wipe).
       expect(AWAY_PROPOSAL_TTL_S).toBe(7 * 86400);
-      expect(await db.get(SEC_KEYS.awayProp(u.email, p.id))).toEqual(p);
-      const ttl = await db.ttl(SEC_KEYS.awayProp(u.email, p.id));
+      expect(await db.get(SEC_KEYS.awayProp(acct(u), p.id))).toEqual(p);
+      const ttl = await db.ttl(SEC_KEYS.awayProp(acct(u), p.id));
       expect(ttl).toBeGreaterThan(AWAY_PROPOSAL_TTL_S - 60);
       expect(ttl).toBeLessThanOrEqual(AWAY_PROPOSAL_TTL_S);
-      expect(await propIds(u.email)).toEqual([p.id]);
-      expect(await db.get(SEC_KEYS.awayPropDone(u.email, p.id))).toBeNull();
+      expect(await propIds(acct(u))).toEqual([p.id]);
+      expect(await db.get(SEC_KEYS.awayPropDone(acct(u), p.id))).toBeNull();
       // A name no open item is owed by: no contact, 0 items, and the answer asks Reem to check the spelling.
       const none = await contactAway(u, { name: "Ahmad", until: "2026-10-08" });
       expect(none.p).toMatchObject({ label: "Ahmad", key: "ahmad", openItems: 0 });
@@ -1089,36 +1090,36 @@ describe("rule 485: contact_away proposes an absence on a card in Reem's chat, a
       expect(r.status).toBe(200);
       const entry = { label: "Sara", until: "2026-10-09", by: m.email, via: "web", at: iso(NOW) };
       expect(await r.json()).toEqual({ ok: true, state: "saved", entry });
-      expect(await db.hgetall(SEC_KEYS.away(o.email))).toEqual({ sara: entry });
-      expect((await awayAudit(o.email)).map((l) => [l.action, l.actor, l.via, l.login, l.diff])).toEqual([["away", "owner", "web", m.email, `label="Sara"; until=2026-10-09; proposed in Reem's chat (${p.id})`]]);
+      expect(await db.hgetall(SEC_KEYS.away(acct(o)))).toEqual({ sara: entry });
+      expect((await awayAudit(acct(o))).map((l) => [l.action, l.actor, l.via, l.login, l.diff])).toEqual([["away", "owner", "web", m.email, `label="Sara"; until=2026-10-09; proposed in Reem's chat (${p.id})`]]);
       // Decided once: the record goes, the outcome stays at most 7 days, and a second Save or a Dismiss is refused.
-      expect(await db.get(SEC_KEYS.awayProp(o.email, p.id))).toBeNull();
-      expect(await db.get(SEC_KEYS.awayPropDone(o.email, p.id))).toBe("saved");
-      expect(await db.ttl(SEC_KEYS.awayPropDone(o.email, p.id))).toBeLessThanOrEqual(AWAY_PROPOSAL_TTL_S);
+      expect(await db.get(SEC_KEYS.awayProp(acct(o), p.id))).toBeNull();
+      expect(await db.get(SEC_KEYS.awayPropDone(acct(o), p.id))).toBe("saved");
+      expect(await db.ttl(SEC_KEYS.awayPropDone(acct(o), p.id))).toBeLessThanOrEqual(AWAY_PROPOSAL_TTL_S);
       for (const action of ["save", "dismiss"]) {
         const again = await propPost(p.id, { action });
         expect(again.status, action).toBe(409);
         expect(await again.json()).toEqual({ ok: false, error: "already_decided" });
       }
-      expect(await db.hgetall(SEC_KEYS.away(o.email))).toEqual({ sara: entry });
-      expect(await awayAudit(o.email)).toHaveLength(1);
+      expect(await db.hgetall(SEC_KEYS.away(acct(o)))).toEqual({ sara: entry });
+      expect(await awayAudit(acct(o))).toHaveLength(1);
       // Two Saves at once: one writes, the claim refuses the other.
       const q = (await contactAway(o, { name: "Huda", until: "2026-10-10" })).p;
       const both = await Promise.all([propPost(q.id, { action: "save" }), propPost(q.id, { action: "save" })]);
       expect(both.map((x) => x.status).sort()).toEqual([200, 409]);
-      expect(await awayAudit(o.email)).toHaveLength(2);
+      expect(await awayAudit(acct(o))).toHaveLength(2);
       // The owner of the account saves too.
       await signIn(o.email);
       const s = (await contactAway(o, { name: "Nour", until: "2026-10-11" })).p;
       expect((await propPost(s.id, { action: "save" })).status).toBe(200);
-      expect((await db.hgetall<{ by: string }>(SEC_KEYS.away(o.email))).nour.by).toBe(o.email);
+      expect((await db.hgetall<{ by: string }>(SEC_KEYS.away(acct(o)))).nour.by).toBe(o.email);
     });
   });
 
   it("Dismiss writes nothing; a clear proposal's Save ends the absence (until = yesterday); a reloaded thread shows each card's state", async () => {
     await at(NOW, async () => {
       const u = await owner("aw485c");
-      await setAway(u.email, { label: "Huda", until: "2026-10-20" }, PERSON, NOW, "Asia/Riyadh");
+      await setAway(acct(u), { label: "Huda", until: "2026-10-20" }, PERSON, NOW, "Asia/Riyadh");
       const a = (await contactAway(u, { name: "Sara", until: "2026-10-09" })).p;
       const cleared = await contactAway(u, { name: " HUDA ", clear: true });
       const b = cleared.p;
@@ -1128,21 +1129,21 @@ describe("rule 485: contact_away proposes an absence on a card in Reem's chat, a
       expect(cleared.text).toContain("end");
       expect(cleared.text).toMatch(/the owner presses Save on the card\.$/);
       const lost: AwayProposal = { ...c, id: "0123456789abcdef" };
-      await push(u.email, { role: "assistant", content: "…", at: iso(NOW), agent: "reem", awayProposals: [a, b, c, lost] });
+      await push(acct(u), { role: "assistant", content: "…", at: iso(NOW), agent: "reem", awayProposals: [a, b, c, lost] });
       await signIn(u.email);
       const d = await propPost(a.id, { action: "dismiss" });
       expect(d.status).toBe(200);
       expect(await d.json()).toEqual({ ok: true, state: "dismissed" });
-      expect(await awayKeys(u.email)).toEqual(["huda"]);
+      expect(await awayKeys(acct(u))).toEqual(["huda"]);
       const e = await propPost(b.id, { action: "save" });
       expect(e.status).toBe(200);
       expect(await e.json()).toMatchObject({ ok: true, state: "saved", entry: { label: "Huda", until: "2026-10-05" } });
-      expect((await db.hgetall<{ until: string }>(SEC_KEYS.away(u.email))).huda.until).toBe("2026-10-05");
-      expect((await awayAudit(u.email)).map((l) => [l.action, l.login, l.diff])).toEqual([
+      expect((await db.hgetall<{ until: string }>(SEC_KEYS.away(acct(u)))).huda.until).toBe("2026-10-05");
+      expect((await awayAudit(acct(u))).map((l) => [l.action, l.login, l.diff])).toEqual([
         ["away", PERSON.login, 'label="Huda"; until=2026-10-20'],
         ["away_end", u.email, `label="Huda"; until=2026-10-05; proposed in Reem's chat (${b.id})`],
       ]);
-      const thread = await history(u.email);
+      const thread = await history(acct(u));
       expect(thread.at(-1)?.awayProposals?.map((x) => [x.id, x.state])).toEqual([[a.id, "dismissed"], [b.id, "saved"], [c.id, "open"], [lost.id, "expired"]]);
     });
   });
@@ -1150,12 +1151,12 @@ describe("rule 485: contact_away proposes an absence on a card in Reem's chat, a
   it("the proposal is read only from the caller's scope: another brand's or account's id is 404 and stays open; a malformed id is 404 and a bad action 400 before any proposal is read; anonymous is 401; the rate limit is 429", async () => {
     await at(NOW, async () => {
       const u = await owner("aw485d", BRAND);
-      const b2 = scopeFor(u.email, "b2");
-      await saveBrands(u.email, [{ id: "default", name: "", createdAt: iso(NOW), status: "active" }, { id: "b2", name: "Two", createdAt: iso(NOW), status: "active" }]);
+      const b2 = scopeFor(acct(u), "b2");
+      await saveBrands(acct(u), [{ id: "default", name: "", createdAt: iso(NOW), status: "active" }, { id: "b2", name: "Two", createdAt: iso(NOW), status: "active" }]);
       await saveBrand(b2, { ...BRAND, name: "Two" });
       const inB2 = (await contactAway({ ...u, scope: b2 }, { name: "Sara", until: "2026-10-09" })).p;
       expect(await propIds(b2)).toEqual([inB2.id]);
-      expect(await propIds(u.email)).toEqual([]);
+      expect(await propIds(acct(u))).toEqual([]);
       const other = await owner("aw485do");
       const theirs = (await contactAway(other, { name: "Sara", until: "2026-10-09" })).p;
       signOut();
@@ -1167,9 +1168,9 @@ describe("rule 485: contact_away proposes an absence on a card in Reem's chat, a
         expect(await r.json()).toEqual({ ok: false, error: "not_found" });
       }
       expect(await db.get(SEC_KEYS.awayProp(b2, inB2.id))).toEqual(inB2);
-      expect(await db.get(SEC_KEYS.awayProp(other.email, theirs.id))).toEqual(theirs);
-      expect(await db.get(SEC_KEYS.awayPropDone(u.email, inB2.id))).toBeNull();
-      for (const s of [u.email, b2, other.email]) expect(await awayKeys(s)).toEqual([]);
+      expect(await db.get(SEC_KEYS.awayProp(acct(other), theirs.id))).toEqual(theirs);
+      expect(await db.get(SEC_KEYS.awayPropDone(acct(u), inB2.id))).toBeNull();
+      for (const s of [acct(u), b2, acct(other)]) expect(await awayKeys(s)).toEqual([]);
       // Malformed ids and actions are refused before any proposal key is read.
       const reads = vi.spyOn(db, "mget");
       for (const id of ["ABCDEF0123456789", "0123456789abcde", "0123456789abcdef0", "..", "0123456789abcdeg"]) expect((await propPost(id, { action: "save" })).status, id).toBe(404);
@@ -1184,7 +1185,7 @@ describe("rule 485: contact_away proposes an absence on a card in Reem's chat, a
       await seedActiveBrand(u.email, "b2");
       expect((await propPost(inB2.id, { action: "save" })).status).toBe(200);
       expect(await awayKeys(b2)).toEqual(["sara"]);
-      expect(await awayKeys(u.email)).toEqual([]);
+      expect(await awayKeys(acct(u))).toEqual([]);
       // The sec:write rate applies, with nothing decided.
       const next = (await contactAway({ ...u, scope: b2 }, { name: "Huda", until: "2026-10-09" })).p;
       await db.set(`rate:sec:write:${u.email}`, SEC_WRITES_PER_HOUR, 3600);
@@ -1212,21 +1213,21 @@ describe("rule 485: contact_away proposes an absence on a card in Reem's chat, a
         [{ name: "Nobody", clear: true }, { error: "not_found", field: "name" }],
       ];
       for (const [input, want] of cases) {
-        expect(await proposeAway(u.email, input as { name: unknown }, NOW, "Asia/Riyadh"), JSON.stringify(input)).toMatchObject({ ok: false, ...want });
+        expect(await proposeAway(acct(u), input as { name: unknown }, NOW, "Asia/Riyadh"), JSON.stringify(input)).toMatchObject({ ok: false, ...want });
         const r = await contactAway(u, input);
         expect(r.text, JSON.stringify(input)).toMatch(/^Not done: /);
         expect(r.awayProposed).toEqual([]);
         expect(r.actions).toEqual([]);
       }
       // Ending an absence that has already ended changes nothing: no card.
-      await db.hset(SEC_KEYS.away(u.email), "huda", awayEntry("Huda", "2026-10-01"));
-      expect(await proposeAway(u.email, { name: "Huda", clear: true }, NOW, "Asia/Riyadh")).toMatchObject({ ok: false, error: "nothing_to_change" });
+      await db.hset(SEC_KEYS.away(acct(u)), "huda", awayEntry("Huda", "2026-10-01"));
+      expect(await proposeAway(acct(u), { name: "Huda", clear: true }, NOW, "Asia/Riyadh")).toMatchObject({ ok: false, error: "nothing_to_change" });
       // A full list: a new contact is away_limit; one already on it can still be proposed.
-      await Promise.all(Array.from({ length: AWAY_MAX - 1 }, (_, i) => db.hset(SEC_KEYS.away(u.email), `c${i}`, awayEntry(`C${i}`, "2026-10-20"))));
-      expect(await proposeAway(u.email, { name: "New contact", until: "2026-10-09" }, NOW, "Asia/Riyadh")).toMatchObject({ ok: false, error: "away_limit", status: 409 });
-      expect((await proposeAway(u.email, { name: "C3", until: "2026-10-09" }, NOW, "Asia/Riyadh")).ok).toBe(true);
-      expect(await propIds(u.email)).toHaveLength(1);
-      expect(await awayKeys(u.email)).toHaveLength(AWAY_MAX);
+      await Promise.all(Array.from({ length: AWAY_MAX - 1 }, (_, i) => db.hset(SEC_KEYS.away(acct(u)), `c${i}`, awayEntry(`C${i}`, "2026-10-20"))));
+      expect(await proposeAway(acct(u), { name: "New contact", until: "2026-10-09" }, NOW, "Asia/Riyadh")).toMatchObject({ ok: false, error: "away_limit", status: 409 });
+      expect((await proposeAway(acct(u), { name: "C3", until: "2026-10-09" }, NOW, "Asia/Riyadh")).ok).toBe(true);
+      expect(await propIds(acct(u))).toHaveLength(1);
+      expect(await awayKeys(acct(u))).toHaveLength(AWAY_MAX);
     });
   });
 
@@ -1240,10 +1241,10 @@ describe("rule 485: contact_away proposes an absence on a card in Reem's chat, a
       const r = await propPost(p.id, { action: "save" });
       expect(r.status).toBe(400);
       expect(await r.json()).toEqual({ ok: false, error: "away_range", field: "until" });
-      expect(await awayKeys(u.email)).toEqual([]);
-      expect(await db.get(SEC_KEYS.awayPropDone(u.email, p.id))).toBeNull();
+      expect(await awayKeys(acct(u))).toEqual([]);
+      expect(await db.get(SEC_KEYS.awayPropDone(acct(u), p.id))).toBeNull();
       expect((await propPost(p.id, { action: "dismiss" })).status).toBe(200);
-      expect(await db.get(SEC_KEYS.awayPropDone(u.email, p.id))).toBe("dismissed");
+      expect(await db.get(SEC_KEYS.awayPropDone(acct(u), p.id))).toBe("dismissed");
     });
   });
 
@@ -1267,11 +1268,11 @@ describe("rule 485: contact_away proposes an absence on a card in Reem's chat, a
   it("decideAwayProposal applies the proposal through setAway or endAway with the person's Who", async () => {
     await at(NOW, async () => {
       const u = await owner("aw485g");
-      const made = await proposeAway(u.email, { name: "Sara", until: "2026-10-09" }, NOW, "Asia/Riyadh");
+      const made = await proposeAway(acct(u), { name: "Sara", until: "2026-10-09" }, NOW, "Asia/Riyadh");
       if (!made.ok) throw new Error(made.error);
-      expect(await decideAwayProposal(u.email, made.p.id, "save", PERSON, NOW)).toEqual({ ok: true, state: "saved", entry: { label: "Sara", until: "2026-10-09", by: PERSON.login, via: "web", at: iso(NOW) } });
-      expect(await decideAwayProposal(u.email, made.p.id, "save", PERSON, NOW)).toMatchObject({ ok: false, error: "already_decided", status: 409 });
-      expect(await decideAwayProposal(u.email, "not-an-id", "save", PERSON, NOW)).toMatchObject({ ok: false, error: "not_found", status: 404 });
+      expect(await decideAwayProposal(acct(u), made.p.id, "save", PERSON, NOW)).toEqual({ ok: true, state: "saved", entry: { label: "Sara", until: "2026-10-09", by: PERSON.login, via: "web", at: iso(NOW) } });
+      expect(await decideAwayProposal(acct(u), made.p.id, "save", PERSON, NOW)).toMatchObject({ ok: false, error: "already_decided", status: 409 });
+      expect(await decideAwayProposal(acct(u), "not-an-id", "save", PERSON, NOW)).toMatchObject({ ok: false, error: "not_found", status: 404 });
       expect(toolError({ ok: false, error: "already_decided", status: 409 })).toMatch(/already/);
     });
   });
@@ -1279,29 +1280,29 @@ describe("rule 485: contact_away proposes an absence on a card in Reem's chat, a
   it("a Save or a Dismiss while another Save holds the card is 409 busy, not already_decided, and the card says to try again (AR and EN)", async () => {
     await at(NOW, async () => {
       const u = await owner("aw485busy");
-      const made = await proposeAway(u.email, { name: "Sara", until: "2026-10-09" }, NOW, "Asia/Riyadh");
+      const made = await proposeAway(acct(u), { name: "Sara", until: "2026-10-09" }, NOW, "Asia/Riyadh");
       if (!made.ok) throw new Error(made.error);
-      const done = SEC_KEYS.awayPropDone(u.email, made.p.id);
+      const done = SEC_KEYS.awayPropDone(acct(u), made.p.id);
       // Another Save's claim, as decideAwayProposal sets it while setAway runs.
       await db.set(done, "saving", 60);
-      expect(await decideAwayProposal(u.email, made.p.id, "save", PERSON, NOW)).toEqual({ ok: false, error: "busy", status: 409 });
-      expect(await decideAwayProposal(u.email, made.p.id, "dismiss", PERSON, NOW)).toEqual({ ok: false, error: "busy", status: 409 });
+      expect(await decideAwayProposal(acct(u), made.p.id, "save", PERSON, NOW)).toEqual({ ok: false, error: "busy", status: 409 });
+      expect(await decideAwayProposal(acct(u), made.p.id, "dismiss", PERSON, NOW)).toEqual({ ok: false, error: "busy", status: 409 });
       // The claim taken between the read and the claim: busy too.
-      const raw = await db.get(SEC_KEYS.awayProp(u.email, made.p.id));
+      const raw = await db.get(SEC_KEYS.awayProp(acct(u), made.p.id));
       vi.spyOn(db, "mget").mockResolvedValueOnce([raw, null]);
-      expect(await decideAwayProposal(u.email, made.p.id, "save", PERSON, NOW)).toEqual({ ok: false, error: "busy", status: 409 });
+      expect(await decideAwayProposal(acct(u), made.p.id, "save", PERSON, NOW)).toEqual({ ok: false, error: "busy", status: 409 });
       await signIn(u.email);
       const r = await propPost(made.p.id, { action: "save" });
       expect(r.status).toBe(409);
       expect(await r.json()).toEqual({ ok: false, error: "busy" });
-      expect(await awayKeys(u.email)).toEqual([]);
+      expect(await awayKeys(acct(u))).toEqual([]);
       // The card keeps its buttons and asks for another try, in the reader's language.
       expect(awayCardRefusal(appDict.ar, "ar", 409, "busy")).toBe("يحفظ أحدٌ هذه البطاقة الآن. حاول مرة أخرى بعد لحظة.");
       expect(awayCardRefusal(appDict.en, "en", 409, "busy")).toBe("Someone is saving this card right now. Try again in a moment.");
       // Once the claim is gone the Save goes through; after that the card is already decided.
       await db.del(done);
-      expect(await decideAwayProposal(u.email, made.p.id, "save", PERSON, NOW)).toMatchObject({ ok: true, state: "saved" });
-      expect(await decideAwayProposal(u.email, made.p.id, "dismiss", PERSON, NOW)).toEqual({ ok: false, error: "already_decided", status: 409 });
+      expect(await decideAwayProposal(acct(u), made.p.id, "save", PERSON, NOW)).toMatchObject({ ok: true, state: "saved" });
+      expect(await decideAwayProposal(acct(u), made.p.id, "dismiss", PERSON, NOW)).toEqual({ ok: false, error: "already_decided", status: 409 });
     });
   });
 
@@ -1342,9 +1343,9 @@ describe("rule 485: contact_away proposes an absence on a card in Reem's chat, a
       // Read at the turn's own time: the cards live 7 days from NOW, so on the real clock they read "expired" from
       // 2026-10-13 09:00 UTC on (the test failed on the release pull request #355).
       await at(NOW, async () => {
-        expect((await history(u.email)).at(-1)?.awayProposals?.map((p) => [p.id, p.state])).toEqual(m.awayProposals!.map((p) => [p.id, "open"]));
-        expect((await propIds(u.email)).sort()).toEqual(m.awayProposals!.map((p) => p.id).sort());
-        expect(await awayKeys(u.email)).toEqual([]);
+        expect((await history(acct(u))).at(-1)?.awayProposals?.map((p) => [p.id, p.state])).toEqual(m.awayProposals!.map((p) => [p.id, "open"]));
+        expect((await propIds(acct(u))).sort()).toEqual(m.awayProposals!.map((p) => p.id).sort());
+        expect(await awayKeys(acct(u))).toEqual([]);
       });
     } finally {
       vi.doUnmock("@anthropic-ai/sdk");
@@ -1358,7 +1359,7 @@ describe("rule 486: contact_away is Reem's alone, in the app's chat: refused for
   it("runTool refuses it for Noor, for another agent, for a turn with no agent, over MCP and for a token (in ctx.by or on the user), and writes nothing", async () => {
     await at(NOW, async () => {
       const u = await owner("aw486a");
-      const token = { kind: "token" as const, pid: storedPersonId(u.email), home: true, email: u.email, name: "Token", lang: "en" as const, role: "owner" as const };
+      const token = { kind: "token" as const, pid: ownerOf(u), home: true, email: u.email, name: "Token", lang: "en" as const, role: "owner" as const };
       const cases: [string, User, Partial<ToolCtx>][] = [
         ["noor", u, { agent: "noor", via: "app" }],
         ["majed", u, { agent: "majed", via: "app" }],
@@ -1379,8 +1380,8 @@ describe("rule 486: contact_away is Reem's alone, in the app's chat: refused for
         expect(r.awayProposed, name).toEqual([]);
         expect(r.actions, name).toEqual([]);
       }
-      expect(await propIds(u.email)).toEqual([]);
-      expect(await awayKeys(u.email)).toEqual([]);
+      expect(await propIds(acct(u))).toEqual([]);
+      expect(await awayKeys(acct(u))).toEqual([]);
       expect(await db.get(`rate:sec:write:${u.email}`)).toBeNull();
       // The same call in Reem's own turn in the app is proposed.
       expect((await contactAway(u, { name: "Sara", until: "2026-10-09" })).awayProposed).toHaveLength(1);
@@ -1485,8 +1486,8 @@ describe("rule 487: the to-do page shows Working days and Away panels, and the r
       await make(o, { title: "عرض السعر", direction: "they_owe", owedBy: "أحمد", phone: "966500000001", dueAt: "2026-10-06T10:00" });
       await make(o, { title: "Report", direction: "they_owe", owedBy: "sami", dueAt: "2026-10-06T10:00" });
       // «احمد» without the hamza is the same contact (partyKey); Sara's absence ended yesterday.
-      await setAway(o.email, { label: "احمد", until: "2026-10-08" }, { actor: "owner", via: "web", login: o.email }, NOW, "Asia/Riyadh");
-      await db.hset(SEC_KEYS.away(o.email), partyKey("Sara")!, awayEntry("Sara", "2026-10-05"));
+      await setAway(acct(o), { label: "احمد", until: "2026-10-08" }, { actor: "owner", via: "web", login: o.email }, NOW, "Asia/Riyadh");
+      await db.hset(SEC_KEYS.away(acct(o)), partyKey("Sara")!, awayEntry("Sara", "2026-10-05"));
       const html = await render("ar");
       expect(html).toContain("أحمد: غياب لين الخميس 8 أكتوبر");
       const line = html.slice(html.indexOf("غياب لين") - 20, html.indexOf("غياب لين") + 40);
@@ -1510,20 +1511,20 @@ describe("rule 487: the to-do page shows Working days and Away panels, and the r
     await at(NOW, async () => {
       const o = await owner("pg487once", { ...BRAND, city: "الشارقة", timeZone: "Asia/Dubai" });
       await signIn(o.email);
-      await db.set(SEC_KEYS.cal(o.email), settings({ weekend: [5, 6, 0], holidays: { add: ["2026-12-31"], remove: [] } }));
-      await db.hset(SEC_KEYS.away(o.email), partyKey("Sara")!, awayEntry("Sara", "2026-10-09"));
+      await db.set(SEC_KEYS.cal(acct(o)), settings({ weekend: [5, 6, 0], holidays: { add: ["2026-12-31"], remove: [] } }));
+      await db.hset(SEC_KEYS.away(acct(o)), partyKey("Sara")!, awayEntry("Sara", "2026-10-09"));
       const gets = vi.spyOn(db, "get"), hashes = vi.spyOn(db, "hgetall");
       const html = await render("en");
-      expect(gets.mock.calls.filter(([k]) => k === `brand:${o.email}`)).toHaveLength(1);
-      expect(gets.mock.calls.filter(([k]) => k === SEC_KEYS.cal(o.email))).toHaveLength(1);
-      expect(hashes.mock.calls.filter(([k]) => k === SEC_KEYS.away(o.email))).toHaveLength(1);
+      expect(gets.mock.calls.filter(([k]) => k === `brand:${acct(o)}`)).toHaveLength(1);
+      expect(gets.mock.calls.filter(([k]) => k === SEC_KEYS.cal(acct(o)))).toHaveLength(1);
+      expect(hashes.mock.calls.filter(([k]) => k === SEC_KEYS.away(acct(o)))).toHaveLength(1);
       // What each panel shows still comes from those records: the brand's city (Sharjah), its weekend, its added day, its away contact.
       expect(html).not.toContain(appDict.en.todo.cal.sharjahHint);
       expect(weekendBoxes(html).map((b) => / checked=""/.test(b))).toEqual([true, false, false, false, false, true, true]);
       expect(html).toContain(appDict.en.todo.cal.addedList);
       expect(html).toContain("Sara");
       expect(html).toContain(appDict.en.todo.away.endNow);
-      await db.set(SEC_KEYS.cal(o.email), settings({}));
+      await db.set(SEC_KEYS.cal(acct(o)), settings({}));
       expect(await render("en")).toContain(appDict.en.todo.cal.sharjahHint);
     });
   });

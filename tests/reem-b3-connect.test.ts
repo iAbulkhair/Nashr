@@ -5,6 +5,8 @@
  * `choose` and never as a publishing connection, a second link replaces the first (no revoke call, ruling R7), and no provider text ever
  * reaches a URL or a log.
  */
+import { acct } from "@/lib/account-id";
+import { handleOf } from "@/lib/ws-handle";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { jar, json, newMember, newUser, params, signIn } from "./helpers/session";
 import { db } from "@/lib/db";
@@ -124,16 +126,16 @@ describe("rule 912c: the callback writes the link in state choose and never a pu
     const res = await callback.GET(cbReq("gcal", `state=${state}&code=c1`), ctx("gcal"));
     expect(res.status).toBe(307);
     const to = where(res);
-    expect(to.pathname).toBe("/ar/app/b/default/todo");
+    expect(to.pathname).toBe(`/ar/app/w/${handleOf(owner)}/b/default/todo`);
     expect(to.search).toBe("?cal=choose");
-    const link = (await getLink(owner.email))!;
+    const link = (await getLink(acct(owner)))!;
     expect(link).toMatchObject({ v: 1, provider: "gcal", login: owner.email, account: "o@brand.example", accountDomain: "brand.example", proof: null, state: "choose", rev: 1 });
     expect(link.calendarId).toBeUndefined();
     expect(openTokens(link)).toMatchObject({ access: "g-access", refresh: "g-refresh" });
     expect(JSON.stringify(link)).not.toContain("g-refresh");
-    expect((await listConnections(owner.email)).map((c) => c.provider)).not.toContain("gcal");
-    expect(await getConnection(owner.email, "gcal")).toBeNull();
-    const log = await auditOf(owner.email);
+    expect((await listConnections(acct(owner))).map((c) => c.provider)).not.toContain("gcal");
+    expect(await getConnection(acct(owner), "gcal")).toBeNull();
+    const log = await auditOf(acct(owner));
     expect(log.find((l) => l.action === "cal_link")).toMatchObject({ actor: "owner", login: owner.email, diff: "provider=gcal" });
     expect(JSON.stringify(log)).not.toContain("o@brand.example");
   });
@@ -144,7 +146,7 @@ describe("rule 912c: the callback writes the link in state choose and never a pu
     await signIn(owner.email);
     const state = await begin("gcal", "?lang=en");
     const to = where(await callback.GET(cbReq("gcal", `state=${state}&code=c1`), ctx("gcal")));
-    expect(to.pathname).toBe("/en/app/b/default/todo");
+    expect(to.pathname).toBe(`/en/app/w/${handleOf(owner)}/b/default/todo`);
   });
 
   it("Gmail has no proven domain: the link carries no accountDomain", async () => {
@@ -153,7 +155,7 @@ describe("rule 912c: the callback writes the link in state choose and never a pu
     await signIn(owner.email);
     const state = await begin("gcal");
     await callback.GET(cbReq("gcal", `state=${state}&code=c1`), ctx("gcal"));
-    const link = (await getLink(owner.email))!;
+    const link = (await getLink(acct(owner)))!;
     expect(link.account).toBe("shop@gmail.com");
     expect(link.accountDomain).toBeUndefined();
   });
@@ -165,12 +167,12 @@ describe("rule 912c: the callback writes the link in state choose and never a pu
     const state = await begin("mscal");
     const res = await callback.GET(cbReq("mscal", `state=${state}&code=c1`), ctx("mscal"));
     expect(where(res).search).toBe("?cal=choose");
-    const link = (await getLink(owner.email))!;
+    const link = (await getLink(acct(owner)))!;
     expect(link).toMatchObject({ provider: "mscal", account: "o@brand.example", accountDomain: "brand.example", state: "choose" });
     // PKCE: the verifier saved at start went to the token endpoint.
     expect(tokenCalls()[0].body).toContain("code_verifier=");
     expect(calls.some((c) => c.url.includes("/me?%24select") || c.url.includes("/me?$select"))).toBe(true);
-    expect(await getConnection(owner.email, "mscal")).toBeNull();
+    expect(await getConnection(acct(owner), "mscal")).toBeNull();
   });
 
   it("Outlook, personal account: no domain, and the organization is never asked", async () => {
@@ -179,7 +181,7 @@ describe("rule 912c: the callback writes the link in state choose and never a pu
     await signIn(owner.email);
     const state = await begin("mscal");
     await callback.GET(cbReq("mscal", `state=${state}&code=c1`), ctx("mscal"));
-    const link = (await getLink(owner.email))!;
+    const link = (await getLink(acct(owner)))!;
     expect(link.accountDomain).toBeUndefined();
     expect(calls.some((c) => c.url.includes("/organization"))).toBe(false);
   });
@@ -188,13 +190,13 @@ describe("rule 912c: the callback writes the link in state choose and never a pu
     fakeProviders();
     const owner = await newUser("calcb6");
     const b = (await addBrand({ ...owner, brandCap: 2 }, "Second")) as { id: string };
-    const scope = scopeFor(owner.email, b.id);
+    const scope = scopeFor(acct(owner), b.id);
     await signIn(owner.email);
     await saveState("s-brand", { email: scope, provider: "gcal", lang: "ar", shop: "", verifier: "", actor: owner.email });
     jar().set(OAUTH_COOKIE, "s-brand");
     await callback.GET(cbReq("gcal", "state=s-brand&code=c1"), ctx("gcal"));
     expect(await getLink(scope)).not.toBeNull();
-    expect(await getLink(owner.email)).toBeNull();
+    expect(await getLink(acct(owner))).toBeNull();
   });
 });
 
@@ -204,12 +206,12 @@ describe("rule 912c: the same state, cookie, login and role rules as every provi
     const owner = await newUser("calrole");
     const admin = await newMember(owner, "admin");
     await signIn(admin.email);
-    await saveState("s-admin", { email: owner.email, provider: "gcal", lang: "ar", shop: "", verifier: "", actor: admin.email });
+    await saveState("s-admin", { email: acct(owner), provider: "gcal", lang: "ar", shop: "", verifier: "", actor: admin.email });
     jar().set(OAUTH_COOKIE, "s-admin");
     const res = await callback.GET(cbReq("gcal", "state=s-admin&code=c1"), ctx("gcal"));
-    expect(where(res).pathname).toBe("/ar/app/b/default/todo");
+    expect(where(res).pathname).toBe(`/ar/app/w/${handleOf(owner)}/b/default/todo`);
     expect(where(res).search).toBe("?cal_error=forbidden");
-    expect(await getLink(owner.email)).toBeNull();
+    expect(await getLink(acct(owner))).toBeNull();
     expect(tokenCalls()).toHaveLength(0);
   });
 
@@ -217,11 +219,11 @@ describe("rule 912c: the same state, cookie, login and role rules as every provi
     fakeProviders();
     const owner = await newUser("calmis");
     await signIn(owner.email);
-    await saveState("s-real", { email: owner.email, provider: "gcal", lang: "ar", shop: "", verifier: "", actor: owner.email });
+    await saveState("s-real", { email: acct(owner), provider: "gcal", lang: "ar", shop: "", verifier: "", actor: owner.email });
     jar().set(OAUTH_COOKIE, "someone-elses-state");
     const res = await callback.GET(cbReq("gcal", "state=s-real&code=c1"), ctx("gcal"));
     expect(where(res).search).toBe("?cal_error=session_mismatch");
-    expect(await getLink(owner.email)).toBeNull();
+    expect(await getLink(acct(owner))).toBeNull();
     expect(tokenCalls()).toHaveLength(0);
   });
 
@@ -230,23 +232,23 @@ describe("rule 912c: the same state, cookie, login and role rules as every provi
     const owner = await newUser("calact");
     const admin = await newMember(owner, "admin");
     await signIn(owner.email);
-    await saveState("s-act", { email: owner.email, provider: "gcal", lang: "ar", shop: "", verifier: "", actor: admin.email });
+    await saveState("s-act", { email: acct(owner), provider: "gcal", lang: "ar", shop: "", verifier: "", actor: admin.email });
     jar().set(OAUTH_COOKIE, "s-act");
     const res = await callback.GET(cbReq("gcal", "state=s-act&code=c1"), ctx("gcal"));
     expect(where(res).search).toBe("?cal_error=session_mismatch");
-    expect(await getLink(owner.email)).toBeNull();
+    expect(await getLink(acct(owner))).toBeNull();
   });
 
   it("a state from the google flow cannot finish gcal", async () => {
     fakeProviders();
     const owner = await newUser("calprov");
     await signIn(owner.email);
-    await saveState("s-google", { email: owner.email, provider: "google", lang: "ar", shop: "", verifier: "", actor: owner.email });
+    await saveState("s-google", { email: acct(owner), provider: "google", lang: "ar", shop: "", verifier: "", actor: owner.email });
     jar().set(OAUTH_COOKIE, "s-google");
     const res = await callback.GET(cbReq("gcal", "state=s-google&code=c1"), ctx("gcal"));
-    expect(where(res).pathname).toBe("/ar/app/b/default/todo");
+    expect(where(res).pathname).toBe(`/ar/app/w/${handleOf(owner)}/b/default/todo`);
     expect(where(res).search).toBe("?cal_error=invalid_state");
-    expect(await getLink(owner.email)).toBeNull();
+    expect(await getLink(acct(owner))).toBeNull();
     expect(tokenCalls()).toHaveLength(0);
   });
 
@@ -256,12 +258,12 @@ describe("rule 912c: the same state, cookie, login and role rules as every provi
     await signIn(owner.email);
     const state = await begin("gcal");
     const res = await callback.GET(cbReq("google", `state=${state}&code=c1`), ctx("google"));
-    expect(where(res).pathname).toBe("/ar/app/b/default/settings/connections");
+    expect(where(res).pathname).toBe(`/ar/app/w/${handleOf(owner)}/b/default/settings/connections`);
     expect(where(res).search).toBe("?error=invalid_state");
-    expect(await listConnections(owner.email)).toEqual([]);
-    expect(await getConnection(owner.email, "google")).toBeNull();
-    expect(await getConnection(owner.email, "gcal")).toBeNull();
-    expect(await getLink(owner.email)).toBeNull();
+    expect(await listConnections(acct(owner))).toEqual([]);
+    expect(await getConnection(acct(owner), "google")).toBeNull();
+    expect(await getConnection(acct(owner), "gcal")).toBeNull();
+    expect(await getLink(acct(owner))).toBeNull();
     expect(tokenCalls()).toHaveLength(0);
   });
 
@@ -285,7 +287,7 @@ describe("rule 912c: the same state, cookie, login and role rules as every provi
     expect(where(await callback.GET(cbReq("gcal", `state=${state}&error=server_error`), ctx("gcal"))).search).toBe("?cal_error=invalid_state");
     state = await begin("gcal");
     expect(where(await callback.GET(cbReq("gcal", `state=${state}`), ctx("gcal"))).search).toBe("?cal_error=invalid_state");
-    expect(await getLink(owner.email)).toBeNull();
+    expect(await getLink(acct(owner))).toBeNull();
     expect(tokenCalls()).toHaveLength(0);
   });
 });
@@ -295,11 +297,11 @@ describe("rule 912c: failures end in fixed codes, with no provider text and no l
     fakeProviders();
     const owner = await newUser("calarch");
     const b = (await addBrand({ ...owner, brandCap: 2 }, "Gone")) as { id: string };
-    const scope = scopeFor(owner.email, b.id);
+    const scope = scopeFor(acct(owner), b.id);
     await signIn(owner.email);
     await saveState("s-arch", { email: scope, provider: "gcal", lang: "ar", shop: "", verifier: "", actor: owner.email });
     jar().set(OAUTH_COOKIE, "s-arch");
-    await saveBrands(owner.email, (await listBrands(owner.email)).map((r) => (r.id === b.id ? { ...r, status: "archived" as const } : r)));
+    await saveBrands(acct(owner), (await listBrands(acct(owner))).map((r) => (r.id === b.id ? { ...r, status: "archived" as const } : r)));
     const res = await callback.GET(cbReq("gcal", "state=s-arch&code=c1"), ctx("gcal"));
     expect(where(res).search).toBe("?cal_error=brand_inactive");
     expect(await getLink(scope)).toBeNull();
@@ -317,19 +319,19 @@ describe("rule 912c: failures end in fixed codes, with no provider text and no l
     expect(res.headers.get("location")).not.toContain(PROVIDER_TEXT);
     expect(JSON.stringify(log.mock.calls)).not.toContain(PROVIDER_TEXT);
     expect(JSON.stringify(log.mock.calls)).not.toContain("500");
-    expect(await getLink(owner.email)).toBeNull();
+    expect(await getLink(acct(owner))).toBeNull();
   });
 
   it("Google answering without a refresh token is token_failed and keeps any earlier link", async () => {
     const owner = await newUser("calnoref");
     const first: CalLink = { v: 1, provider: "gcal", login: owner.email, account: "old@brand.example", proof: "domain", calendarId: "c0", tokens: sealTokens({ access: "a0", refresh: "r0", expiresAt: 1 }), state: "ok", connectedAt: 1, rev: 4 };
-    await putLink(owner.email, first);
+    await putLink(acct(owner), first);
     fakeProviders({ refresh: null });
     await signIn(owner.email);
     const state = await begin("gcal");
     const res = await callback.GET(cbReq("gcal", `state=${state}&code=c1`), ctx("gcal"));
     expect(where(res).search).toBe("?cal_error=token_failed");
-    expect(await getLink(owner.email)).toEqual(first);
+    expect(await getLink(acct(owner))).toEqual(first);
     expect(calls.some((c) => c.url === GOOGLE_REVOKE)).toBe(false);
   });
 
@@ -343,7 +345,7 @@ describe("rule 912c: failures end in fixed codes, with no provider text and no l
     expect(where(res).search).toBe("?cal_error=provider_error");
     expect(res.headers.get("location")).not.toContain(PROVIDER_TEXT);
     expect(JSON.stringify(log.mock.calls)).not.toContain(PROVIDER_TEXT);
-    expect(await getLink(owner.email)).toBeNull();
+    expect(await getLink(acct(owner))).toBeNull();
   });
 });
 
@@ -355,31 +357,31 @@ describe("rule 912c: a second link replaces the first and Nashr never calls Goog
     let state = await begin("gcal");
     await callback.GET(cbReq("gcal", `state=${state}&code=c1`), ctx("gcal"));
     // The owner picks a calendar in between: the next link still starts over in "choose".
-    const one = (await getLink(owner.email))!;
+    const one = (await getLink(acct(owner)))!;
     expect(openTokens(one)?.refresh).toBe("refresh-one");
-    await putLink(owner.email, { ...one, state: "ok", calendarId: "cal1", proof: "domain", rev: 5 });
+    await putLink(acct(owner), { ...one, state: "ok", calendarId: "cal1", proof: "domain", rev: 5 });
     fakeProviders({ refresh: "refresh-two", email: "new@brand.example" });
     state = await begin("gcal");
     await callback.GET(cbReq("gcal", `state=${state}&code=c2`), ctx("gcal"));
-    const two = (await getLink(owner.email))!;
+    const two = (await getLink(acct(owner)))!;
     expect(two).toMatchObject({ account: "new@brand.example", state: "choose", proof: null, rev: 1 });
     expect(two.calendarId).toBeUndefined();
     expect(openTokens(two)?.refresh).toBe("refresh-two");
     expect(two.tokens).not.toBe(one.tokens);
-    expect(JSON.stringify(await db.get(SEC_KEYS.calLink(owner.email)))).not.toContain(one.tokens);
+    expect(JSON.stringify(await db.get(SEC_KEYS.calLink(acct(owner))))).not.toContain(one.tokens);
     expect(calls.some((c) => c.url === GOOGLE_REVOKE || c.url.includes("/revoke"))).toBe(false);
-    expect((await auditOf(owner.email)).filter((l) => l.action === "cal_link")).toHaveLength(2);
+    expect((await auditOf(acct(owner))).filter((l) => l.action === "cal_link")).toHaveLength(2);
   });
 
   it("replacing an Outlook link by a Google one calls no revoke endpoint either", async () => {
     const owner = await newUser("calswap2");
-    await putLink(owner.email, { v: 1, provider: "mscal", login: owner.email, account: "a@brand.example", proof: null, tokens: sealTokens({ access: "a", refresh: "r", expiresAt: 1 }), state: "choose", connectedAt: 1, rev: 1 });
+    await putLink(acct(owner), { v: 1, provider: "mscal", login: owner.email, account: "a@brand.example", proof: null, tokens: sealTokens({ access: "a", refresh: "r", expiresAt: 1 }), state: "choose", connectedAt: 1, rev: 1 });
     fakeProviders();
     await signIn(owner.email);
     const state = await begin("gcal");
     await callback.GET(cbReq("gcal", `state=${state}&code=c1`), ctx("gcal"));
     expect(calls.some((c) => c.url === GOOGLE_REVOKE)).toBe(false);
-    expect((await getLink(owner.email))!.provider).toBe("gcal");
+    expect((await getLink(acct(owner)))!.provider).toBe("gcal");
   });
 });
 
@@ -391,8 +393,8 @@ describe("rule 912c: the key route never takes a calendar provider (ruling R4)",
       const res = await key.POST(json(`/api/connect/${p}/key`, "POST", { apiKey: "x" }), ctx(p));
       expect(res.status).toBe(404);
       expect(((await res.json()) as { error: string }).error).toBe("unknown_provider");
-      expect(await getConnection(owner.email, p)).toBeNull();
+      expect(await getConnection(acct(owner), p)).toBeNull();
     }
-    expect((await listConnections(owner.email)).map((c) => c.provider)).not.toContain("gcal");
+    expect((await listConnections(acct(owner))).map((c) => c.provider)).not.toContain("gcal");
   });
 });

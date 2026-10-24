@@ -7,7 +7,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import type { ReactElement } from "react";
 import { claudeOn } from "./helpers/model";
 import { json, newUser, settle, signIn, signOut } from "./helpers/session";
-import { getUser, type User } from "@/lib/auth";
+import { getUser, type User, acct } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { listLite, listTasks, rebuildIndex, saveTask, type Brand, type CrossVerdict, type Task } from "@/lib/brand";
 import { agentForTask } from "@/lib/agents";
@@ -95,8 +95,8 @@ async function load(o: { items?: Item[]; cross?: (by: Reviewer, p: Params) => st
 /** An owner with a brand file, re-read so the object carries the stored balance. */
 async function owner(prefix: string): Promise<User> {
   const u = await newUser(prefix);
-  await db.set(`brand:${u.email}`, brand);
-  return (await getUser(u.email))!;
+  await db.set(`brand:${acct(u)}`, brand);
+  return (await getUser(acct(u)))!;
 }
 const V = (by: Reviewer, verdict: "ok" | "flag", notes = ""): CrossVerdict => ({ by, verdict, notes, at: "2026-09-30T08:00:00.000Z", model: "claude-sonnet-5-5" });
 
@@ -252,18 +252,18 @@ describe("a flag holds the item for the owner, even under auto-approve (rule 264
   it("through the pipeline: the flagged item is pending and the passed one approved when the type is auto-approved; the light index keeps xflag", async () => {
     const { generateBatch } = await load({ items: [MEMO, { ...MEMO, title: "Second" }], cross: () => says({ id: 1, verdict: "flag", notes: ["VAT basis is not stated"] }, { id: 2, verdict: "ok" }) });
     const u = await owner("xr-hold");
-    await saveGov(u.email, { autoApprove: { pricing_review: true } });
-    const r = await generateBatch(u, u.email, { type: "pricing_review", source: "manual", via: "app" });
+    await saveGov(acct(u), { autoApprove: { pricing_review: true } });
+    const r = await generateBatch(u, acct(u), { type: "pricing_review", source: "manual", via: "app" });
     if (!r.ok) throw new Error(r.reason);
     const [flagged, passed] = r.tasks;
     expect([flagged.status, passed.status]).toEqual(["pending", "approved"]);
     expect(flagged.crossReview).toEqual([expect.objectContaining({ by: "majed", verdict: "flag", notes: "VAT basis is not stated" })]);
-    const stored = await listTasks(u.email);
+    const stored = await listTasks(acct(u));
     expect(stored.find((t) => t.id === flagged.id)).toMatchObject({ status: "pending", crossReview: flagged.crossReview });
-    expect(await db.smembers(`pending:${u.email}`)).toEqual([flagged.id]);
-    const lite = async () => Object.fromEntries((await listLite(u.email)).map((l) => [l.id, l.xflag]));
+    expect(await db.smembers(`pending:${acct(u)}`)).toEqual([flagged.id]);
+    const lite = async () => Object.fromEntries((await listLite(acct(u))).map((l) => [l.id, l.xflag]));
     expect(await lite()).toEqual({ [flagged.id]: true, [passed.id]: undefined });
-    await rebuildIndex(u.email);
+    await rebuildIndex(acct(u));
     expect(await lite(), "a rebuilt index keeps it").toEqual({ [flagged.id]: true, [passed.id]: undefined });
   });
 
@@ -287,21 +287,21 @@ describe("the owner's switch: Governance.crossReview (rule 265)", () => {
   it("is on by default, also for a record saved before the switch existed", async () => {
     expect(DEFAULT_GOV.crossReview).toBe(true);
     const u = await newUser("xr-default");
-    await db.set(`gov:${u.email}`, { reviewer: false, weeklyCap: 5 });
-    expect((await getGov(u.email)).crossReview).toBe(true);
+    await db.set(`gov:${acct(u)}`, { reviewer: false, weeklyCap: 5 });
+    expect((await getGov(acct(u))).crossReview).toBe(true);
   });
 
   it("off: no review call, no verdicts and no row, and auto-approve applies as before", async () => {
     const { generateBatch, seen } = await load({ cross: () => says({ id: 1, verdict: "flag", notes: ["would hold it"] }) });
     const u = await owner("xr-off");
-    await saveGov(u.email, { crossReview: false, autoApprove: { pricing_review: true } });
-    const r = await generateBatch(u, u.email, { type: "pricing_review", source: "manual", via: "app" });
+    await saveGov(acct(u), { crossReview: false, autoApprove: { pricing_review: true } });
+    const r = await generateBatch(u, acct(u), { type: "pricing_review", source: "manual", via: "app" });
     if (!r.ok) throw new Error(r.reason);
     expect(seen.cross).toHaveLength(0);
     expect(r.tasks[0].status).toBe("approved");
     expect(r.tasks[0]).not.toHaveProperty("crossReview");
     await settle();
-    expect((await listActivity(u.email)).rows.filter((a) => a.kind === "cross_reviewed")).toEqual([]);
+    expect((await listActivity(acct(u))).rows.filter((a) => a.kind === "cross_reviewed")).toEqual([]);
   });
 
   it("PUT /api/governance changes it only with a real boolean, as one revision with before and after", async () => {
@@ -315,8 +315,8 @@ describe("the owner's switch: Governance.crossReview (rule 265)", () => {
     const off = await put({ crossReview: false });
     expect(off.governance.crossReview).toBe(false);
     expect(off.entry!.changes).toEqual([{ path: "crossReview", before: true, after: false }]);
-    expect((await getGov(u.email)).crossReview).toBe(false);
-    expect((await listGovHistory(u.email)).map((r) => r.changed)).toEqual([["crossReview"]]);
+    expect((await getGov(acct(u))).crossReview).toBe(false);
+    expect((await listGovHistory(acct(u))).map((r) => r.changed)).toEqual([["crossReview"]]);
     expect(govDiff(DEFAULT_GOV, { ...DEFAULT_GOV, crossReview: false })).toEqual(["crossReview"]);
   });
 
@@ -326,15 +326,15 @@ describe("the owner's switch: Governance.crossReview (rule 265)", () => {
     const off = await put({ crossReview: false });
     const res = await rollbackRoute.POST(json("/api/governance/rollback", "POST", { id: off.entry!.id }));
     expect(res.status).toBe(200);
-    expect((await getGov(u.email)).crossReview).toBe(true);
+    expect((await getGov(acct(u))).crossReview).toBe(true);
     expect(restorePatch({ reviewer: true } as Partial<Governance>).crossReview).toBe(true);
     expect(restorePatch({ ...DEFAULT_GOV, crossReview: false }).crossReview).toBe(false);
 
     await put({ crossReview: false });
     const old = { id: "abcdef012345", at: "2026-09-01T00:00:00.000Z", by: { kind: "owner", email: u.email }, changed: ["reviewer"], after: DEFAULT_GOV, before: { autoApprove: {}, weeklyCap: 20, learning: true, reviewer: true, noEmDash: false, notifyMinutes: 60, agentCaps: {} } };
-    await db.lpush(`govhist:${u.email}`, JSON.stringify(old));
+    await db.lpush(`govhist:${acct(u)}`, JSON.stringify(old));
     expect((await rollbackRoute.POST(json("/api/governance/rollback", "POST", { id: old.id }))).status).toBe(200);
-    expect((await getGov(u.email)).crossReview, "a setting missing from an old snapshot takes its default").toBe(true);
+    expect((await getGov(acct(u))).crossReview, "a setting missing from an old snapshot takes its default").toBe(true);
   });
 
   it("golden runs never cross-review: no reviewer's call and no xreview usage, for the cross-reviewed types in the set", async () => {
@@ -377,15 +377,15 @@ describe("a failed review never blocks the batch (rule 266)", () => {
     for (const [i, o] of cases.entries()) {
       const { generateBatch, seen } = await load(o);
       const u = await owner(`xr-fail${i}`);
-      const r = await generateBatch(u, u.email, { type: "pricing_review", source: "manual", via: "app" });
+      const r = await generateBatch(u, acct(u), { type: "pricing_review", source: "manual", via: "app" });
       expect(r.ok, String(i)).toBe(true);
       if (!r.ok) continue;
       expect(seen.cross, String(i)).toHaveLength(1);
       expect(r.tasks[0], String(i)).not.toHaveProperty("crossReview");
-      expect((await listTasks(u.email)).map((t) => t.id), String(i)).toEqual([r.tasks[0].id]);
-      expect((await getUser(u.email))!.credits, `${i}: charged once, never refunded`).toBe(50 - TASK_COST.pricing_review);
+      expect((await listTasks(acct(u))).map((t) => t.id), String(i)).toEqual([r.tasks[0].id]);
+      expect((await getUser(acct(u)))!.credits, `${i}: charged once, never refunded`).toBe(50 - TASK_COST.pricing_review);
       await settle();
-      const kinds = (await listActivity(u.email)).rows.map((a) => a.kind);
+      const kinds = (await listActivity(acct(u))).rows.map((a) => a.kind);
       expect(kinds.filter((k) => k === "generated"), String(i)).toHaveLength(1);
       expect(kinds, String(i)).not.toContain("cross_reviewed");
     }
@@ -414,13 +414,13 @@ describe("a failed review never blocks the batch (rule 266)", () => {
     // notes, and auto-approve applies as it does when a review fails.
     seen.cross.length = 0;
     const u = await owner("xr-late");
-    await saveGov(u.email, { autoApprove: { pricing_review: true } });
-    const r = await generateBatch(u, u.email, { type: "pricing_review", source: "manual", via: "app", deadline: Date.now() + 30_000 });
+    await saveGov(acct(u), { autoApprove: { pricing_review: true } });
+    const r = await generateBatch(u, acct(u), { type: "pricing_review", source: "manual", via: "app", deadline: Date.now() + 30_000 });
     if (!r.ok) throw new Error(r.reason);
     expect(seen.cross).toHaveLength(0);
     expect(r.tasks[0]).not.toHaveProperty("crossReview");
     expect(r.tasks[0].status).toBe("approved");
-    expect((await getUser(u.email))!.credits).toBe(50 - TASK_COST.pricing_review);
+    expect((await getUser(acct(u)))!.credits).toBe(50 - TASK_COST.pricing_review);
   });
 
   it("every caller with a request or invocation deadline hands it to the batch; the Sunday plan's type is not cross-reviewed", () => {
@@ -437,7 +437,7 @@ describe("a failed review never blocks the batch (rule 266)", () => {
     for (const state of ["paused", "mock"] as const) {
       const { generateBatch, seen } = await load({ state, cross: () => says({ id: 1, verdict: "flag", notes: ["n"] }) });
       const u = await owner(`xr-${state}`);
-      const r = await generateBatch(u, u.email, { type: "gtm_plan", source: "manual", via: "app" });
+      const r = await generateBatch(u, acct(u), { type: "gtm_plan", source: "manual", via: "app" });
       expect(seen.cross, state).toHaveLength(0);
       if (state === "paused") expect(r).toEqual({ ok: false, reason: "paused" });
       else expect(r.ok && r.tasks.every((t) => !t.crossReview)).toBe(true);
@@ -450,10 +450,10 @@ describe("the review's cost is metered to the reviewer (rule 267)", () => {
     expect(KINDS).toContain("xreview");
     const { generateBatch } = await load({ cross: () => "[]" });
     const u = await owner("xr-meter");
-    const r = await generateBatch(u, u.email, { type: "gtm_plan", source: "manual", via: "app" });
+    const r = await generateBatch(u, acct(u), { type: "gtm_plan", source: "manual", via: "app" });
     expect(r.ok).toBe(true);
     await settle();
-    const usage = await getUsage(u.email);
+    const usage = await getUsage(acct(u));
     const k = (kind: string) => usage.byKind[kind]?.calls ?? 0;
     expect(k("xreview")).toBe(2);
     expect(usage.byAgent.razan?.calls).toBe(1);
@@ -471,10 +471,10 @@ describe("the inbox card shows the review, and an outside draft says it had none
     const u = await owner("xr-inbox");
     await signIn(u.email);
     await Promise.all([
-      saveTask(u.email, task("xa", { crossReview: [V("razan", "flag", "«1 + 1 = 3»: <b>check</b>\nVAT basis is not stated"), V("majed", "ok")], quality: { score: 88, dims: { completeness: 90, brand: 90, honesty: 90, language: 90, format: 90 }, notes: "ready", model: "m", at: "t" } }), true),
-      saveTask(u.email, task("xb", { crossReview: [V("majed", "flag", "one point")] }), true),
+      saveTask(acct(u), task("xa", { crossReview: [V("razan", "flag", "«1 + 1 = 3»: <b>check</b>\nVAT basis is not stated"), V("majed", "ok")], quality: { score: 88, dims: { completeness: 90, brand: 90, honesty: 90, language: 90, format: 90 }, notes: "ready", model: "m", at: "t" } }), true),
+      saveTask(acct(u), task("xb", { crossReview: [V("majed", "flag", "one point")] }), true),
       // A forged verdict on an outside draft is never shown: the chip says it was not reviewed.
-      saveTask(u.email, task("xc", { source: "external", crossReview: [V("majed", "ok")] }), true),
+      saveTask(acct(u), task("xc", { source: "external", crossReview: [V("majed", "ok")] }), true),
     ]);
     const html = await page("en");
     expect(html).toContain(fill(en.inbox.xNotes, { name: "Razan", n: 2 }));
@@ -505,7 +505,7 @@ describe("the inbox card shows the review, and an outside draft says it had none
   it("on a phone the header's pills wrap as whole pills instead of breaking inside or pushing the status off the card", async () => {
     const u = await owner("xr-chips");
     await signIn(u.email);
-    await saveTask(u.email, task("xw", { source: "handoff", parent: { handoff: "0123456789abcdef", item: 0, conv: "abc123def456", auto: true }, crossReview: [V("razan", "flag", "a\nb"), V("majed", "ok")], quality: { score: 80, dims: { completeness: 80, brand: 80, honesty: 80, language: 80, format: 80 }, notes: "ok", model: "m", at: "t" } }), true);
+    await saveTask(acct(u), task("xw", { source: "handoff", parent: { handoff: "0123456789abcdef", item: 0, conv: "abc123def456", auto: true }, crossReview: [V("razan", "flag", "a\nb"), V("majed", "ok")], quality: { score: 80, dims: { completeness: 80, brand: 80, honesty: 80, language: 80, format: 80 }, notes: "ok", model: "m", at: "t" } }), true);
     const html = await page("en");
     const row = html.slice(html.indexOf('<span class="flex flex-wrap items-center gap-2 text-xs">'));
     expect(row.length, "the chip row wraps").toBeLessThan(html.length);
@@ -522,7 +522,7 @@ describe("the inbox card shows the review, and an outside draft says it had none
     const { seen } = await load({ cross: () => says({ id: 1, verdict: "ok" }) });
     const { saveExternalDraft } = await import("@/lib/external-drafts");
     const u = await owner("xr-external");
-    await saveGov(u.email, { autoApprove: { pricing_review: true } });
+    await saveGov(acct(u), { autoApprove: { pricing_review: true } });
     const r = await saveExternalDraft(u, { type: "pricing_review", channel: "finance", title: "From my assistant", body: "Price at 199 SAR" });
     if (!r.ok) throw new Error(r.reason);
     expect(r.task.source).toBe("external");
@@ -539,10 +539,10 @@ describe("each reviewer's work is one activity row per batch (rule 269)", () => 
       cross: (by) => (by === "razan" ? says({ id: 1, verdict: "flag", notes: ["20% + 90% is 110%"] }, { id: 2, verdict: "ok" }) : says({ id: 1, verdict: "ok" }, { id: 2, verdict: "ok" })),
     });
     const u = await owner("xr-activity");
-    const r = await generateBatch(u, u.email, { type: "gtm_plan", source: "chat", via: "chat" });
+    const r = await generateBatch(u, acct(u), { type: "gtm_plan", source: "chat", via: "chat" });
     if (!r.ok) throw new Error(r.reason);
     const ids = r.tasks.map((t) => t.id);
-    const rows = (await listActivity(u.email)).rows;
+    const rows = (await listActivity(acct(u))).rows;
     expect(rows.filter((a) => a.kind === "generated")).toHaveLength(1);
     const xr = rows.filter((a) => a.kind === "cross_reviewed").sort((a, b) => (a.agent! < b.agent! ? -1 : 1));
     expect(xr).toEqual([
@@ -556,7 +556,7 @@ describe("each reviewer's work is one activity row per batch (rule 269)", () => 
     const u = await newUser("xr-act-page");
     await signIn(u.email);
     const at = new Date().toISOString();
-    await recordActivity(u.email, [
+    await recordActivity(acct(u), [
       { at, kind: "cross_reviewed", agent: "razan", by: { kind: "system" }, via: "app", type: "gtm_plan", tasks: ["a"], count: 1, outcome: "flags:1" },
       { at, kind: "cross_reviewed", agent: "majed", by: { kind: "system" }, via: "app", type: "pricing_review", tasks: ["b"], count: 1, outcome: "flags:0" },
     ]);

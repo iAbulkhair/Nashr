@@ -3,6 +3,7 @@ import { describe, expect, it, vi, afterEach } from "vitest";
 // safeFetch resolves every hop before it connects; the test hosts are not real, so the resolver answers with a public
 // address. Without this the guard rejects them as "dns" before any redirect logic runs.
 vi.mock("dns/promises", () => ({ lookup: async () => [{ address: "93.184.216.34", family: 4 }] }));
+import { acct } from "@/lib/account-id";
 import { safeName, listFiles, readFile, writeFile } from "@/lib/files";
 import { newUser } from "./helpers/session";
 
@@ -38,12 +39,12 @@ describe("workspace file names survive Arabic (P1: silent overwrite)", () => {
 
   it("two Arabic files coexist in one workspace", async () => {
     const u = await newUser("arabicfiles");
-    await writeFile(u.email, "ملاحظات.md", "الأول", "user");
-    await writeFile(u.email, "خطة.md", "الثاني", "user");
-    const names = (await listFiles(u.email)).map((f) => f.name);
+    await writeFile(acct(u), "ملاحظات.md", "الأول", "user");
+    await writeFile(acct(u), "خطة.md", "الثاني", "user");
+    const names = (await listFiles(acct(u))).map((f) => f.name);
     expect(names).toHaveLength(2);
-    expect((await readFile(u.email, "ملاحظات.md"))!.content).toBe("الأول");
-    expect((await readFile(u.email, "خطة.md"))!.content).toBe("الثاني");
+    expect((await readFile(acct(u), "ملاحظات.md"))!.content).toBe("الأول");
+    expect((await readFile(acct(u), "خطة.md"))!.content).toBe("الثاني");
   });
 });
 
@@ -117,7 +118,7 @@ describe("share-for-credits is granted once (P1: credit minting)", () => {
 
     const { SHARE_CREDITS } = await import("@/lib/referral");
     expect(granted, "the bonus is once per platform, however many requests race").toBe(SHARE_CREDITS);
-    expect((await getUser(u.email))!.credits).toBe(50 + SHARE_CREDITS);
+    expect((await getUser(acct(u)))!.credits).toBe(50 + SHARE_CREDITS);
   });
 });
 
@@ -125,7 +126,7 @@ describe("deleting an account leaves nothing behind (P1: re-registering inherits
   it("no key anywhere in the store still mentions the address", async () => {
     // No shadow membership: this pins a person who holds nothing else, so the deletion takes the login too (multi-org M1).
     const u = await newUser("wipe-all", { shadow: false });
-    const email = u.email;
+    const id = acct(u);
 
     // Exercise the account across the features that write account-level keys, not just brand-scoped ones.
     const [{ saveBrand }, { writeFile }, { pushNotif }, { registerCode, applyReferral }, { track }, { meter }, { markSent }, { createConversation }, { db }, { wipeAccount }] = await Promise.all([
@@ -133,26 +134,27 @@ describe("deleting an account leaves nothing behind (P1: re-registering inherits
       import("@/lib/track"), import("@/lib/usage"), import("@/lib/notify"), import("@/lib/conversations"),
       import("@/lib/db"), import("@/lib/account"),
     ]);
-    await saveBrand(email, { name: "X", website: "", industry: "i", dialect: "saudi", languages: ["ar"], tone: "", products: "p", audience: "a", offers: "", competitors: "", banned: "", preferred: "", channels: [], city: "", updatedAt: new Date().toISOString() });
-    await writeFile(email, "notes.md", "content", "user");
-    await createConversation(email, "thread");
-    await pushNotif(email, { kind: "weekly", agent: "noor", title: "t", body: "b", href: "" });
-    await registerCode(email);
-    await track(email, "generate");
-    await meter(email, "claude-opus-5-5", "generate", { input_tokens: 10, output_tokens: 10 });
-    await markSent(email, "nudge1");
-    await db.sadd(`shared:${email}`, "x");
+    await saveBrand(id, { name: "X", website: "", industry: "i", dialect: "saudi", languages: ["ar"], tone: "", products: "p", audience: "a", offers: "", competitors: "", banned: "", preferred: "", channels: [], city: "", updatedAt: new Date().toISOString() });
+    await writeFile(id, "notes.md", "content", "user");
+    await createConversation(id, "thread");
+    await pushNotif(id, { kind: "weekly", agent: "noor", title: "t", body: "b", href: "" });
+    await registerCode(id);
+    await track(id, "generate");
+    await meter(id, "claude-opus-5-5", "generate", { input_tokens: 10, output_tokens: 10 });
+    await markSent(id, "nudge1");
+    await db.sadd(`shared:${id}`, "x");
 
     const referrer = await newUser("wipe-ref");
-    await registerCode(referrer.email);
-    await applyReferral(email, (await import("@/lib/referral")).codeFor(referrer.email));
+    await registerCode(acct(referrer));
+    await applyReferral(id, (await import("@/lib/referral")).codeFor(acct(referrer)));
 
-    await wipeAccount(email);
+    await wipeAccount(id);
 
     // The memory adapter exposes every key it holds, so this catches anything added later too.
     const mem = (globalThis as unknown as { __nashrMem: { kv: Map<string, unknown>; lists: Map<string, string[]>; sets: Map<string, Set<string>>; hashes: Map<string, Map<string, unknown>> } }).__nashrMem;
     const all = [...mem.kv.keys(), ...mem.lists.keys(), ...mem.sets.keys(), ...mem.hashes.keys()];
-    const residue = all.filter((k) => k.includes(email) && mem.kv.get(k) !== null);
+    // Both names of the account: its id (the key prefix) and the sign-in address (the login index, the person row).
+    const residue = all.filter((k) => (k.includes(id) || k.includes(u.email)) && mem.kv.get(k) !== null);
 
     expect(residue, `keys still holding this account's data: ${residue.join(", ")}`).toEqual([]);
   });
