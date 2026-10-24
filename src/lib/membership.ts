@@ -149,13 +149,31 @@ export async function listOrgs(pid: PersonId): Promise<{ aid: AccountId; role: R
  * records do not back grants nothing. Owned first, then oldest membership first.
  */
 export async function heldAccounts(p: Person): Promise<{ aid: AccountId; role: Role }[]> {
-  const [entries, home] = await Promise.all([db.smembers(personKey.orgs(p.pid)), legacyHomeOf(p)]);
-  const pool = [...new Set<AccountId>([...entries.map(storedAccountId), ...(home ? [home] : [])])];
-  const rows = await pmap(pool, async (aid) => holding(aid, p.pid));
+  const rows = await pmap(await candidates(p), async (aid) => holding(aid, p.pid));
   return rows
     .filter((r): r is Held => !!r)
     .sort(byPick)
     .map(({ aid, role }) => ({ aid, role }));
+}
+
+/** The accounts `heldAccounts` looks at: `orgs:{pid}` and the legacy home, read in ONE round. Pointers, never checked. */
+async function candidates(p: Person): Promise<AccountId[]> {
+  const [entries, home] = await Promise.all([db.smembers(personKey.orgs(p.pid)), legacyHomeOf(p)]);
+  return [...new Set<AccountId>([...entries.map(storedAccountId), ...(home ? [home] : [])])];
+}
+
+/**
+ * The accounts where the person's membership is paused for seats (rule 3825): it would hold the account but for
+ * `disabled`. For the workspaces page's notice only: it grants nothing, and no handle of these accounts leaves the server.
+ * The same candidates as `heldAccounts`, then ONE `pmap` round of the account and the membership.
+ */
+export async function pausedAccounts(p: Person): Promise<AccountId[]> {
+  const rows = await pmap(await candidates(p), async (aid) => {
+    const [u, m] = await Promise.all([getAccount(aid), getMembership(aid, p.pid)]);
+    if (!u || acct(u) !== aid || !m || m.disabled !== "seats" || ownerOf(u) === p.pid) return null;
+    return membershipHolds(u, { ...m, disabled: undefined }) ? aid : null;
+  });
+  return rows.filter((aid): aid is AccountId => !!aid);
 }
 
 /** The `memberOf` of a legacy member record that is this person's, or null. */

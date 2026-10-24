@@ -23,8 +23,8 @@ import { log } from "./log";
  * values of `plan` and `trialEnds` change, to ones every build already reads ("trial", an ISO time). A record written
  * by this code and read by an older build is an ended trial there too.
  *
- * Once: a second run finds the trial and changes nothing. One `hand_plan_ended` row in the founder's log, after the
- * save (a failed log write never undoes the change). Answers whether it changed the account.
+ * Once: a second run finds the trial and changes nothing. One `hand_plan_ended` row in the founder's log, naming
+ * the sign-in address (rule 3823), after the save (a failed log write never undoes the change). Answers whether it changed the account.
  */
 export async function endHandPlanIfDue(email: string, now = Date.now()): Promise<boolean> {
   const today = ksaDay(now);
@@ -36,11 +36,11 @@ export async function endHandPlanIfDue(email: string, now = Date.now()): Promise
     // A second in the past, as the refund does: `trialOver` compares strictly.
     if (!(new Date(u.trialEnds).getTime() < now)) u.trialEnds = new Date(now - 1000).toISOString();
     await saveUser(u);
-    return { before, after: { plan: u.plan, trialEnds: u.trialEnds, paidThrough: before.paidThrough, credits: Number(u.credits) || 0 } };
+    return { before, after: { plan: u.plan, trialEnds: u.trialEnds, paidThrough: before.paidThrough, credits: Number(u.credits) || 0 }, address: u.email };
   });
   if (!change) return false;
   await adminAudit({
-    actor: "system", section: "billing", action: "hand_plan_ended", target: email,
+    actor: "system", section: "billing", action: "hand_plan_ended", target: change.address,
     what: `hand_plan_ended plan:${change.before.plan} paid_through:${change.before.paidThrough} credits:${change.before.credits}`,
     before: change.before, after: change.after,
   }).catch((e) => log.error("hand plan end log", e));

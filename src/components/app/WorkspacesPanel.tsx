@@ -25,7 +25,7 @@ const XFER = /^#xfer=(w_[a-z2-7]{16})\.([a-f0-9]{64})$/;
  * (the switch route, then a full load of its link so the whole shell is rendered for it), and create one. The routes
  * check everything; the button state only mirrors them.
  */
-export default function WorkspacesPanel({ t, lang, initial, invites = [], canCreate, back }: { t: T; lang: "ar" | "en"; initial: WorkspaceRow[]; invites?: WaitingInvite[]; canCreate: boolean; back: string }) {
+export default function WorkspacesPanel({ t, lang, initial, invites = [], paused = [], canCreate, back }: { t: T; lang: "ar" | "en"; initial: WorkspaceRow[]; invites?: WaitingInvite[]; paused?: string[]; canCreate: boolean; back: string }) {
   const [busy, setBusy] = useState<string | null>(null);
   // Deleting one's own login (multi-workspace M3, rule 2754) asks in the app's own dialog; the route checks the rest.
   const [ask, confirmDialog] = useConfirm();
@@ -120,6 +120,10 @@ export default function WorkspacesPanel({ t, lang, initial, invites = [], canCre
           ))}
         </ul>
       )}
+      {/* Rule 3825: a paused seat is named with what to do, never offered as a workspace to open. */}
+      {paused.map((name, k) => (
+        <Callout key={k} tone="warning"><span dir="auto">{t.paused.replace("{workspace}", name)}</span></Callout>
+      ))}
       {invites.length > 0 && (
         <section className="grid gap-2 rounded-lg border border-border p-4" aria-labelledby="ws-invites">
           <h2 id="ws-invites" className="font-display text-lg font-bold">{t.invites.replace("{n}", String(invites.length))}</h2>

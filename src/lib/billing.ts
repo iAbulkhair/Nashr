@@ -126,7 +126,9 @@ export function priceFor(kind: IntentKind, item: { plan?: unknown; credits?: unk
 /** The payment id recorded for a Paymob transaction: the same on every retry, so `recordPayment` records it once. */
 export const paymentIdFor = (txnId: number) => `pay_${createHash("sha256").update(`paymob:${txnId}`).digest("hex").slice(0, 24)}`;
 const newRef = () => `pmi_${randomBytes(12).toString("hex")}`;
-const log = (email: string, what: string) => adminAudit({ actor: "paymob", section: "billing", target: email, what });
+// Rule 3823: the row names the account's sign-in address, as the console rows do, so the log's target filter finds it by address.
+const log = async (account: string, what: string) =>
+  adminAudit({ actor: "paymob", section: "billing", target: (await getUser(account))?.email ?? account, what });
 const keepTxns = (txns: string[] | undefined, id: string) => [...(txns ?? []).filter((t) => t !== id), id].slice(-12);
 
 function billingName(u: Pick<User, "name" | "email">): { firstName: string; lastName: string } {
@@ -739,12 +741,13 @@ async function endPlanOnRefund(email: string, paymentId: string, by: string, txn
     setMonthly(u, 0);
     await saveUser(u);
     await db.set(refundEndedKey(txnId), paymentId, DAYS_400);
-    return { before, after: { plan: u.plan, credits: u.credits, autoRenew: false, paidThrough: null }, founding, places: { id: acct(u), email: u.email } };
+    return { before, after: { plan: u.plan, credits: u.credits, autoRenew: false, paidThrough: null }, founding, places: { id: acct(u), email: u.email }, address: u.email };
   });
   if (change && typeof change === "object") {
     // Rule 2982: the places are held under the account id; a row written under the address before goes too.
     if (change.founding) await freePlaces(change.places);
-    await adminAudit({ actor: by, section: "billing", action: "refund_plan_ended", target: email, what: `refund_plan_ended payment:${paymentId} plan:${change.before.plan} credits:${change.before.credits}->${change.after.credits}${change.founding ? " founding_ended" : ""}`, before: change.before, after: change.after });
+    // Rule 3823: the row names the sign-in address, as the console rows do.
+    await adminAudit({ actor: by, section: "billing", action: "refund_plan_ended", target: change.address, what: `refund_plan_ended payment:${paymentId} plan:${change.before.plan} credits:${change.before.credits}->${change.after.credits}${change.founding ? " founding_ended" : ""}`, before: change.before, after: change.after });
   }
   await enforceSeats(email);
   return change === "ended_before" || (!!change && typeof change === "object");

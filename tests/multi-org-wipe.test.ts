@@ -391,7 +391,7 @@ describe("rule 2139: a team lock that cannot be had is a 409, not a 500", () => 
       // This refund ended the plan, on its first try: the retry says so.
       expect(second).toMatchObject({ ok: true, alreadyRefunded: true, planEnded: true });
       expect(await disabled(u, m.email)).toBe("seats");
-      expect((await auditRows()).filter((x) => x.action === "refund_plan_ended" && x.target === acct(u))).toHaveLength(1);
+      expect((await auditRows()).filter((x) => x.action === "refund_plan_ended" && x.target === u.email)).toHaveLength(1);
     }, 30_000);
 
     const admin = () => vi.stubEnv("WAITLIST_ADMIN_KEY", "wipe-test-admin-key-0123456789");

@@ -391,7 +391,7 @@ export async function createMember(
 
 async function insertMember(
   aid: AccountId,
-  input: { email: string; name: string; passHash: string; lang: "ar" | "en"; role: TeamRole; invitedBy: string; invitedByPid?: string },
+  input: { email: string; name: string; passHash: string; lang: "ar" | "en"; role: TeamRole; invitedBy: string; invitedByPid?: string; proved?: true },
   opts: { pid?: PersonId },
 ): Promise<Member> {
   const now = new Date().toISOString();
@@ -420,7 +420,9 @@ async function insertMember(
   // not sign in, an address a retry calls "unavailable", and the invite pending). The mirror needs no extra write: the
   // legacy record was just written with the row's own `role` and `acceptedAt`, byte-compatible with R1.
   const write = async () => {
-    await createPersonRecord({ pid, email, name: member.name, lang: member.lang, passHash: member.passHash, createdAt: now, sessionsAfter: now }, { loginLocked: true, personLocked: true });
+    // Rule 3824: an accepted invite proves the address (its token was mailed only there), so the person's address is
+    // verified from the join: they can make their own workspace and accept the next invite after leaving this one.
+    await createPersonRecord({ pid, email, name: member.name, lang: member.lang, passHash: member.passHash, createdAt: now, sessionsAfter: now, ...(input.proved ? { emailVerifiedAt: now } : {}) }, { loginLocked: true, personLocked: true });
     if (home) await saveMember(member);
     await Promise.all([putRow(aid, pid, { aid, pid, role: input.role, acceptedAt: now, invitedBy: input.invitedByPid ?? input.invitedBy }), claimLogin(email, pid)]);
   };
@@ -665,7 +667,7 @@ export async function acceptInvite(token: string, input: { name: unknown; passwo
         // place still holds as its key (L3).
         if (blocked === "held" || (blocked === "moved" && !MULTI_ORG)) return fail("unavailable");
         const lang = input.lang === "en" || input.lang === "ar" ? input.lang : inv.lang;
-        const member = await insertMember(aid, { email: inv.email, name, passHash, lang, role: inv.role, invitedBy: inv.invitedBy, invitedByPid: inv.invitedByPid }, MULTI_ORG ? { pid: pidFrom(newPersonId()) } : {});
+        const member = await insertMember(aid, { email: inv.email, name, passHash, lang, role: inv.role, invitedBy: inv.invitedBy, invitedByPid: inv.invitedByPid, proved: true }, MULTI_ORG ? { pid: pidFrom(newPersonId()) } : {});
         const pid = pidFrom(memberPid(member));
         await Promise.all([
           dropInvites(aid, [{ id, email: inv.email }]),

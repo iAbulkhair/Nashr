@@ -279,7 +279,7 @@ describe("applying a payment (rules 707-711)", () => {
     }
     expect((await getUser(acct(u)))!.plan).toBe("trial");
     expect(await payments(acct(u))).toHaveLength(0);
-    const log = (await db.lrange("admin:log", 0, 50)).map(String).filter((l) => l.includes(acct(u)) && l.includes("paymob_mismatch"));
+    const log = (await db.lrange("admin:log", 0, 50)).map(String).filter((l) => l.includes(u.email) && l.includes("paymob_mismatch"));
     expect(log.length).toBeGreaterThanOrEqual(4);
   });
   it("declined, pending, refunded and child transactions apply nothing; an unknown reference is ignored (rule 709)", async () => {
@@ -474,7 +474,7 @@ describe("a refund ends the plan (rules 1300, 1301, 1305)", () => {
     expect(after.credits).toBe(300);
     expect(lotsOf(after)).toHaveLength(1);
     expect(renewalDue({ ...after, renewedAt: "2000-01" })).toBe(false);
-    const log = await logRows(acct(u), "refund_plan_ended");
+    const log = await logRows(u.email, "refund_plan_ended");
     expect(log).toHaveLength(1);
     expect(JSON.parse(log[0])).toMatchObject({ section: "billing", before: { plan: "starter", credits: 600, autoRenew: false, paidThrough: addMonths(today(), 1) }, after: { plan: "trial", credits: 300, autoRenew: false, paidThrough: null } });
     // The retry changes nothing more, and still says truthfully that this refund ended the plan (multi-workspace M1:
@@ -482,7 +482,7 @@ describe("a refund ends the plan (rules 1300, 1301, 1305)", () => {
     const again = await refund(u.email, { id });
     expect(await again.json()).toMatchObject({ ok: true, alreadyRefunded: true, planEnded: true });
     expect((await getUser(acct(u)))!.credits).toBe(300);
-    expect(await logRows(acct(u), "refund_plan_ended")).toHaveLength(1);
+    expect(await logRows(u.email, "refund_plan_ended")).toHaveLength(1);
   });
   it("refunding an old payment again after the customer bought a new plan leaves the new plan alone (rule 1300)", async () => {
     const u = await owner();
@@ -509,7 +509,7 @@ describe("a refund ends the plan (rules 1300, 1301, 1305)", () => {
     expect(after.billing).toEqual(bought.billing);
     expect(after.credits).toBe(bought.credits);
     expect(trialOver(after)).toBe(false);
-    expect(await logRows(acct(u), "refund_plan_ended")).toHaveLength(1);
+    expect(await logRows(u.email, "refund_plan_ended")).toHaveLength(1);
   });
   it("a refund that found no plan to end, repeated after a new purchase, leaves the new plan alone (rule 1300)", async () => {
     const u = await owner();
@@ -526,7 +526,7 @@ describe("a refund ends the plan (rules 1300, 1301, 1305)", () => {
     expect(await (await refund(u.email, { id, reason: "asked" })).json()).toMatchObject({ ok: true, planEnded: false });
     // The marker says this transaction ended nothing (multi-workspace M1 final review, I2).
     expect(await db.get(`paymob:refund_ended:${first.id}`)).toBe("none");
-    expect(await logRows(acct(u), "refund_plan_ended")).toHaveLength(1);
+    expect(await logRows(u.email, "refund_plan_ended")).toHaveLength(1);
     // The customer buys again: a new subscription.
     jar().clear();
     await signIn(u.email);
@@ -543,7 +543,7 @@ describe("a refund ends the plan (rules 1300, 1301, 1305)", () => {
     expect(after.billing).toEqual(bought.billing);
     expect(after.credits).toBe(bought.credits);
     expect(trialOver(after)).toBe(false);
-    expect(await logRows(acct(u), "refund_plan_ended")).toHaveLength(1);
+    expect(await logRows(u.email, "refund_plan_ended")).toHaveLength(1);
   });
   it("a pack's refund leaves the plan alone (rule 1300)", async () => {
     const u = await owner();

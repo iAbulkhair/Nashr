@@ -163,7 +163,7 @@ describe("a paid founding first month takes the seat and a 12-month lock (rule 1
     expect(after.priceLock).toMatchObject({ plan: "pro", baseHalalas: 49900, from: day, until: addMonths(day, 12), months: 12, founding: true, paidHalalas: it.amount });
     expect(await db.zcard(SEATS_KEY)).toBe(1);
     expect(await db.zcard(LOCKS_KEY)).toBe(1);
-    expect((await logRows(acct(u))).some((l) => l.includes("seat:claimed") && l.includes("price_lock_months:12"))).toBe(true);
+    expect((await logRows(u.email)).some((l) => l.includes("seat:claimed") && l.includes("price_lock_months:12"))).toBe(true);
     await hook(obj);
     expect(await db.zcard(SEATS_KEY)).toBe(1);
     expect((await getUser(acct(u)))!.founding!.at).toBe(after.founding!.at);
@@ -192,7 +192,7 @@ describe("the last seat (rule 1704)", () => {
     expect(after.founding).toBeUndefined();
     expect(after.priceLock).toMatchObject({ months: 6, founding: false });
     expect(await db.zcard(SEATS_KEY)).toBe(FOUNDING_SEATS);
-    expect((await logRows(acct(u))).some((l) => l.includes("seat:full"))).toBe(true);
+    expect((await logRows(u.email)).some((l) => l.includes("seat:full"))).toBe(true);
   });
 });
 
@@ -299,7 +299,7 @@ describe("a full refund ends the seat and the lock (rule 1708)", () => {
     expect(after.priceLock!.endedAt).toEqual(expect.any(String));
     expect(await db.zcard(SEATS_KEY)).toBe(0);
     expect(await db.zcard(LOCKS_KEY)).toBe(0);
-    expect((await logRows(acct(u))).some((l) => l.includes("founding_ended"))).toBe(true);
+    expect((await logRows(u.email)).some((l) => l.includes("founding_ended"))).toBe(true);
     // Paying again later is an ordinary subscription: an ended seat or lock is never claimed again automatically.
     jar().clear();
     await signIn(u.email);

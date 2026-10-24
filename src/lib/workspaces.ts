@@ -3,7 +3,7 @@ import { newAccountId } from "./account-id";
 import { getAccount, PLAN_CREDITS, saveUser, setSessionAccount, type Role, type User } from "./auth";
 import { getBrand } from "./brand";
 import { personKey, type AccountId } from "./keys";
-import { heldAccounts } from "./membership";
+import { heldAccounts, pausedAccounts } from "./membership";
 import { pmap } from "./parallel";
 import { getPerson, updatePerson, withPersonLock, type Person } from "./person";
 import { workspaceCreateAllowed } from "./rate";
@@ -31,11 +31,21 @@ export type WorkspaceRow = { handle: string; name: string; role: Role; current: 
  */
 export async function listWorkspaces(p: Person, current: AccountId | null): Promise<WorkspaceRow[]> {
   const held = await heldAccounts(p);
-  return pmap(held, async ({ aid, role }) => {
-    const [u, brand] = await Promise.all([getAccount(aid), getBrand(aid)]);
-    const name = brand?.name?.trim() || u?.workspaceName?.trim() || u?.name || "";
-    return { handle: wsHandle(aid), name, role, current: aid === current };
-  });
+  return pmap(held, async ({ aid, role }) => ({ handle: wsHandle(aid), name: await nameOf(aid), role, current: aid === current }));
+}
+
+/** A workspace's name: the default brand's name, else the name given at create, else the owner's name. */
+async function nameOf(aid: AccountId): Promise<string> {
+  const [u, brand] = await Promise.all([getAccount(aid), getBrand(aid)]);
+  return brand?.name?.trim() || u?.workspaceName?.trim() || u?.name || "";
+}
+
+/**
+ * The names of the workspaces where the person's seat is paused (rule 3825, `pausedAccounts`), for the workspaces
+ * page's notice: names only, no handle, so nothing on the page can open them.
+ */
+export async function pausedWorkspaces(p: Person): Promise<string[]> {
+  return pmap(await pausedAccounts(p), nameOf);
 }
 
 export type CreateResult = { ok: true; aid: AccountId; handle: string } | { ok: false; error: "email_unverified" | "rate_limited" | "workspace_cap" | "not_found" };

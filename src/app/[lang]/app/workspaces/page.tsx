@@ -5,7 +5,7 @@ import { currentPerson } from "@/lib/auth";
 import { MULTI_ORG } from "@/lib/multi-org";
 import { appScreenMeta } from "@/lib/screen-titles";
 import { invitesWaiting } from "@/lib/team";
-import { listWorkspaces } from "@/lib/workspaces";
+import { listWorkspaces, pausedWorkspaces } from "@/lib/workspaces";
 import WorkspacesPanel from "@/components/app/WorkspacesPanel";
 
 export const dynamic = "force-dynamic";
@@ -22,6 +22,7 @@ export default async function Page({ params }: { params: Promise<{ lang: string 
   const me = await currentPerson();
   if (!me) redirect(`/${lang}/app/login`);
   // The invitations inbox (M3, rule 2753): the person's own verified address only, never an id or a token.
-  const [rows, invites] = await Promise.all([listWorkspaces(me.person, me.acct), invitesWaiting(me.person)]);
-  return <WorkspacesPanel t={appDict[lang].workspaces} lang={lang} initial={rows} invites={invites} canCreate={!!me.person.emailVerifiedAt} back={appDict[lang].dialog.back} />;
+  // A seat paused for seats is named, never linked (rule 3825): the member learns why the workspace is gone.
+  const [rows, invites, paused] = await Promise.all([listWorkspaces(me.person, me.acct), invitesWaiting(me.person), pausedWorkspaces(me.person)]);
+  return <WorkspacesPanel t={appDict[lang].workspaces} lang={lang} initial={rows} invites={invites} paused={paused} canCreate={!!me.person.emailVerifiedAt} back={appDict[lang].dialog.back} />;
 }

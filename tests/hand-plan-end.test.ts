@@ -79,7 +79,7 @@ describe("the daily job moves it to the trial (rule 2274)", () => {
     expect(after.handPlan).toMatchObject({ paidThrough: day });
     expect(await renewIfDue(acct(u)), "a trial gets no refill").toBe(false);
     expect(await endHandPlanIfDue(acct(u)), "a second run changes nothing").toBe(false);
-    const log = await rows(acct(u), "hand_plan_ended");
+    const log = await rows(u.email, "hand_plan_ended");
     expect(log).toHaveLength(1);
     expect(log[0]).toMatchObject({ actor: "system", before: { plan: "pro", paidThrough: day, credits: 37 }, after: { plan: "trial", paidThrough: day, credits: 37 } });
   });

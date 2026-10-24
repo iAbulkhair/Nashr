@@ -1601,12 +1601,22 @@ One release turns on both constants (decision 11): `MULTI_ORG` in `src/lib/multi
 6. Founder alerts (rule 3816). The fair-use pause, the daily margin alert and the golden regression alert find each `ADMIN_EMAILS` founder through the login (`accountByLogin`) and file the bell item at the founder's account id; they read `user:{address}`, which an `a_` founder never has, so no founder was told. `staff-alert.ts` emails the address and stays.
 7. Calendar links made before M1 (rule 3817). `legacyHolds` in `src/lib/secretary-feed.ts` checks the link's scope against the brands of `acct(owner)`, not the owner's address: an owner whose address moved in place keeps the account id.
 8. Passkeys (rule 3818). A `p_` person's passkey set stays at its pid through an owner's in-place address move and a member's removal; the copy to a new pid is the floor's path only.
-9. The founder's log (rule 3819). `hand_refill` and `suspension.expired` rows name the account's sign-in address, read from the saved record, not the account id they are called with.
+9. The founder's log (rule 3819). `hand_refill` and `suspension.expired` rows name the account's sign-in address, read from the saved record, not the account id they are called with. The other billing rows followed in rule 3823 (section 93.5).
 10. Partners (rule 3820). The bank route saves under the partner's sign-in address; the commission's same-team check finds the partner's person and account through its login, as `claimPartnerCode` does.
 11. Analytics (rule 3821). A login is counted under the account id in the active sets, and the 7-day retention reads them with the account id.
 12. Scope fallback (rule 3822). A user without `scope` falls back to its account id, never to the sign-in address.
 
 Preconditions before it goes live (flows 88.2 and 93.1): M1 live at least 7 days, the S1 conversion applied with 0 conflicts, R1 live at least 7 days, `scripts/account-ids.ts` reporting 0 conflicts, and the saved-card check on staging. The release pull request lists their state.
+
+### 93.5 Follow-ups of the switch-on release (2026-10-24, branch `claude/multi-org-followups-3823`, rules 3823-3825)
+
+The founder's answers (2026-10-24) to the open questions of the M2 + R2 enable release pull request. Release step: **enable**, no stored shape change (`emailVerifiedAt` is an existing optional field of the person row; a build without this release ignores the stamp on a member's row, and nothing old reads it there). Rollback floor: the M2 + R2 enable release (section 93.4).
+
+1. The founder's log (rule 3823). The billing rows named by the account id now name the sign-in address too, as the console rows and item 9 above do: `hand_plan_ended` (`endHandPlanIfDue`) and `refund_plan_ended` (`endPlanOnRefund`) take it from the saved record under the account lock, and every `paymob` row (`log` in `src/lib/billing.ts`) reads the account first. The log's free-text target filter now finds every billing row by address.
+2. An accepted invite proves the address (rule 3824). `acceptInvite` stamps `emailVerifiedAt` on the new person with the join time: the invite's token was mailed only to that address. So a member who leaves or is removed and signs in to no workspace (item 7 of section 93.2) gets the create form on `/{lang}/app/workspaces` and `POST /api/workspaces` (rule 2123, a verified person only), and can accept the next invite as a person (rule 2116). Before, every `p_` member was unverified and stuck there. `createMember` (tests) stamps nothing. No production `p_` member exists from before this release (`MULTI_ORG` was off), so no data conversion is needed; a legacy member removed from its roster still signs in nowhere, as in R1.
+3. A paused seat is named (rule 3825). `/{lang}/app/workspaces` reads `pausedWorkspaces(person)` (`pausedAccounts` in `src/lib/membership.ts`: the same candidates as `heldAccounts`, ONE `pmap` round, a membership that would hold but for `disabled: "seats"`; never the owner) and shows one warning per name: "your seat in {workspace} is paused, ask the owner". Names only: no handle leaves the server and nothing on the page opens the account, which `heldAccounts` still refuses.
+
+Left for later (founder, 2026-10-24): the rate limits keyed by address (`rate:brandadd`, `rate:onboard`, `rate:draft:*`) move to the account id after launch; the security limits (`rate:sec:*`) stay per person.
 
 ## 94. Agent tool authority (2026-10-20, branch `claude/lucid-faraday-kq261a`, rules 2430-2436)
 
