@@ -848,7 +848,7 @@ const SEAT_WAIT_S = 2 * 86400;
  * callback, which grants the seat (`applySeat`); a paid charge whose seat cannot be granted is refunded at once.
  * `by` is the address of the owner who confirmed.
  */
-export async function chargeSeat(u: User, by: string, months: number, today = ksaDay()): Promise<{ ok: true; txnId: TxnId } | { ok: false; error: SeatChargeError }> {
+export async function chargeSeat(u: User, by: string, months: number): Promise<{ ok: true; txnId: TxnId } | { ok: false; error: SeatChargeError }> {
   const p = paymentProvider();
   const saved = p?.savedCard;
   const aid = acct(u);
