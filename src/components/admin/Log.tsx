@@ -18,13 +18,13 @@ export const LOG_COPY = {
     title: "Audit log", filters: "Filter the log", section: "Section", anySection: "All sections", actor: "Who", action: "Action", target: "On", apply: "Filter", clear: "Clear",
     when: "When", change: "Change", to: "to", reason: "Reason", legacy: "older entry", viaAccount: "inside", empty: "No entry matches these filters.", loading: "Loading…",
     older: "Older entries", scanned: (n: number) => `Filters look through the newest ${n} entries (the log keeps 5,000).`, failed: "The log did not load. Try again.",
-    sections: { users: "Users", billing: "Billing", partners: "Partners", quality: "Quality", wishlist: "Wishlist", system: "System" },
+    sections: { users: "Users", billing: "Billing", partners: "Partners", quality: "Quality", wishlist: "Wishlist", system: "System", data: "Data" },
   },
   ar: {
     title: "سجل التدقيق", filters: "تصفية السجل", section: "القسم", anySection: "كل الأقسام", actor: "من", action: "الإجراء", target: "على", apply: "تصفية", clear: "مسح",
     when: "متى", change: "التغيير", to: "إلى", reason: "السبب", legacy: "إدخال قديم", viaAccount: "من داخل", empty: "لا إدخال يطابق هذه المرشحات.", loading: "جارٍ التحميل…",
     older: "إدخالات أقدم", scanned: (n: number) => `تبحث المرشحات في أحدث ${n} إدخال (يحتفظ السجل بـ 5,000).`, failed: "لم يُحمَّل السجل. حاول مرة أخرى.",
-    sections: { users: "المستخدمون", billing: "الفوترة", partners: "الشركاء", quality: "الجودة", wishlist: "قائمة الأمنيات", system: "النظام" },
+    sections: { users: "المستخدمون", billing: "الفوترة", partners: "الشركاء", quality: "الجودة", wishlist: "قائمة الأمنيات", system: "النظام", data: "البيانات" },
   },
 } as const;
 

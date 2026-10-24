@@ -264,6 +264,8 @@ export const STAFF_MAY = {
   "workspace.view": ["owner", "support"],
   /** Turn customer passkey sign-in and adding off or on (POST /api/admin/passkeys, rule 2426); stored passkeys are untouched. */
   "passkeys.switch": ["owner"],
+  /** Run a one-time data conversion from the console, dry or applied (POST /api/admin/conversions/{name}, rule 4101). */
+  "data.convert": ["owner"],
 } as const satisfies Record<string, readonly string[]>;
 
 export type StaffAction = keyof typeof STAFF_MAY;

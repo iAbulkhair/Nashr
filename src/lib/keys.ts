@@ -389,6 +389,15 @@ export const globalKey = {
   passkeyAuth: (nonceHash: string) => `pkauth:${nonceHash}`,
   /** string: the passkey off switch, `"1"` = off, absent = on; no TTL; written only by the console owner (rule 2426). */
   passkeysOff: () => "passkeys:off",
+  /** owned lock: one console data conversion at a time, any of them (POST /api/admin/conversions/{name}, rule 4103); 300 s. */
+  conversionLock: () => "lock:conversion",
+  /**
+   * json `{ at, by }`: a dry run of one conversion that found nothing to leave alone, 15 minutes; the apply needs it and
+   * deletes it (rule 4104). `name` is one of the fixed names in src/lib/conversions/console.ts, never the request's text.
+   */
+  conversionClean: (name: string) => `conversion:clean:${name}`,
+  /** bucket name for `allow` (stored as `rate:adminconv:{who}`): console conversion runs of one console actor, 20 an hour (rule 4102). */
+  conversionBucket: (who: string) => `adminconv:${who}`,
   /** bucket name for `allow` (stored as `rate:pk:ip:{ip}`): passkey sign-in options per IP, 60 per 15 min (rule 2417). */
   passkeyIpBucket: (ip: string) => `pk:ip:${ip}`,
   /** bucket name for `allow` (stored as `rate:pkv:ip:{ip}`): passkey sign-in verifies per IP, 20 per 15 min (rule 2418). */

@@ -150,6 +150,9 @@ const ROUTE_ROLES: Record<string, Gate> = {
   "POST /api/admin/agent-scope/modes": "admin-console",
   // Customer passkeys off switch (rule 2426): the console owner only (staffMay "passkeys.switch"), second factor, reason, audit.
   "POST /api/admin/passkeys": "admin-console",
+  // One-time data conversions from the console (rules 4100-4106): the console owner only (staffMay "data.convert"); an apply also
+  // needs the second factor, a reason and a clean dry run.
+  "POST /api/admin/conversions/[name]": "admin-console",
   "POST /api/admin/agent-scope/eval": "admin-console",
 
   // Owner only.
