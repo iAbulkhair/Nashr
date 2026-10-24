@@ -11,7 +11,8 @@ let warnedBoth = false;
  * `GEIDEA_API_PASSWORD`, and `GEIDEA_LIVE=1` only on the production deploy), else Paymob KSA exactly as before: null until
  * every PAYMOB_* variable its gate needs is set (and PAYMOB_LIVE=1 for live keys, rule 700). With both set Geidea wins and
  * `payment_provider_both_set` is logged once. Read per call, like the gates themselves. Nothing outside src/lib/payments,
- * src/lib/paymob.ts and src/lib/geidea.ts imports a provider module.
+ * src/lib/paymob.ts and src/lib/geidea.ts imports a provider module. Both adapters carry `CheckoutInput.interval` (yearly
+ * billing, rules 3539-3540, flows.md section 110 item 7).
  */
 export function paymentProvider(): PaymentProvider | null {
   const geidea = geideaProvider();

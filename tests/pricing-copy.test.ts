@@ -40,7 +40,8 @@ const P = PLAN_PRICE_SAR;
 const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/'/g, "&#x27;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 const fill = (s: string, n: number, credits: number) => s.replace("{n}", String(n)).replace("{credits}", String(credits));
 /** The markup of each element carrying `data-tier`, keyed by tier. */
-const tiers = (html: string) => Object.fromEntries(html.split('data-tier="').slice(1).map((c) => [c.slice(0, c.indexOf('"')), c]));
+// The first card of each tier: since yearly billing (rule 4035) the hidden yearly panel draws the self-serve cards again after the monthly ones.
+const tiers = (html: string) => html.split('data-tier="').slice(1).reduce<Record<string, string>>((m, c) => (m[c.slice(0, c.indexOf('"'))] ??= c, m), {});
 const help = (en: string) => {
   const item = HELP.flatMap((t) => t.items).find((i) => i.q.en === en);
   if (!item) throw new Error(`no help answer for "${en}"`);

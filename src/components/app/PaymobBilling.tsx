@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Lang } from "@/lib/i18n";
 import type { BillingView } from "@/lib/billing";
+import { yearlyOffered } from "@/lib/pricing";
 import { useConfirm } from "./ConfirmDialog";
 
 const T = {
@@ -13,7 +14,9 @@ const T = {
       agency: "خطة الوكالات بعقد، تواصل معنا.", slow_down: "محاولات كثيرة. حاول بعد ساعة.", not_enabled: "الدفع الإلكتروني غير متاح الآن.",
       paymob_error: "تعذّر فتح صفحة الدفع. حاول مرة أخرى.", provider_error: "تعذّر فتح صفحة الدفع. حاول مرة أخرى.", forbidden: "الدفع لمالك الحساب فقط.", server: "تعذّر الطلب. حاول مرة أخرى.",
       no_card: "لا توجد بطاقة محفوظة. ادفع الشهر القادم بالبطاقة لحفظها.", no_billing: "لا يوجد اشتراك إلكتروني.",
+      yearly_not_offered: "الدفع السنوي غير متاح لهذه الخطة.", yearly_active: "اشتراكك السنوي ما زال سارياً. يمكنك تغيير الخطة عند نهاية السنة المدفوعة، أو تواصل معنا.",
     } as Record<string, string>,
+    yearly: "سنوي", renewYear: "ادفع السنة الآن",
     title: "اشتراكك", active: "نشط", past_due: "متأخر السداد", locked: "موقوف", paidThrough: "مدفوع حتى", grace: "مهلة السداد حتى",
     card: "البطاقة", noCard: "لا توجد بطاقة محفوظة", auto: "التجديد التلقائي", on: "مفعّل", off: "متوقف",
     cancel: "أوقف التجديد التلقائي", resume: "فعّل التجديد التلقائي", remove: "احذف البطاقة", renew: "ادفع الشهر الآن",
@@ -35,7 +38,9 @@ const T = {
       agency: "Agency is sold by contract: contact us.", slow_down: "Too many tries. Try again in an hour.", not_enabled: "Online payment is not available right now.",
       paymob_error: "Could not open the payment page. Try again.", provider_error: "Could not open the payment page. Try again.", forbidden: "Only the account owner can pay.", server: "Could not complete the request. Try again.",
       no_card: "No saved card. Pay the next month by card to save one.", no_billing: "No online subscription.",
+      yearly_not_offered: "Yearly billing is not offered for this plan.", yearly_active: "Your yearly plan is still running. You can change plan when the paid year ends, or contact us.",
     } as Record<string, string>,
+    yearly: "Yearly", renewYear: "Pay this year now",
     title: "Your subscription", active: "Active", past_due: "Payment overdue", locked: "Paused", paidThrough: "Paid through", grace: "Grace until",
     card: "Card", noCard: "No saved card", auto: "Automatic renewal", on: "On", off: "Off",
     cancel: "Turn off automatic renewal", resume: "Turn on automatic renewal", remove: "Remove card", renew: "Pay this month now",
@@ -58,10 +63,12 @@ async function post(url: string, body: unknown): Promise<{ ok?: boolean; error?:
 }
 
 /**
- * Pay a plan month or a top-up pack online (POST /api/billing/checkout, rules 700-729): the server prices it and answers
+ * Pay a plan period or a top-up pack online (POST /api/billing/checkout, rules 700-729): the server prices it and answers
  * Paymob's checkout page, where the browser goes next. Only rendered for the owner while Paymob is configured.
+ * `interval="year"` (rule 3536) asks for the yearly price; without it the body is exactly the monthly one it always was.
+ * The server refuses a year the founder has not priced, whatever this button sends.
  */
-export function PaymobPayButton({ lang, kind, plan, credits, label, className }: { lang: Lang; kind: "plan" | "topup"; plan?: string; credits?: number; label?: string; className?: string }) {
+export function PaymobPayButton({ lang, kind, plan, credits, label, className, interval }: { lang: Lang; kind: "plan" | "topup"; plan?: string; credits?: number; label?: string; className?: string; interval?: "year" }) {
   const S = T[lang];
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
@@ -70,7 +77,7 @@ export function PaymobPayButton({ lang, kind, plan, credits, label, className }:
     setBusy(true);
     setErr("");
     try {
-      const j = await post("/api/billing/checkout", kind === "plan" ? { kind, plan, lang } : { kind, credits, lang });
+      const j = await post("/api/billing/checkout", kind === "plan" ? { kind, plan, lang, ...(interval ? { interval } : {}) } : { kind, credits, lang });
       if (j.ok && typeof j.url === "string" && j.url.startsWith("https://")) {
         window.location.assign(j.url);
         return;
@@ -83,7 +90,7 @@ export function PaymobPayButton({ lang, kind, plan, credits, label, className }:
   }
   return (
     <div className="mt-4 grid gap-1">
-      <button type="button" onClick={pay} disabled={busy} data-paymob-pay={kind} className={className ?? "rounded-full bg-inverse px-4 py-2 text-center text-sm font-semibold text-inverse-muted"}>{busy ? S.busy : label ?? S.pay}</button>
+      <button type="button" onClick={pay} disabled={busy} data-paymob-pay={kind} data-paymob-interval={interval} className={className ?? "rounded-full bg-inverse px-4 py-2 text-center text-sm font-semibold text-inverse-muted"}>{busy ? S.busy : label ?? S.pay}</button>
       {err && <p role="alert" className="text-xs text-danger">{err}</p>}
     </div>
   );
@@ -131,14 +138,16 @@ export function PaymobPlanCard({ lang, billing }: { lang: Lang; billing: Billing
       <h2 id="paymob-plan-title" className="font-display text-lg font-bold">{S.title}</h2>
       <dl className="mt-3 grid gap-3 sm:grid-cols-4">
         <div><dt className="text-foreground-muted">{S.title}</dt><dd className={b.status === "active" ? "font-medium" : "font-medium text-danger"}>{S[b.status]}</dd></div>
-        <div><dt className="text-foreground-muted">{S.paidThrough}</dt><dd className="font-mono" dir="ltr">{b.paidThrough}</dd></div>
+        <div><dt className="text-foreground-muted">{S.paidThrough}</dt><dd className="font-mono" dir="ltr">{b.paidThrough}</dd>{b.interval === "year" && <dd className="text-foreground-muted" data-paymob-yearly="">{S.yearly}</dd>}</div>
         <div><dt className="text-foreground-muted">{S.card}</dt><dd>{b.card ? <span dir="ltr">{b.card.brand} •••• {b.card.last4}</span> : S.noCard}</dd></div>
         <div><dt className="text-foreground-muted">{S.auto}</dt><dd>{b.autoRenew ? S.on : S.off}</dd></div>
       </dl>
       {b.status === "locked" && <p className="mt-3 text-danger" data-paymob-locked="">{S.lockedNote}</p>}
       {b.status === "past_due" && <p className="mt-3 text-danger">{S.pastDueNote}{b.graceUntil && <> ({S.grace} <span className="font-mono" dir="ltr">{b.graceUntil}</span>)</>}</p>}
       {b.status === "active" && !b.autoRenew && <p className="mt-3 text-foreground-muted">{S.cancelNote}</p>}
-      {b.status !== "active" && <PaymobPayButton lang={lang} kind="plan" plan={b.plan} label={S.renew} />}
+      {b.status !== "active" && (b.interval === "year" && yearlyOffered(b.plan)
+        ? <PaymobPayButton lang={lang} kind="plan" plan={b.plan} interval="year" label={S.renewYear} />
+        : <PaymobPayButton lang={lang} kind="plan" plan={b.plan} label={S.renew} />)}
       <div className="mt-4 flex flex-wrap gap-2">
         {b.autoRenew ? (
           <button type="button" disabled={busy} onClick={() => act("cancel")} className="min-h-[var(--hit-min)] rounded-full border border-border px-4 py-2" data-paymob-action="cancel">{S.cancel}</button>

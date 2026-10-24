@@ -130,6 +130,9 @@ describe("rule 2030: each builder returns the bytes of its old template", () => 
     [accountKey.payCard(E), `pay:card:${E}`],
     [accountKey.payLast(E), `pay:last:${E}`],
     [accountKey.payAttempt(E, "2026-10-24"), `pay:attempt:${E}:2026-10-24`],
+    // A yearly seat charged now (rules 4044-4045): new families, no old template.
+    [accountKey.paySeatLock(E), `pay:seatlock:${E}`],
+    [accountKey.paySeatWait(E), `pay:seatwait:${E}`],
   ];
   const global: [string, string][] = [
     [globalKey.usersAll(), "users:all"],

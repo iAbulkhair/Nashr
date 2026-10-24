@@ -280,7 +280,8 @@ describe("payments", () => {
       expect(e.message).toBe("paymob_intention_failed:502");
       expect(new PaymentError("paymob", "renewal_off").message).toBe("paymob_renewal_off");
       const billing = read("src/lib/billing.ts");
-      expect(billing.match(/e(?:rr)? instanceof PaymentError \? e(?:rr)?\.message : "error"/g)).toHaveLength(3);
+      // Checkout, renewal, the founder's refund, and the yearly seat charge's two (rule 4045).
+      expect(billing.match(/(?:e|err|cause) instanceof PaymentError \? (?:e|err|cause)\.message : "error"/g)).toHaveLength(5);
       expect(billing).not.toMatch(/PaymobError|paymobConfig|createIntention|payWithToken|refundTxn|verifyHmac/);
     });
   });

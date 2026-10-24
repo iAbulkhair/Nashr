@@ -160,7 +160,7 @@ const WHY: Record<NotReadReason, string> = {
   publish_only: "connected for publishing only; Thakeen does not read this platform's results through that connection",
   reconnect: "the platform stopped accepting Thakeen's access: the owner connects it again",
   choose_page: "connected, but no company page is chosen: the owner chooses one",
-  refresh_x: "connected; X is read only when someone presses Refresh X on the Reports page (1 credit)",
+  refresh_x: "connected; X is read only when someone presses Refresh X on the Reports page (2 credits)",
   x_direct_only: "connected through a route Thakeen does not read: X is read only through its own direct connection",
   read_failed: "connected, but the last read gave no figures or has not run yet: the next daily read or a refresh tries again",
   analytics_scope: "the permission its analytics need is not granted, so its results are not read; a YouTube channel still has its public counts in SOCIAL DATA",
