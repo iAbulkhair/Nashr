@@ -4,7 +4,8 @@ import { notFound, redirect } from "next/navigation";
 import { SUPPORT_EMAIL, dict, isLang } from "@/lib/i18n";
 import { appDict } from "@/lib/app-i18n";
 import { currentUser, seatLimit } from "@/lib/auth";
-import { FIRST_MONTH_DISCOUNT_PCT, PLAN_PRICE_SAR, SELF_SERVE_PLANS, allowanceOf, firstMonthPriceSar, formatCount, type SelfServePlan } from "@/lib/pricing";
+import { FIRST_MONTH_DISCOUNT_PCT, PLAN_PRICE_SAR, SELF_SERVE_PLANS, allowanceOf, extraSeatsSold, firstMonthPriceSar, formatCount, type SelfServePlan } from "@/lib/pricing";
+import SeatsBillingCard from "@/components/app/settings/SeatsBillingCard";
 import { openLots, topupBalance, topupCredits, topupView } from "@/lib/topups";
 import { can } from "@/lib/roles";
 import { entitlementView } from "@/lib/entitlements";
@@ -110,6 +111,8 @@ export default async function Page({ params, searchParams }: { params: Promise<{
       {returned && online && <PaymobReturnStatus lang={lang} />}
       {sub && <PaymobPlanCard lang={lang} billing={sub} />}
       <PlanIncludesCard view={{ ent: view.ent, used: view.used }} lang={lang} />
+      {/* Paid extra seats (rule 3365): included, extra, price per seat and the monthly total, on a plan that sells seats. */}
+      {extraSeatsSold(u.plan) && <SeatsBillingCard lang={lang} user={u} used={used} />}
       <ChatAllowanceCard lang={lang} status={chat} owner={owner} nextReset={nextReset} trialEnds={u.trialEnds.slice(0, 10)} runway={chatRunway} credits={u.credits} premiumHold={chatPremiumHold()} />
       <CreditUsageCard t={t} lang={lang} user={{ plan: u.plan, credits: u.credits, trialEnds: u.trialEnds, createdAt: u.createdAt, topups: openLots(u).map(topupBalance) }} month={month} allowance={allowanceOf(u)} chat={chat} chatBar={false} creditsReset={view.resetsAt} />
       <TopupCard lang={lang} plan={u.plan} owner={owner} email={owner ? u.email : undefined} whatsapp={owner && waNumber ? waNumber : null} lots={lots} topupCredits={fromTopups} payOnline={online} />

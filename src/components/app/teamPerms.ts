@@ -25,6 +25,8 @@ export type TeamPerms = {
   cap: boolean;
   /** Rule 3762: turn the approval policy on or off (the owner). */
   policy: boolean;
+  /** Add a paid extra seat when the team is full (rules 3366-3369): the owner's own session only (`billing.seats`). */
+  buySeats: boolean;
   /** A founder viewing this account: every team change is refused, so the page says why. */
   impersonating: boolean;
 };
@@ -44,6 +46,7 @@ export function teamPerms(u: User | null | undefined): TeamPerms {
     access: can(u, "team.access"),
     cap: can(u, "team.cap"),
     policy: can(u, "team.policy"),
+    buySeats: can(u, "billing.seats"),
     impersonating: u?.actor?.kind === "founder",
   };
 }

@@ -12,6 +12,7 @@ import { useConfirm } from "./ConfirmDialog";
 import Scribble from "@/components/Scribble";
 import { useToast } from "@/components/ui/Toast";
 import { useAppLink } from "@/components/app/WorkspaceContext";
+import { EXTRA_SEAT_MONTHLY_SAR } from "@/lib/pricing";
 
 /** "member" is the Editor (rule 3751: stored under its old name until the contract release). */
 type TeamRole = "admin" | "member" | "viewer";
@@ -22,7 +23,11 @@ type PendingRow = { id: string; email: string; role: TeamRole; expiresAt: string
 /** The GET /api/team body, which `teamView` in src/lib/team.ts builds (the page renders it on the server first). */
 export type TeamView = {
   you: { email: string; name: string; role: Role };
-  seats: { used: number; limit: number; freeViewers?: number; freeViewersLeft?: number };
+  /**
+   * `included`, `extra`, `unitSar` and `canBuy` (paid seats, rule 3369) are optional so a page rendered by an older build
+   * still reads: absent means no paid seats and no purchase offered.
+   */
+  seats: { used: number; limit: number; freeViewers?: number; freeViewersLeft?: number; included?: number; extra?: number; unitSar?: number; canBuy?: boolean };
   members: Row[];
   invites: PendingRow[];
   /** Managers only: the account's active brands for the scope picker, and the approval policy (rule 3762). */
@@ -91,6 +96,9 @@ export default function TeamPanel({ t, lang, initial, perms, mailOn = true, tran
   const blocked = full && !(role === "viewer" && freeLeft > 0);
   const brands = view.brands ?? [];
   const scoping = perms.access && brands.length > 1;
+  // The owner may add one paid seat at invite time (rules 3366-3369). Display only: the server checks it again.
+  const canBuy = perms.buySeats && view.seats.canBuy === true;
+  const price = EXTRA_SEAT_MONTHLY_SAR;
   const pct = Math.min(100, Math.round((used / Math.max(1, limit)) * 100));
 
   const errorCode = (r: Result) => r.status === 429 ? "rate_limited" : typeof r.j.error === "string" ? r.j.error : "failed";
@@ -123,13 +131,32 @@ export default function TeamPanel({ t, lang, initial, perms, mailOn = true, tran
     setBusy("");
   }
 
+  /** The owner's explicit confirmation of one paid seat: the price and the leave rule, in the page's language. */
+  const confirmSeat = (to: string) => ask({ title: T.addSeatTitle, message: fill(T.addSeatConfirm, { email: to, price }), confirmLabel: T.addSeatYes, cancelLabel: t.dialog.back });
   async function invite(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const to = email.trim();
     if (!to) return;
     setLink(null); setCopied(false);
     const access = perms.access ? { ...(scoping && scope ? { brands: scope } : {}), ...(role !== "admin" && approves ? { approves: true } : {}) } : {};
-    await run("invite", () => call("/api/team/invite", "POST", { email: to, role, lang, ...access }), (r) => {
+    // No seat left for this invite and the owner may buy: ask first, then send `addSeat: true`. It is never sent without
+    // this confirmation. A viewer within the free viewers is not `blocked` (rule 3753), so it is never asked to pay.
+    let addSeat = false;
+    if (blocked && canBuy) {
+      if (!(await confirmSeat(to))) return;
+      addSeat = true;
+    }
+    const send = (paid: boolean) => call("/api/team/invite", "POST", { email: to, role, lang, ...access, ...(paid ? { addSeat: true } : {}) });
+    await run("invite", async () => {
+      const r = await send(addSeat);
+      // A stale page (the last seat went meanwhile): the server says full and that this owner may buy one, so ask now.
+      if (!r.ok && !addSeat && r.status === 409 && r.j.error === "seats" && r.j.canBuy === true && perms.buySeats) {
+        if (!(await confirmSeat(to))) return r;
+        return send(true);
+      }
+      return r;
+    }, (r) => {
+      if (r.j.seatAdded === true) toast.success(fill(T.seatAdded, { price }));
       setEmail(""); setScope(null); setApproves(false);
       const shown = (r.j.invite as { email?: string } | undefined)?.email ?? to;
       if (r.j.emailed === true) toast.success(fill(T.sent, { email: shown })); // rule 2001
@@ -219,11 +246,14 @@ export default function TeamPanel({ t, lang, initial, perms, mailOn = true, tran
       <div className="mt-4 card card-sm text-sm">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <span className="flex items-center gap-2"><Icon name="users" className="h-4 w-4 text-foreground" />{T.seats}: <b className="tnum" dir="ltr">{used} / {limit}</b></span>
-          {full && perms.inviteAdmin && <Link href={href("/settings/billing")} className="text-xs font-medium text-foreground underline">{T.plans}</Link>}
+          {full && perms.inviteAdmin && !canBuy && <Link href={href("/settings/billing")} className="text-xs font-medium text-foreground underline">{T.plans}</Link>}
         </div>
         <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-foreground/10" role="progressbar" aria-label={T.seats} aria-valuemin={0} aria-valuemax={limit} aria-valuenow={Math.min(used, limit)}>
           <div className={`h-full rounded-full ${full ? "bg-lemon" : "bg-foreground"}`} style={{ width: `${pct}%` }} />
         </div>
+        {(view.seats.extra ?? 0) > 0 && view.seats.included !== undefined && (
+          <p className="mt-2 text-xs text-foreground-muted" data-seats-paid>{fill(T.seatsPaid, { included: view.seats.included, extra: view.seats.extra ?? 0 })}</p>
+        )}
         <p className="mt-2 text-xs text-foreground-muted">{T.seatsNote}</p>
         {view.seats.freeViewers !== undefined && <p className="mt-1 text-xs text-foreground-muted" data-free-viewers>{fill(T.freeViewers, { left: freeLeft, total: view.seats.freeViewers })}</p>}
       </div>
@@ -310,7 +340,7 @@ export default function TeamPanel({ t, lang, initial, perms, mailOn = true, tran
                   {perms.inviteAdmin && <option value="admin">{T.roles.admin}</option>}
                 </select>
               </label>
-              <button disabled={locked || blocked} className="btn btn-primary btn-sm">{busy === "invite" ? T.sending : mailOn ? T.send : T.createLink}</button>
+              <button disabled={locked || (blocked && !canBuy)} className="btn btn-primary btn-sm">{busy === "invite" ? T.sending : mailOn ? T.send : T.createLink}</button>
             </form>
             <p className="mt-2 text-xs text-foreground-muted">{T.roleHelp[role]}</p>
             {perms.access && (scoping || role !== "admin") && (
@@ -324,7 +354,7 @@ export default function TeamPanel({ t, lang, initial, perms, mailOn = true, tran
                 )}
               </div>
             )}
-            {blocked && <p className="mt-2 text-sm text-danger">{perms.inviteAdmin ? T.seatsFull : T.seatsFullAsk}</p>}
+            {blocked && <p className="mt-2 text-sm text-danger">{canBuy ? fill(T.seatsFullBuy, { price }) : perms.inviteAdmin ? T.seatsFull : T.seatsFullAsk}</p>}
             {link && (
               <div className="mt-4 rounded-lg border border-foreground/30 bg-foreground/5 p-3">
                 <p className="text-sm font-medium">{T.linkTitle}</p>

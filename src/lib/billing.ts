@@ -3,10 +3,10 @@ import { db } from "./db";
 import { getUser, normalizeEmail, normalizePhone, saveUser, trialOver, type User } from "./auth";
 import { monthKey, withUserLock } from "./credits";
 import { setMonthly } from "./topups";
-import { PLAN_PRICE_SAR, SELF_SERVE_PLANS, VAT_RATE, allowanceOf, firstMonthPriceSar, isTopupPack, topupPriceSar, topupsSold, type SelfServePlan } from "./pricing";
+import { MAX_SEAT_OVERRIDE, PLAN_PRICE_SAR, SELF_SERVE_PLANS, allowanceOf, extraSeatsLine, firstMonthPriceSar, isTopupPack, topupPriceSar, topupsSold, vatHalalasOf, type SelfServePlan } from "./pricing";
 import { ksaDay } from "./partner-rules";
 import { addPaidTopup, openOffer, paymentsKey, unusedOffer, recordPayment, voidPaidTopup, voidPayment, type Payment } from "./partners";
-import { enforceSeats, isTeamLockTimeout } from "./team";
+import { enforceSeats, isTeamLockTimeout, settleExtraSeats } from "./team";
 import { appOrigin } from "./origin";
 import { invoiceForPayment } from "./invoice";
 import { GRACE_DAYS, addDays, addMonths, billingLocked, intentOutdatesOwner, paymobRenewalDue, type Billing } from "./billing-state";
@@ -86,6 +86,11 @@ export type PayIntent = {
   founding?: boolean;
   /** A renewal charged at the account's price lock (rule 1706): the ex-VAT halalas used instead of the list price. */
   lockedBaseHalalas?: number;
+  /**
+   * Paid extra seats charged with this renewal (rule 3372), at EXTRA_SEAT_MONTHLY_SAR each, VAT on the sum. Optional
+   * (expand): an intent without it reads as 0 seats, so its amount check is the plan alone, as before.
+   */
+  extraSeats?: number;
   createdAt: string;
   by: string;
   orderId?: number;
@@ -100,14 +105,19 @@ const intentAccount = (i: Pick<PayIntent, "acct" | "email">): string => i.acct ?
 /** The billing address the provider was given: `billingEmail`, or `email` on an intent written before R1. */
 const intentBillingEmail = (i: Pick<PayIntent, "billingEmail" | "email">): string => i.billingEmail ?? i.email;
 
-const vatOf = (baseHalalas: number) => (PAYMOB_CHARGES_VAT ? Math.round(baseHalalas * VAT_RATE) : 0);
+/** VAT through the one formula in pricing.ts (`vatHalalasOf`, rule 3364), while Paymob charges it. */
+const vatOf = (baseHalalas: number) => (PAYMOB_CHARGES_VAT ? vatHalalasOf(baseHalalas) : 0);
+/** A stored or passed seat count, read safely: a whole number from 1 to MAX_SEAT_OVERRIDE, else 0 (rule 3372). */
+const seatsOf = (n: unknown): number => (Number.isSafeInteger(n) && (n as number) >= 1 ? Math.min(n as number, MAX_SEAT_OVERRIDE) : 0);
 const isSelfServe = (v: unknown): v is SelfServePlan => typeof v === "string" && (SELF_SERVE_PLANS as readonly string[]).includes(v);
 
 /**
  * The price of a plan month, a renewal or a pack, from the pricing table only. Null for anything not on sale online. A
  * renewal under a price lock passes the locked ex-VAT halalas (rule 1706): the lower of it and the list price is charged.
+ * A renewal also charges its paid extra seats (`item.extraSeats`, rule 3372): seats × EXTRA_SEAT_MONTHLY_SAR on top of
+ * the plan (the lock never applies to seats), VAT on the sum. A plan checkout or a pack never carries seats.
  */
-export function priceFor(kind: IntentKind, item: { plan?: unknown; credits?: unknown }, offer = false, lockedBaseHalalas?: number): { baseHalalas: number; vatHalalas: number; amountCents: number } | null {
+export function priceFor(kind: IntentKind, item: { plan?: unknown; credits?: unknown; extraSeats?: unknown }, offer = false, lockedBaseHalalas?: number): { baseHalalas: number; vatHalalas: number; amountCents: number } | null {
   let sar: number;
   if (kind === "topup") {
     if (!isTopupPack(item.credits)) return null;
@@ -118,7 +128,8 @@ export function priceFor(kind: IntentKind, item: { plan?: unknown; credits?: unk
   }
   const list = Math.round(sar * 100);
   const locked = kind === "renewal" && Number.isSafeInteger(lockedBaseHalalas) && lockedBaseHalalas! > 0 ? lockedBaseHalalas! : null;
-  const baseHalalas = locked === null ? list : Math.min(locked, list);
+  const seats = kind === "renewal" ? extraSeatsLine(seatsOf(item.extraSeats)).baseHalalas : 0;
+  const baseHalalas = (locked === null ? list : Math.min(locked, list)) + seats;
   const vatHalalas = vatOf(baseHalalas);
   return { baseHalalas, vatHalalas, amountCents: baseHalalas + vatHalalas };
 }
@@ -424,6 +435,17 @@ export async function renewPaymob(email: string, now = Date.now()): Promise<stri
     const prev = await db.get<PayIntent>(intentKey(b.pending.ref));
     if (prev?.status === "open") return "paymob_pending";
   }
+  // Paid extra seats (rule 3371): trimmed to what the team uses now before the period is priced, so a member who left
+  // or an invite cancelled last period is not charged again. A busy team answers before the day's attempt is spent.
+  // TODO(geidea): the Geidea adapter's renewal must do the same: settleExtraSeats, then charge priceFor("renewal",
+  // {plan, extraSeats}) and store `extraSeats` on the intent so the callback's amount check includes the seats.
+  let seats: number;
+  try {
+    seats = await settleExtraSeats(acct(u));
+  } catch (e) {
+    if (isTeamLockTimeout(e) || (e instanceof Error && e.message === "user_lock_timeout")) return "paymob_seats_busy";
+    throw e;
+  }
   if (!(await db.setNx(attemptKey(email, today), 1, 3 * 86400))) return null;
   const saved = b.autoRenew ? p.savedCard : null;
   const card = saved ? await db.get<SavedCard>(cardKey(email)) : null;
@@ -433,7 +455,7 @@ export async function renewPaymob(email: string, now = Date.now()): Promise<stri
   let keepPending: string | null = null;
   if (card) {
     try {
-      const r = await chargeSavedCard(p, saved!, u, b, card, today);
+      const r = await chargeSavedCard(p, saved!, u, b, card, today, seats);
       if (r === "paid") return "paymob_renewed";
       if (r === "pending") return "paymob_pending";
     } catch (e) {
@@ -463,20 +485,26 @@ class ChargeUnanswered extends PaymentError {
   }
 }
 
-/** MIT through the provider's saved-card charge (Paymob: the Moto integration): a renewal intent at the plan's price, then the saved card (spec 4.2). */
-async function chargeSavedCard(p: PaymentProvider, saved: NonNullable<PaymentProvider["savedCard"]>, u: User, b: Billing, card: SavedCard, today: string): Promise<"paid" | "pending" | "declined"> {
+/**
+ * MIT through the provider's saved-card charge (Paymob: the Moto integration): a renewal intent at the plan's price plus
+ * the settled paid extra seats (`seats`, rule 3372), then the saved card (spec 4.2).
+ */
+async function chargeSavedCard(p: PaymentProvider, saved: NonNullable<PaymentProvider["savedCard"]>, u: User, b: Billing, card: SavedCard, today: string, seats = 0): Promise<"paid" | "pending" | "declined"> {
   // The period being paid starts at `paidThrough`: a lock that covers it prices the renewal (rule 1706).
   const locked = lockedBaseHalalas(u, b.plan, b.paidThrough);
-  const price = priceFor("renewal", { plan: b.plan }, false, locked ?? undefined)!;
+  const extra = seatsOf(seats);
+  const price = priceFor("renewal", { plan: b.plan, extraSeats: extra }, false, locked ?? undefined)!;
   const ref = newRef();
-  const intent: PayIntent = { ref, email: acct(u), acct: acct(u), billingEmail: u.email, kind: "renewal", plan: b.plan, ...price, currency: "SAR", offer: false, ...(locked !== null ? { lockedBaseHalalas: locked } : {}), createdAt: new Date().toISOString(), by: "cron", status: "open" };
+  const intent: PayIntent = { ref, email: acct(u), acct: acct(u), billingEmail: u.email, kind: "renewal", plan: b.plan, ...price, currency: "SAR", offer: false, ...(locked !== null ? { lockedBaseHalalas: locked } : {}), ...(extra ? { extraSeats: extra } : {}), createdAt: new Date().toISOString(), by: "cron", status: "open" };
+  // The line items the provider shows: the plan, and the extra seats when there are any.
+  const seatsText = extra ? ` + ${extra} extra seat${extra === 1 ? "" : "s"}` : "";
   await db.set(intentKey(ref), intent, DAYS_400);
   let paymentKey: string | null = null;
   let orderId = 0;
   try {
     const it = await saved.prepare({
       amountCents: price.amountCents,
-      item: { name: `Thakeen ${b.plan} plan, 1 month`, description: `Thakeen ${b.plan} plan renewal${price.vatHalalas ? " (incl. VAT)" : ""}` },
+      item: { name: `Thakeen ${b.plan} plan${seatsText}, 1 month`, description: `Thakeen ${b.plan} plan renewal${seatsText}${price.vatHalalas ? " (incl. VAT)" : ""}` },
       billing: { ...billingName(u), email: u.email, phone: normalizePhone(u.phone ?? "") || "NA" },
       reference: ref,
       notificationUrl: `${appOrigin()}/api/billing/paymob/webhook`,
@@ -736,6 +764,8 @@ async function endPlanOnRefund(email: string, paymentId: string, by: string, txn
     delete u.billing;
     delete u.handPlan;
     delete u.deal;
+    // Paid extra seats end with the plan (rule 3373): a trial never carries them, and a later plan starts at 0 extra.
+    delete u.extraSeats;
     setMonthly(u, 0);
     await saveUser(u);
     await db.set(refundEndedKey(txnId), paymentId, DAYS_400);

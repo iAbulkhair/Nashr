@@ -6,9 +6,9 @@ import { AGENT_IDS, type AgentId } from "./agents";
 import { lastSignIn } from "./devices";
 import { listOrgs } from "./membership";
 import { pmap } from "./parallel";
-import { brandCapFor, seatLimit } from "./pricing";
+import { brandCapFor, includedSeats, paidExtraSeats, seatLimit } from "./pricing";
 import { isSuspended, suspensionEnd } from "./suspension";
-import { inviterAddress, listMembers, peekInvites } from "./team";
+import { inviterAddress, listMembers, peekInvites, seatCount } from "./team";
 import { lastActive } from "./track";
 
 /**
@@ -41,7 +41,7 @@ export type WorkspaceLimit = { agent: AgentId; cap: ToolCap; mode: StoredMode };
 export type WorkspaceBrand = { id: string; name: string; status: "active" | "archived"; createdAt: string; limits: WorkspaceLimit[] };
 export type WorkspaceView = {
   owner: { email: string; name: string; lang: "ar" | "en"; createdAt: string; verified: boolean; suspended: boolean; suspendedUntil: string | null; lastSignInAt: string | null; lastActiveAt: string | null };
-  plan: { plan: User["plan"]; trialEnds: string; credits: number; seats: { used: number; limit: number }; brands: { active: number; cap: number } };
+  plan: { plan: User["plan"]; trialEnds: string; credits: number; seats: { used: number; limit: number; included: number; extra: number }; brands: { active: number; cap: number } };
   members: WorkspaceMember[];
   invites: WorkspaceInvite[];
   brands: WorkspaceBrand[];
@@ -86,7 +86,8 @@ export async function workspaceView(chosen: string): Promise<WorkspaceView | nul
     },
     plan: {
       plan: owner.plan, trialEnds: owner.trialEnds, credits: owner.credits,
-      seats: { used: 1 + members.filter((m) => !m.disabled).length + invites.length, limit: seatLimit(owner) },
+      // `included` and `extra` (paid seats, rule 3375): read only; staff cannot add a paid seat from the console.
+      seats: { used: seatCount(members, invites), limit: seatLimit(owner), included: includedSeats(owner), extra: paidExtraSeats(owner) },
       brands: { active: brands.filter((b) => b.status === "active").length, cap: brandCapFor(owner) },
     },
     members: members.map((m, i) => {
