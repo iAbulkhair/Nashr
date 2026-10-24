@@ -1438,7 +1438,7 @@ R1 = **expand** (rule 679). New shapes: `User.id`, `Member.id`, `login:*`, sessi
 npx --no-install jiti scripts/account-ids.ts
 ```
 
-is the dry run (read-only, prints counts); `--apply` writes. It is idempotent, never overwrites, and exits 1 when it finds a conflict or an orphan. Nothing reads the new shapes as required before R2, so a run that stops halfway is harmless. R2 (contract: `OPAQUE_IDS` on, the owner move in place, the legacy fallback removed) needs R1 live for 7 days, a run with 0 conflicts and 0 orphans, the rule 1985 source scans clean (`tests/account-id-r1.test.ts`), and a Paymob check on staging.
+is the dry run (read-only, prints counts); `--apply` writes. It is idempotent, never overwrites, and exits 1 when it finds a conflict or an orphan. Since 2026-10-24 the same function also runs from the founder console with no terminal (section 125). Nothing reads the new shapes as required before R2, so a run that stops halfway is harmless. R2 (contract: `OPAQUE_IDS` on, the owner move in place, the legacy fallback removed) needs R1 live for 7 days, a run with 0 conflicts and 0 orphans, the rule 1985 source scans clean (`tests/account-id-r1.test.ts`), and a Paymob check on staging.
 
 ### 88.2 Release R2, built behind the constant (2026-10-21, branch `claude/wave3a-account-id-r2`, rules 2740-2749)
 
@@ -1884,3 +1884,18 @@ Rule file `docs/system/tests/3360-paid-seats.md`, spec `docs/superpowers/specs/2
 9. Hand plans (rule 3377). Seats on a plan the founder set by hand (no Paymob billing) are counted and shown but no code charges them; the founder invoices them. `settleExtraSeats` runs only in the Paymob renewal.
 10. Screens (rules 3365, 3375). Billing page: included seats, paid extra seats, seats in use, the price per seat, and plan + seats + VAT = monthly total (list price; a price lock can lower the plan part). Members page: used of available seats, the paid seats line, and the confirm step. Console Workspace tab: included and extra seats, read only; staff cannot add a paid seat (`billing.seats` is in `IMPERSONATION_BLOCKED` and the console has no write for it).
 11. Release step: expand. `extraSeats` is a new optional field: old code ignores it (its `seatLimit` reads only `plan` and `seats`, so on a rollback a team with paid seats reads as over its limit, as after a downgrade, and new invites are refused until a seat frees), and the new code reads its absence as 0. `PayIntent.extraSeats` is optional the same way. No conversion script.
+
+## 125. One-time data fills from the console (2026-10-24, branch `claude/console-account-ids`, rules 4100-4106)
+
+The founder could not run `scripts/account-ids.ts` from a terminal. The same work now runs from the console, on the app's own store connection: no terminal and no store credentials anywhere. Permissions in `permissions.md` row 265; tests in `docs/system/tests/4100-console-conversions.md`.
+
+1. The work moved (rule 4100). `convertAccountIds` lives in `src/lib/conversions/account-ids.ts` and S1's `run` in `src/lib/conversions/multi-org-index.ts`, unchanged. `scripts/account-ids.ts` and `scripts/multi-org-index.ts` are thin wrappers that import and re-export them, so the terminal commands in sections 88.1 and the S1 step still work as written.
+2. The card. The console Integrations page (`/{lang}/admin/integrations`) shows "One-time data fills" (`ConversionsCard`), Arabic and English, one row per fill: account ids (R1) with "Dry run" and "Apply", and S1 with "Dry run" only (it was applied on 2026-10-23). The card says a second run writes nothing.
+3. Dry run. "Dry run" posts `POST /api/admin/conversions/{name} {apply: false}`: console actor (401) → `data.convert`, owner only (403) → a known name (404) → 20 runs an hour per actor (429) → the console write check → the run under `lock:conversion` (409 `busy`). It reads every account (50 at a time, `pmap`) and writes nothing but its clean mark: a run with 0 conflicts and 0 orphans sets `conversion:clean:{name}` for 15 minutes, a run that is not clean deletes it. The card shows the counts, clean or not clean, and how long it took.
+4. Apply. "Apply" opens only after a clean dry run in the same view and asks for a reason; the server asks the second factor, checks the reason, and takes the clean mark with GETDEL, so an apply with no clean dry run in the last 15 minutes is 409 `dry_run_first` and two applies need two dry runs. The fill never overwrites and is idempotent: a second dry run shows 0 ids and 0 indexes to set.
+5. Audit. Each run writes one `admin:log` row in the new section `data`: `account_ids_dry_run`, `account_ids_apply` or `multi_org_index_dry_run`, the counts in `what` (`account_ids_apply accounts 12 missing 0 ...`) and `after`, the reason on an apply. The answer and the row hold counts only: never an address, an id or a key.
+6. Time. The route sets `maxDuration = 300` and returns `ms`. If a run is cut by the host's request timeout, nothing is half-written that a second run does not finish, and the lock ends on its own after 300 seconds.
+
+### 125.1 Release step (rule 679)
+
+**Expand.** New: the audit section `data` (older readers pass an unknown section through), the keys `lock:conversion` and `conversion:clean:{name}`, and the staff action `data.convert`. No stored shape changes. Rules 4107-4119 are reserved and unused.
