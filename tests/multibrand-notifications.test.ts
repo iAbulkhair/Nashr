@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { newUser, settle } from "./helpers/session";
-import { getUser, type User } from "@/lib/auth";
-import { storedPersonId } from "@/lib/keys";
+import { getUser, type User, acct } from "@/lib/auth";
+import { ownerOf } from "@/lib/membership";
 import { saveBrand, saveTask, type Brand, type Task } from "@/lib/brand";
 import { addBrand, scopeFor } from "@/lib/brands";
 import { db } from "@/lib/db";
@@ -21,13 +21,13 @@ const dueTask = (id: string): Task => ({ id, type: "social", channel: "instagram
 /** One account with its default brand and one added brand, each with a brand file and an approved item due today. */
 async function twoBrands(): Promise<{ u: User; a: User; b: User; scopeB: string }> {
   const u = await newUser("mb");
-  const added = await addBrand({ ...u, brandCap: 2, actor: { kind: "owner", pid: storedPersonId(u.email), home: true, email: u.email, name: u.name, lang: u.lang, role: "owner" } }, "Second Roastery");
+  const added = await addBrand({ ...u, brandCap: 2, actor: { kind: "owner", pid: ownerOf(u), home: true, email: u.email, name: u.name, lang: u.lang, role: "owner" } }, "Second Roastery");
   if ("error" in added) throw new Error(added.error);
-  const scopeB = scopeFor(u.email, added.id);
-  await Promise.all([saveBrand(u.email, file("First Roastery")), saveBrand(scopeB, file("Second Roastery file"))]);
-  await Promise.all([saveTask(u.email, dueTask("a1"), true), saveTask(scopeB, dueTask("b1"), true)]);
-  const fresh = (await getUser(u.email))!;
-  return { u: fresh, a: { ...fresh, brandId: "default", scope: u.email }, b: { ...fresh, brandId: added.id, scope: scopeB }, scopeB };
+  const scopeB = scopeFor(acct(u), added.id);
+  await Promise.all([saveBrand(acct(u), file("First Roastery")), saveBrand(scopeB, file("Second Roastery file"))]);
+  await Promise.all([saveTask(acct(u), dueTask("a1"), true), saveTask(scopeB, dueTask("b1"), true)]);
+  const fresh = (await getUser(acct(u)))!;
+  return { u: fresh, a: { ...fresh, brandId: "default", scope: acct(u) }, b: { ...fresh, brandId: added.id, scope: scopeB }, scopeB };
 }
 
 describe("each brand of an account gets its own follow-ups (rule 374)", () => {
@@ -39,7 +39,7 @@ describe("each brand of an account gets its own follow-ups (rule 374)", () => {
     expect(second, "the added brand, silenced before the fix").toHaveLength(1);
     expect(first[0].title).toContain("First Roastery");
     expect(second[0].title, "the name given to the brand, as the switcher shows it").toContain("Second Roastery");
-    expect((await listNotifs(u.email)).filter((n) => n.kind === "due")).toHaveLength(2);
+    expect((await listNotifs(acct(u))).filter((n) => n.kind === "due")).toHaveLength(2);
 
     expect((await followUps(a, a.scope!)).filter((n) => n.kind === "due"), "still once a day per brand").toHaveLength(0);
     expect((await followUps(b, scopeB)).filter((n) => n.kind === "due")).toHaveLength(0);
@@ -48,17 +48,17 @@ describe("each brand of an account gets its own follow-ups (rule 374)", () => {
   it("the default brand keeps its old fingerprint, so a notice already sent today is not repeated on the day this ships", async () => {
     const { u, a } = await twoBrands();
     // What the previous code claimed for today's run of the default brand.
-    await db.setNx(seenKey(u.email, `due:${today()}`), 1, 2 * 86400);
+    await db.setNx(seenKey(acct(u), `due:${today()}`), 1, 2 * 86400);
     expect((await followUps(a, a.scope!)).filter((n) => n.kind === "due")).toHaveLength(0);
-    expect(brandFingerprint(u.email, "due:2026-10-01")).toBe("due:2026-10-01");
-    expect(brandFingerprint(`${u.email}#abc123`, "due:2026-10-01")).toBe("due:2026-10-01#abc123");
+    expect(brandFingerprint(acct(u), "due:2026-10-01")).toBe("due:2026-10-01");
+    expect(brandFingerprint(`${acct(u)}#abc123`, "due:2026-10-01")).toBe("due:2026-10-01#abc123");
   });
 
   it("an account with one brand gets the title it always had, with no brand name", async () => {
     const u = await newUser("mb1");
-    await saveBrand(u.email, file("Only Roastery"));
-    await saveTask(u.email, dueTask("o1"), true);
-    const [n] = (await followUps({ ...u, scope: u.email }, u.email)).filter((x) => x.kind === "due");
+    await saveBrand(acct(u), file("Only Roastery"));
+    await saveTask(acct(u), dueTask("o1"), true);
+    const [n] = (await followUps({ ...u, scope: acct(u) }, acct(u))).filter((x) => x.kind === "due");
     expect(n.title).not.toContain("Only Roastery");
     expect(n.title).not.toContain(" — ");
   });
@@ -71,7 +71,7 @@ describe("each brand's Sunday plan notifies (rule 375)", () => {
     expect(await runWeekly(a)).toMatch(/^ok:/);
     expect(await runWeekly(b)).toMatch(/^ok:/);
     await settle();
-    const weekly = (await listNotifs(u.email)).filter((n) => n.kind === "weekly");
+    const weekly = (await listNotifs(acct(u))).filter((n) => n.kind === "weekly");
     expect(weekly, "the second brand's notice was dropped before the fix").toHaveLength(2);
     expect(weekly.map((n) => n.title).join(" | ")).toContain("Second Roastery");
   });

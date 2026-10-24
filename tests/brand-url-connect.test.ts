@@ -4,6 +4,7 @@ import { acct, currentUser, sc } from "@/lib/auth";
 import { saveBrands, scopeFor, type BrandMeta } from "@/lib/brands";
 import { globalKey, wsKey } from "@/lib/keys";
 import { db } from "@/lib/db";
+import { handleOf } from "@/lib/ws-handle";
 import { CONNECT_STARTS_PER_HOUR } from "@/lib/rate";
 import { OAUTH_COOKIE, saveState } from "@/lib/connectors/store";
 import * as start from "@/app/api/connect/[provider]/start/route";
@@ -40,27 +41,27 @@ async function owner(prefix: string) {
 describe("rule 894: the OAuth return link names the connection's brand", () => {
   it("a Connections callback for brand b1 with the stored choice on b2 goes to /b/b1/settings/connections, query kept", async () => {
     const u = await owner("cbx");
-    await saveState("s-b1", { email: scopeFor(u.email, "b1"), provider: "x", lang: "en", shop: "", verifier: "v", actor: u.email });
+    await saveState("s-b1", { email: scopeFor(acct(u), "b1"), provider: "x", lang: "en", shop: "", verifier: "v", actor: u.email });
     jar().set(OAUTH_COOKIE, "someone-elses");
     const to = where(await cb("x", "state=s-b1&code=c"));
-    expect(to.pathname).toBe("/en/app/b/b1/settings/connections");
+    expect(to.pathname).toBe(`/en/app/w/${handleOf(u)}/b/b1/settings/connections`);
     expect(to.searchParams.get("error")).toBe("session_mismatch");
   });
 
   it("the Reem calendar callback for brand b1 goes to /b/b1/todo with its cal_error code", async () => {
     const u = await owner("cbcal");
-    await saveState("s-cal", { email: scopeFor(u.email, "b1"), provider: "gcal", lang: "ar", shop: "", verifier: "", actor: u.email });
+    await saveState("s-cal", { email: scopeFor(acct(u), "b1"), provider: "gcal", lang: "ar", shop: "", verifier: "", actor: u.email });
     jar().set(OAUTH_COOKIE, "someone-elses");
     const to = where(await cb("gcal", "state=s-cal&code=c"));
-    expect(to.pathname).toBe("/ar/app/b/b1/todo");
+    expect(to.pathname).toBe(`/ar/app/w/${handleOf(u)}/b/b1/todo`);
     expect(to.search).toBe("?cal_error=session_mismatch");
   });
 
   it("a refusal after the state is read (wrong provider) also names the state's brand", async () => {
     const u = await owner("cbprov");
-    await saveState("s-prov", { email: scopeFor(u.email, "b1"), provider: "x", lang: "en", shop: "", verifier: "", actor: u.email });
+    await saveState("s-prov", { email: scopeFor(acct(u), "b1"), provider: "x", lang: "en", shop: "", verifier: "", actor: u.email });
     const to = where(await cb("linkedin", "state=s-prov&code=c"));
-    expect(to.pathname).toBe("/en/app/b/b1/settings/connections");
+    expect(to.pathname).toBe(`/en/app/w/${handleOf(u)}/b/b1/settings/connections`);
     expect(to.search).toBe("?error=invalid_state");
   });
 
@@ -81,7 +82,7 @@ describe("rule 894: the OAuth return link names the connection's brand", () => {
     expect(me.brandId).toBe("b2");
     await db.set(globalKey.rate(wsKey.connectStartBucket(sc(me))), CONNECT_STARTS_PER_HOUR, 3600);
     const to = where(await go("x", "lang=ar"));
-    expect(to.pathname).toBe("/ar/app/b/b2/settings/connections");
+    expect(to.pathname).toBe(`/ar/app/w/${handleOf(u)}/b/b2/settings/connections`);
     expect(to.searchParams.get("error")).toBe("slow_down");
   });
 });

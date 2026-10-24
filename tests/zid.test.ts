@@ -1,5 +1,6 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { jar, json, newUser, signIn } from "./helpers/session";
+import { acct } from "@/lib/auth";
 import { importZid, zidAuthorization, zidHeaders, zidStore } from "@/lib/connectors/zid";
 import { readFileSync } from "node:fs";
 import { getConnection, OAUTH_COOKIE, saveConnection, saveState, type Connection } from "@/lib/connectors/store";
@@ -46,11 +47,11 @@ describe("Zid product import (rule 85)", () => {
   it("walks the pages with both tokens and the store id, skips unpublished products, and writes a readable catalog", async () => {
     fakeZid([[product("سكري القصيم", { sale_price: 65 }), product("مسودة", { is_published: false })], [product("خلاص الأحساء")]]);
     const u = await newUser("zid");
-    expect(await importZid(u.email, conn())).toBe(2);
+    expect(await importZid(acct(u), conn())).toBe(2);
     const productCalls = calls.filter((c) => c.url.includes("/products/"));
     expect(productCalls.map((c) => new URL(c.url).searchParams.get("page"))).toEqual(["1", "2"]);
     for (const c of productCalls) expect(c.headers["Store-Id"]).toBe("77");
-    const md = (await readFile(u.email, "products.md"))!.content;
+    const md = (await readFile(acct(u), "products.md"))!.content;
     expect(md).toContain("# Product catalog (Zid متجر النخلة,");
     expect(md).toContain("**سكري القصيم** — 65 SAR (was 80 SAR)");
     expect(md).toContain("**خلاص الأحساء** — 80 SAR");
@@ -62,8 +63,8 @@ describe("Zid product import (rule 85)", () => {
   it("prefers Arabic names, shows no discount when the sale price equals the price, and skips the profile when the store id is known", async () => {
     fakeZid([[product("تمر", { name: { ar: "تمر", en: "Dates" }, sale_price: 80 })]]);
     const u = await newUser("zid");
-    expect(await importZid(u.email, conn())).toBe(1);
-    const md = (await readFile(u.email, "products.md"))!.content;
+    expect(await importZid(acct(u), conn())).toBe(1);
+    const md = (await readFile(acct(u), "products.md"))!.content;
     expect(md).toContain("**تمر** — 80 SAR");
     expect(md).not.toContain("Dates");
     expect(md).not.toContain("(was");
@@ -73,14 +74,14 @@ describe("Zid product import (rule 85)", () => {
   it("stops after three pages however large the store is", async () => {
     fakeZid(Array.from({ length: 6 }, (_, i) => [product(`p${i}`)]));
     const u = await newUser("zid");
-    expect(await importZid(u.email, conn())).toBe(3);
+    expect(await importZid(acct(u), conn())).toBe(3);
     expect(calls.filter((c) => c.url.includes("/products/"))).toHaveLength(3);
   });
 
   it("asks the profile for the store id when an older connection has none", async () => {
     fakeZid([[product("عجوة")]]);
     const u = await newUser("zid");
-    expect(await importZid(u.email, conn({ meta: {} }))).toBe(1);
+    expect(await importZid(acct(u), conn({ meta: {} }))).toBe(1);
     expect(calls[0].url).toBe("https://api.zid.sa/v1/managers/account/profile");
     expect(calls.find((c) => c.url.includes("/products/"))?.headers["Store-Id"]).toBe("77");
   });
@@ -88,25 +89,25 @@ describe("Zid product import (rule 85)", () => {
   it("fails loudly on a refused request instead of writing an empty catalog", async () => {
     fakeZid([], { status: 401 });
     const u = await newUser("zid");
-    await expect(importZid(u.email, conn())).rejects.toThrow("zid 401");
-    expect(await readFile(u.email, "products.md")).toBeNull();
+    await expect(importZid(acct(u), conn())).rejects.toThrow("zid 401");
+    expect(await readFile(acct(u), "products.md")).toBeNull();
   });
 
   it("reports a refused products permission without marking the connection for reconnecting", async () => {
     fakeZid([], { status: 403 });
     const u = await newUser("zid403p");
-    await saveConnection(u.email, conn());
+    await saveConnection(acct(u), conn());
     await signIn(u.email);
     const res = await connectRoute.POST(json("/api/connect/zid", "POST", { action: "import_products" }), { params: Promise.resolve({ provider: "zid" }) });
     expect((await res.json()).error).toBe("zid_access_denied");
-    expect((await getConnection(u.email, "zid"))?.needsReconnect).toBeFalsy();
-    expect(await readFile(u.email, "products.md")).toBeNull();
+    expect((await getConnection(acct(u), "zid"))?.needsReconnect).toBeFalsy();
+    expect(await readFile(acct(u), "products.md")).toBeNull();
   });
 
   it("imports through the connect route for the signed-in workspace, and a refused token asks for a reconnect", async () => {
     fakeZid([[product("عجوة")]]);
     const u = await newUser("zidr");
-    await saveConnection(u.email, conn());
+    await saveConnection(acct(u), conn());
     await signIn(u.email);
     const res = await connectRoute.POST(json("/api/connect/zid", "POST", { action: "import_products" }), { params: Promise.resolve({ provider: "zid" }) });
     expect(await res.json()).toEqual({ ok: true, count: 1 });
@@ -114,7 +115,7 @@ describe("Zid product import (rule 85)", () => {
     fakeZid([], { status: 401 });
     const bad = await connectRoute.POST(json("/api/connect/zid", "POST", { action: "import_products" }), { params: Promise.resolve({ provider: "zid" }) });
     expect((await bad.json()).error).toBe("reconnect_required");
-    expect((await getConnection(u.email, "zid"))?.needsReconnect).toBeTruthy();
+    expect((await getConnection(acct(u), "zid"))?.needsReconnect).toBeTruthy();
   });
 });
 
@@ -131,12 +132,12 @@ describe("connecting Zid records the store (rule 85)", () => {
   it("keeps both tokens and the store id on the connection after the OAuth callback", async () => {
     fakeZid([]);
     const u = await newUser("zidcb");
-    await saveState("s-zid", { email: u.email, provider: "zid", lang: "ar", shop: "", verifier: "" });
+    await saveState("s-zid", { email: acct(u), provider: "zid", lang: "ar", shop: "", verifier: "" });
     await signIn(u.email);
     jar().set(OAUTH_COOKIE, "s-zid");
     const res = await callback.GET(new Request("https://app.test/api/connect/zid/callback?state=s-zid&code=c"), { params: Promise.resolve({ provider: "zid" }) });
     expect(new URL(res.headers.get("location")!).searchParams.get("connected")).toBe("zid");
-    const c = await getConnection(u.email, "zid");
+    const c = await getConnection(acct(u), "zid");
     expect(c?.data).toMatchObject({ access_token: "mgr", authorization: "auth" });
     expect(c?.meta).toMatchObject({ storeId: "77", account: "متجر النخلة", site: "https://nakhla.example" });
   });
@@ -309,23 +310,23 @@ describe("Zid orders and abandoned carts, as totals only (rule 85)", () => {
   it("reports a refused orders permission without marking the connection for reconnecting", async () => {
     fakeSales([], [], {}, { orderStatus: 403 });
     const u = await newUser("zid403");
-    await saveConnection(u.email, conn());
+    await saveConnection(acct(u), conn());
     await signIn(u.email);
     const res = await connectRoute.POST(json("/api/connect/zid", "POST", { action: "sync_sales" }), { params: Promise.resolve({ provider: "zid" }) });
     expect((await res.json()).error).toBe("zid_access_denied");
-    expect((await getConnection(u.email, "zid"))?.needsReconnect).toBeFalsy();
+    expect((await getConnection(acct(u), "zid"))?.needsReconnect).toBeFalsy();
   });
 
   it("syncs through the connect route into the snapshot and store-sales.md, and a refused token asks for a reconnect", async () => {
     fakeSales([[order("2026-09-20 12:00:00", "300", "delivered", [{ name: "سكري القصيم", quantity: 2 }])]], [[cart("c1", 90)]], { c1: [{ name: "خلاص", quantity: 1 }] });
     const u = await newUser("zidsales");
-    await saveConnection(u.email, conn());
+    await saveConnection(acct(u), conn());
     await signIn(u.email);
     const res = await connectRoute.POST(json("/api/connect/zid", "POST", { action: "sync_sales" }), { params: Promise.resolve({ provider: "zid" }) });
     expect((await res.json()).ok).toBe(true);
     const { getSalesSnapshot } = await import("@/lib/store-sales");
-    expect((await getSalesSnapshot(u.email))?.provider).toBe("zid");
-    const md = (await readFile(u.email, "store-sales.md"))!.content;
+    expect((await getSalesSnapshot(acct(u)))?.provider).toBe("zid");
+    const md = (await readFile(acct(u), "store-sales.md"))!.content;
     expect(md).toContain("# Store sales (Zid متجر النخلة, last 30 days");
     expect(md).toContain("Value left in them: 90 SAR");
     expect(md).not.toContain("سلمان");
@@ -333,7 +334,7 @@ describe("Zid orders and abandoned carts, as totals only (rule 85)", () => {
     fakeSales([], [], {}, { status: 401 });
     const bad = await connectRoute.POST(json("/api/connect/zid", "POST", { action: "sync_sales" }), { params: Promise.resolve({ provider: "zid" }) });
     expect((await bad.json()).error).toBe("reconnect_required");
-    expect((await getConnection(u.email, "zid"))?.needsReconnect).toBeTruthy();
+    expect((await getConnection(acct(u), "zid"))?.needsReconnect).toBeTruthy();
   });
 });
 

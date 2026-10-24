@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { json, newUser, settle, signIn } from "./helpers/session";
-import { getUser, saveUser, type User } from "@/lib/auth";
+import { acct, currentUser, getUser, saveUser, type User } from "@/lib/auth";
+import { scopeFor } from "@/lib/brands";
 import { agentSpendFor } from "@/lib/credits";
 import { db } from "@/lib/db";
 import { saveGov } from "@/lib/governance";
@@ -29,8 +30,8 @@ const verdict = { completeness: 90, brand: 90, honesty: 90, language: 90, format
 /** An owner with a brand file, re-read so the object carries the stored balance. */
 async function owner(prefix: string, withBrand = true): Promise<User> {
   const u = await newUser(prefix);
-  if (withBrand) await db.set(`brand:${u.email}`, brand);
-  return (await getUser(u.email))!;
+  if (withBrand) await db.set(`brand:${acct(u)}`, brand);
+  return (await getUser(acct(u)))!;
 }
 const credits = async (email: string) => (await getUser(email))!.credits;
 const spend = async (email: string) => agentSpendFor((await getUser(email))!, email);
@@ -104,19 +105,19 @@ describe("the checks before the charge come in one order, typed, and charge noth
     const u = await owner("gb-paused", false);
     for (const via of ["app", "mcp", "weekly", "routine"] as const) {
       const settled = { n: 0 };
-      const r = await generateBatch(u, u.email, { type: "social", source: "manual", via, settle: async () => { settled.n++; } });
+      const r = await generateBatch(u, acct(u), { type: "social", source: "manual", via, settle: async () => { settled.n++; } });
       expect(r, via).toEqual({ ok: false, reason: "paused" });
       expect(settled.n, `${via}: a refusal gives back a routine's attempt`).toBe(1);
     }
-    expect([seen.charged, seen.made, await credits(u.email)]).toEqual([0, 0, 50]);
+    expect([seen.charged, seen.made, await credits(acct(u))]).toEqual([0, 0, 50]);
 
     // Chat: its turn answers while paused before any tool runs, so the tool itself is not pre-checked.
     const v = await owner("gb-paused-chat");
-    const r = await generateBatch(v, v.email, { type: "social", source: "chat", via: "chat" });
+    const r = await generateBatch(v, acct(v), { type: "social", source: "chat", via: "chat" });
     expect(r.ok).toBe(false);
     expect(!r.ok && r.reason === "failed" && (r.error as Error).name).toBe("ModelPaused");
-    expect([seen.charged, await credits(v.email), await spend(v.email)], "charged once, refunded in full with the receipt").toEqual([1, 50, { noor: 0 }]);
-    expect(await listTasks(v.email)).toEqual([]);
+    expect([seen.charged, await credits(acct(v)), await spend(acct(v))], "charged once, refunded in full with the receipt").toEqual([1, 50, { noor: 0 }]);
+    expect(await listTasks(acct(v))).toEqual([]);
   });
 
   it("brand, then trial, then the type's data, then the owning agent's cap, then the balance", async () => {
@@ -128,44 +129,44 @@ describe("the checks before the charge come in one order, typed, and charge noth
     // No brand wins over an ended trial.
     const a = await owner("gb-nobrand", false);
     await saveUser({ ...a, trialEnds: past });
-    expect(await generateBatch({ ...a, trialEnds: past }, a.email, { type: "social", source: "manual", via: "app", settle: count })).toEqual({ ok: false, reason: "no_brand" });
+    expect(await generateBatch({ ...a, trialEnds: past }, acct(a), { type: "social", source: "manual", via: "app", settle: count })).toEqual({ ok: false, reason: "no_brand" });
 
     // An ended trial wins over missing cart data.
     const b = await owner("gb-trial");
-    expect(await generateBatch({ ...b, trialEnds: past }, b.email, { type: "cart_recovery", source: "manual", via: "app", settle: count })).toEqual({ ok: false, reason: "trial_over" });
+    expect(await generateBatch({ ...b, trialEnds: past }, acct(b), { type: "cart_recovery", source: "manual", via: "app", settle: count })).toEqual({ ok: false, reason: "trial_over" });
 
     // Missing data wins over the owning agent's cap.
     const c = await owner("gb-missing");
-    await saveGov(c.email, { agentCaps: { noor: 0 } });
-    expect(await generateBatch(c, c.email, { type: "cart_recovery", source: "manual", via: "app", settle: count })).toEqual({ ok: false, reason: "missing_data", missing: "no_cart_data" });
+    await saveGov(acct(c), { agentCaps: { noor: 0 } });
+    expect(await generateBatch(c, acct(c), { type: "cart_recovery", source: "manual", via: "app", settle: count })).toEqual({ ok: false, reason: "missing_data", missing: "no_cart_data" });
 
     // The cap wins over the balance, and names the agent the type belongs to.
     const d = await owner("gb-cap");
-    await saveGov(d.email, { agentCaps: { razan: 0 } });
+    await saveGov(acct(d), { agentCaps: { razan: 0 } });
     await saveUser({ ...d, credits: 0 });
-    expect(await generateBatch({ ...d, credits: 0 }, d.email, { type: "pricing_review", source: "manual", via: "mcp", settle: count })).toEqual({ ok: false, reason: "agent_cap", agent: "razan", spent: 0, cap: 0, credits: 0 });
+    expect(await generateBatch({ ...d, credits: 0 }, acct(d), { type: "pricing_review", source: "manual", via: "mcp", settle: count })).toEqual({ ok: false, reason: "agent_cap", agent: "razan", spent: 0, cap: 0, credits: 0 });
 
     // The balance: the full batch's price, or a small ask's share of it.
     const e = await owner("gb-broke");
     await saveUser({ ...e, credits: 0 });
-    expect(await generateBatch({ ...e, credits: 0 }, e.email, { type: "pricing_review", source: "manual", via: "app", settle: count })).toEqual({ ok: false, reason: "no_credits", need: TASK_COST.pricing_review, credits: 0 });
-    expect(await generateBatch({ ...e, credits: 0 }, e.email, { type: "social", count: 2, source: "chat", via: "chat", settle: count })).toEqual({ ok: false, reason: "no_credits", need: countCost("social", 2), credits: 0 });
+    expect(await generateBatch({ ...e, credits: 0 }, acct(e), { type: "pricing_review", source: "manual", via: "app", settle: count })).toEqual({ ok: false, reason: "no_credits", need: TASK_COST.pricing_review, credits: 0 });
+    expect(await generateBatch({ ...e, credits: 0 }, acct(e), { type: "social", count: 2, source: "chat", via: "chat", settle: count })).toEqual({ ok: false, reason: "no_credits", need: countCost("social", 2), credits: 0 });
     expect([countCost("social", 1), countCost("whatsapp", 1), countCost("ads", 3)]).toEqual([1, 1, 3]);
 
     expect(settled.n, "every refusal settles").toBe(6);
     expect(seen.made, "no refusal reaches the model").toBe(0);
-    expect([await credits(b.email), await credits(c.email), await spend(d.email)]).toEqual([50, 50, {}]);
+    expect([await credits(acct(b)), await credits(acct(c)), await spend(acct(d))]).toEqual([50, 50, {}]);
   });
 
   it("a small ask is only for DRAFT_TYPES: any other type with a count throws before any read or charge (rule 250)", async () => {
     const { generateBatch, seen } = await load();
     const u = await owner("gb-draft-type");
     for (const type of ["article", "weekly_plan", "cart_recovery", "board_deck"] as const) {
-      await expect(generateBatch(u, u.email, { type, count: 1, source: "chat", via: "chat" })).rejects.toThrow(`not_draft_type:${type}`);
+      await expect(generateBatch(u, acct(u), { type, count: 1, source: "chat", via: "chat" })).rejects.toThrow(`not_draft_type:${type}`);
     }
     expect([seen.charged, seen.made]).toEqual([0, 0]);
-    expect(await credits(u.email)).toBe(50);
-    expect(await listTasks(u.email)).toEqual([]);
+    expect(await credits(acct(u))).toBe(50);
+    expect(await listTasks(acct(u))).toEqual([]);
   });
 });
 
@@ -174,34 +175,34 @@ describe("a failed read or a failed generation is refunded with the receipt (rul
     const { generateBatch, seen } = await load({ statsFail: true });
     const u = await owner("gb-readfail");
     const settled = { n: 0 };
-    const r = await generateBatch(u, u.email, { type: "weekly_report", source: "scheduled", via: "routine", settle: async () => { settled.n++; } });
+    const r = await generateBatch(u, acct(u), { type: "weekly_report", source: "scheduled", via: "routine", settle: async () => { settled.n++; } });
     expect(r).toMatchObject({ ok: false, reason: "failed", credits: 50 });
     expect(!r.ok && r.reason === "failed" && (r.error as Error).message).toBe("upstash timeout");
     expect([seen.charged, seen.made, settled.n, u.credits]).toEqual([1, 0, 1, 50]);
-    expect(await spend(u.email)).toEqual({ dana: 0 });
-    expect(await listTasks(u.email)).toEqual([]);
+    expect(await spend(acct(u))).toEqual({ dana: 0 });
+    expect(await listTasks(acct(u))).toEqual([]);
   });
 
   it("a generation that throws does the same", async () => {
     const { generateBatch, seen } = await load({ genFails: true });
     const u = await owner("gb-genfail");
-    const r = await generateBatch(u, u.email, { type: "pricing_review", source: "manual", via: "app" });
+    const r = await generateBatch(u, acct(u), { type: "pricing_review", source: "manual", via: "app" });
     expect(r).toMatchObject({ ok: false, reason: "failed", credits: 50 });
     expect(seen.made).toBeGreaterThan(0);
-    expect([await credits(u.email), await spend(u.email)]).toEqual([50, { razan: 0 }]);
-    expect(await listTasks(u.email)).toEqual([]);
+    expect([await credits(acct(u)), await spend(acct(u))]).toEqual([50, { razan: 0 }]);
+    expect(await listTasks(acct(u))).toEqual([]);
   });
 
   it("a generation that returns no usable item is a failure and is refunded, never charged (rule 1306, issue #79)", async () => {
     for (const items of [[], [{ channel: "instagram", title: "no body" }]] as unknown as Item[][]) {
       const { generateBatch, seen } = await load({ items });
       const u = await owner("gb-empty");
-      const r = await generateBatch(u, u.email, { type: "pricing_review", source: "manual", via: "app" });
+      const r = await generateBatch(u, acct(u), { type: "pricing_review", source: "manual", via: "app" });
       expect(r).toMatchObject({ ok: false, reason: "failed", credits: 50 });
       expect(!r.ok && r.reason === "failed" && (r.error as Error).message).toBe("empty_generation");
       expect(seen.charged).toBe(1);
-      expect([await credits(u.email), await spend(u.email)]).toEqual([50, { razan: 0 }]);
-      expect(await listTasks(u.email)).toEqual([]);
+      expect([await credits(acct(u)), await spend(acct(u))]).toEqual([50, { razan: 0 }]);
+      expect(await listTasks(acct(u))).toEqual([]);
     }
   });
 
@@ -210,9 +211,9 @@ describe("a failed read or a failed generation is refunded with the receipt (rul
     const u = await owner("gb-smallfail");
     // One social draft costs less than a full social batch, so a refund of the batch price would add credits.
     expect(countCost("social", 1)).toBeLessThan(TASK_COST.social);
-    const r = await generateBatch(u, u.email, { type: "social", count: 1, brief: "b", source: "chat", via: "chat" });
+    const r = await generateBatch(u, acct(u), { type: "social", count: 1, brief: "b", source: "chat", via: "chat" });
     expect(r).toMatchObject({ ok: false, reason: "failed", credits: 50 });
-    expect([await credits(u.email), await spend(u.email)]).toEqual([50, { noor: 0 }]);
+    expect([await credits(acct(u)), await spend(acct(u))]).toEqual([50, { noor: 0 }]);
   });
 });
 
@@ -221,8 +222,8 @@ describe("tasks are built in one place, saved together and judged with what the 
     const items = [ITEM, { channel: "instagram", title: "عرض", body: "قهوة رخيص اليوم فقط للمراجعة" }];
     const { generateBatch, seen } = await load({ items });
     const u = await owner("gb-build");
-    await saveGov(u.email, { autoApprove: { social: true }, reviewer: false });
-    const r = await generateBatch(u, u.email, { type: "social", notes: `  عرض الخريف ${"م".repeat(600)}`, source: "manual", via: "app" });
+    await saveGov(acct(u), { autoApprove: { social: true }, reviewer: false });
+    const r = await generateBatch(u, acct(u), { type: "social", notes: `  عرض الخريف ${"م".repeat(600)}`, source: "manual", via: "app" });
     expect(r.ok).toBe(true);
     if (!r.ok) return;
     expect(r.tasks.map((t) => t.status), "the item with a banned word waits even under auto-approve").toEqual(["approved", "pending"]);
@@ -234,15 +235,15 @@ describe("tasks are built in one place, saved together and judged with what the 
     expect(new Set(r.tasks.map((t) => t.createdAt)).size).toBe(1);
     // Two of the ten a social batch asks for: a short batch, charged per item delivered (rule 2276), 2/10 of the price.
     const kept = Math.floor((TASK_COST.social * 2) / 10);
-    expect(r).toMatchObject({ credits: 50 - kept, cost: kept, short: { asked: 10, delivered: 2 }, refunded: TASK_COST.social - kept, agent: "noor", receipt: { ok: true, agent: "noor", scope: u.email } });
-    expect((await listTasks(u.email)).map((t) => t.id).sort()).toEqual(r.tasks.map((t) => t.id).sort());
+    expect(r).toMatchObject({ credits: 50 - kept, cost: kept, short: { asked: 10, delivered: 2 }, refunded: TASK_COST.social - kept, agent: "noor", receipt: { ok: true, agent: "noor", scope: acct(u) } });
+    expect((await listTasks(acct(u))).map((t) => t.id).sort()).toEqual(r.tasks.map((t) => t.id).sort());
     // Together, not one after another: every save starts before the first one ends.
     expect(seen.saves).toEqual(["start", "start", "end", "end"]);
 
-    const forced = await generateBatch(u, u.email, { type: "social", source: "chat", via: "chat", forcePending: true, brief: "given brief" });
+    const forced = await generateBatch(u, acct(u), { type: "social", source: "chat", via: "chat", forcePending: true, brief: "given brief" });
     expect(forced.ok && forced.tasks.map((t) => [t.status, t.source, t.brief])).toEqual([["pending", "chat", "given brief"], ["pending", "chat", "given brief"]]);
     // Without notes there is no brief.
-    const plain = await generateBatch(u, u.email, { type: "social", source: "manual", via: "app" });
+    const plain = await generateBatch(u, acct(u), { type: "social", source: "manual", via: "app" });
     expect(plain.ok && plain.tasks.every((t) => !("brief" in t))).toBe(true);
   });
 
@@ -250,8 +251,8 @@ describe("tasks are built in one place, saved together and judged with what the 
     const body = "أهلاً {{1}}، قهوتك المفضلة بانتظارك اليوم في الفرع";
     const { generateBatch } = await load({ items: [{ channel: "whatsapp", title: "تذكير", body }, { channel: "instagram", title: "تذكير", body }] });
     const u = await owner("gb-slot");
-    await saveGov(u.email, { autoApprove: { whatsapp: true }, reviewer: false });
-    const r = await generateBatch(u, u.email, { type: "whatsapp", source: "manual", via: "app" });
+    await saveGov(acct(u), { autoApprove: { whatsapp: true }, reviewer: false });
+    const r = await generateBatch(u, acct(u), { type: "whatsapp", source: "manual", via: "app" });
     // One batch, one type and one body: only the channel tells the two apart.
     expect(r.ok && r.tasks.map((t) => [t.channel, t.status])).toEqual([["whatsapp", "approved"], ["instagram", "pending"]]);
   });
@@ -265,11 +266,11 @@ describe("tasks are built in one place, saved together and judged with what the 
     ];
     const { generateBatch } = await load({ items });
     const u = await owner("gb-gate-all");
-    await saveGov(u.email, { autoApprove: { whatsapp: true }, reviewer: false });
+    await saveGov(acct(u), { autoApprove: { whatsapp: true }, reviewer: false });
     // Each pair is one a caller passes (rule 224): the gate must not depend on who asked.
     const pairs = [["manual", "app"], ["chat", "chat"], ["chat", "mcp"], ["scheduled", "weekly"], ["scheduled", "routine"]] as const;
     for (const [source, via] of pairs) {
-      const r = await generateBatch((await getUser(u.email))!, u.email, { type: "whatsapp", source, via });
+      const r = await generateBatch((await getUser(acct(u)))!, acct(u), { type: "whatsapp", source, via });
       expect(r.ok && r.tasks.map((t) => [t.channel, t.status]), `${source}/${via}`).toEqual([["whatsapp", "approved"], ["instagram", "pending"], ["whatsapp", "pending"]]);
     }
   });
@@ -277,13 +278,13 @@ describe("tasks are built in one place, saved together and judged with what the 
   it("the judge gets the notes, the workspace files, the data block and the count the owner asked for", async () => {
     const { generateBatch, seen } = await load();
     const u = await owner("gb-judge");
-    await db.set(`onboardplan:${u.email}`, { goal: "a weekly report every Sunday", plan: [], at: "2026-09-29T00:00:00.000Z" });
-    expect((await generateBatch(u, u.email, { type: "weekly_report", notes: "compare with Ramadan week", source: "manual", via: "app" })).ok).toBe(true);
+    await db.set(`onboardplan:${acct(u)}`, { goal: "a weekly report every Sunday", plan: [], at: "2026-09-29T00:00:00.000Z" });
+    expect((await generateBatch(u, acct(u), { type: "weekly_report", notes: "compare with Ramadan week", source: "manual", via: "app" })).ok).toBe(true);
     await settle();
     expect(seen.judged).toHaveLength(1);
     for (const part of ["<owner_notes>", "compare with Ramadan week", "<workspace_files>", "a weekly report every Sunday", "<workspace_data>"]) expect(seen.judged[0]).toContain(part);
 
-    expect((await generateBatch(u, u.email, { type: "social", notes: "one post", count: 1, source: "chat", via: "chat" })).ok).toBe(true);
+    expect((await generateBatch(u, acct(u), { type: "social", notes: "one post", count: 1, source: "chat", via: "chat" })).ok).toBe(true);
     await settle();
     expect(seen.judged[1]).toMatch(/OVERRIDE: the owner asked for exactly 1 item/);
   });
@@ -297,20 +298,20 @@ describe("every paid text batch goes through generateBatch (rule 224)", () => {
     const route = await import("@/app/api/generate/route");
     expect((await route.POST(json("/api/generate", "POST", { type: "social" }))).status).toBe(200);
     const { runTool } = await import("@/lib/chat");
-    expect(await runTool((await getUser(u.email))!, "generate_content", { type: "whatsapp" }, [])).toMatch(/^Created 3 whatsapp/);
-    expect(await runTool((await getUser(u.email))!, "draft_items", { type: "social", count: 1, brief: "b" }, [])).toMatch(/^Drafted 1 social/);
+    expect(await runTool((await currentUser())!, "generate_content", { type: "whatsapp" }, [])).toMatch(/^Created 3 whatsapp/);
+    expect(await runTool((await currentUser())!, "draft_items", { type: "social", count: 1, brief: "b" }, [])).toMatch(/^Drafted 1 social/);
     const mcp = await import("@/app/api/mcp/route");
-    const token = await createMcpToken(u.email);
+    const token = await createMcpToken(acct(u));
     const res = await mcp.POST(new Request("https://nashr.test/api/mcp", { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${token}` }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "generate_content", arguments: { type: "gbp" } } }) }));
     expect(((await res.json()) as { result: { isError?: boolean } }).result.isError).toBeUndefined();
     const { runWeekly } = await import("@/lib/schedule");
-    expect(await runWeekly((await getUser(u.email))!)).toMatch(/^ok:/);
+    expect(await runWeekly((await currentUser())!)).toMatch(/^ok:/);
     expect(calls).toEqual([
-      { via: "app", source: "manual", type: "social", scope: u.email },
-      { via: "chat", source: "chat", type: "whatsapp", scope: u.email },
-      { via: "chat", source: "chat", type: "social", scope: u.email },
-      { via: "mcp", source: "chat", type: "gbp", scope: u.email },
-      { via: "weekly", source: "scheduled", type: "weekly_plan", scope: u.email },
+      { via: "app", source: "manual", type: "social", scope: acct(u) },
+      { via: "chat", source: "chat", type: "whatsapp", scope: acct(u) },
+      { via: "chat", source: "chat", type: "social", scope: acct(u) },
+      { via: "mcp", source: "chat", type: "gbp", scope: acct(u) },
+      { via: "weekly", source: "scheduled", type: "weekly_plan", scope: acct(u) },
     ]);
   });
 
@@ -318,10 +319,10 @@ describe("every paid text batch goes through generateBatch (rule 224)", () => {
     await load();
     const u = await owner("gb-routine");
     const snap: SalesSnapshot = { provider: "salla", at: new Date().toISOString(), days: 30, orders: { count: 4, read: 4, canceled: 0, revenue: { SAR: 900 }, top: [{ name: "عود", qty: 2 }] }, carts: { count: 0, read: 0, value: {}, top: [] }, unread: 0 };
-    await Promise.all([db.set(`storesales:${u.email}`, snap), saveSchedule(u.email, { routines: { razan_cash_forecast: true } })]);
+    await Promise.all([db.set(`storesales:${acct(u)}`, snap), saveSchedule(acct(u), { routines: { razan_cash_forecast: true } })]);
     const { runRoutine } = await import("@/lib/routines");
-    expect(await runRoutine(u, "razan_cash_forecast")).toBe("ok:1");
-    expect(calls).toEqual([{ via: "routine", source: "scheduled", type: "cash_forecast", scope: u.email }]);
+    expect(await runRoutine({ ...u, scope: scopeFor(acct(u), "default") }, "razan_cash_forecast")).toBe("ok:1");
+    expect(calls).toEqual([{ via: "routine", source: "scheduled", type: "cash_forecast", scope: acct(u) }]);
   });
 
   it("no caller charges, generates, saves or judges a batch on its own", () => {
@@ -356,66 +357,66 @@ describe("a short batch is charged per item delivered (founder decision 2026-10-
     const u = await owner("gb-short");
     const cost = TASK_COST.social;
     const kept = Math.floor((cost * 3) / 10);
-    const r = await generateBatch(u, u.email, { type: "social", source: "manual", via: "app" });
+    const r = await generateBatch(u, acct(u), { type: "social", source: "manual", via: "app" });
     if (!r.ok) throw new Error(`refused: ${r.reason}`);
     expect(r).toMatchObject({ cost: kept, credits: 50 - kept, short: { asked: 10, delivered: 3 }, refunded: cost - kept });
     expect(r.held).toBeUndefined();
     expect(r.tasks).toHaveLength(3);
     expect(seen.charged, "charged once, then one refund for the part not delivered").toBe(1);
-    expect(await credits(u.email)).toBe(50 - kept);
-    expect(await spend(u.email)).toEqual({ noor: kept });
+    expect(await credits(acct(u))).toBe(50 - kept);
+    expect(await spend(acct(u))).toEqual({ noor: kept });
     const { listActivity } = await import("@/lib/activity");
-    const row = (await listActivity(u.email)).rows.find((a) => a.kind === "generated")!;
+    const row = (await listActivity(acct(u))).rows.find((a) => a.kind === "generated")!;
     expect([row.credits, row.count]).toEqual([kept, 3]);
   });
   it("a full batch has no `short` and keeps its whole price; an asked count is the batch's size (rule 2276)", async () => {
     const full = await load({ items: items(10) });
     const u = await owner("gb-full");
-    const r = await full.generateBatch(u, u.email, { type: "social", source: "manual", via: "app" });
+    const r = await full.generateBatch(u, acct(u), { type: "social", source: "manual", via: "app" });
     if (!r.ok) throw new Error("refused");
     expect([r.cost, r.short, r.refunded]).toEqual([TASK_COST.social, undefined, undefined]);
     // Two asked, two delivered: full, charged the count's own price (`countCost`).
     const two = await load({ items: items(2) });
     const v = await owner("gb-count");
-    const c = await two.generateBatch(v, v.email, { type: "social", source: "manual", via: "app", count: 2 });
+    const c = await two.generateBatch(v, acct(v), { type: "social", source: "manual", via: "app", count: 2 });
     if (!c.ok) throw new Error("refused");
     expect([c.cost, c.short]).toEqual([two.countCost("social", 2), undefined]);
   });
   it("an empty batch stays free: refunded whole, nothing saved (rule 1306 unchanged)", async () => {
     const { generateBatch } = await load({ items: [] });
     const u = await owner("gb-empty");
-    const r = await generateBatch(u, u.email, { type: "social", source: "manual", via: "app" });
+    const r = await generateBatch(u, acct(u), { type: "social", source: "manual", via: "app" });
     expect(r.ok).toBe(false);
-    expect([await credits(u.email), await spend(u.email), await listTasks(u.email)]).toEqual([50, { noor: 0 }, []]);
+    expect([await credits(acct(u)), await spend(acct(u)), await listTasks(acct(u))]).toEqual([50, { noor: 0 }, []]);
   });
   it("a claim's batch gives the short share back from its hold and lowers the hold; a later refundOnce gives back only the rest (rule 2278)", async () => {
     const { generateBatch } = await load({ items: items(3) });
     const u = await owner("gb-short-once");
-    const claim = `weekly:${u.email}:short`;
+    const claim = `weekly:${acct(u)}:short`;
     const cost = TASK_COST.social;
     const kept = Math.floor((cost * 3) / 10);
-    const r = await generateBatch(u, u.email, { type: "social", source: "manual", via: "weekly", once: claim });
+    const r = await generateBatch(u, acct(u), { type: "social", source: "manual", via: "weekly", once: claim });
     if (!r.ok) throw new Error(`refused: ${r.reason}`);
     expect(r).toMatchObject({ cost: kept, refunded: cost - kept, short: { asked: 10, delivered: 3 } });
-    const after = (await getUser(u.email))!;
+    const after = (await getUser(acct(u)))!;
     expect(after.credits).toBe(50 - kept);
     expect(after.paidOnce?.[claim]?.credits, "the hold now holds what was kept").toBe(kept);
     const { refundOnce } = await import("@/lib/credits");
-    expect((await refundOnce(u.email, claim)).refunded, "never the short share twice").toBe(kept);
-    expect(await credits(u.email)).toBe(50);
+    expect((await refundOnce(acct(u), claim)).refunded, "never the short share twice").toBe(kept);
+    expect(await credits(acct(u))).toBe(50);
   });
   it("refundOncePart: at most the hold, a missing hold gives nothing, bad input throws (rule 2278)", async () => {
     const { chargeOnce, refundOncePart } = await import("@/lib/credits");
     const u = await owner("gb-part");
-    const meta = { scope: u.email, agent: "noor" as const };
-    expect((await chargeOnce(u.email, 10, meta, "c")).ok).toBe(true);
-    expect(await refundOncePart(u.email, "c", 4)).toEqual({ credits: 44, refunded: 4 });
-    expect((await getUser(u.email))!.paidOnce?.c?.credits).toBe(6);
-    expect(await refundOncePart(u.email, "c", 99)).toEqual({ credits: 50, refunded: 6 });
-    expect(await refundOncePart(u.email, "c", 1)).toEqual({ credits: 50, refunded: 0 });
-    expect(await refundOncePart(u.email, "none", 3)).toEqual({ credits: 50, refunded: 0 });
-    await expect(refundOncePart(u.email, "c", -1)).rejects.toThrow("invalid_delta");
-    await expect(refundOncePart(u.email, "c", 1.5)).rejects.toThrow("invalid_delta");
-    expect(await spend(u.email)).toEqual({ noor: 0 });
+    const meta = { scope: acct(u), agent: "noor" as const };
+    expect((await chargeOnce(acct(u), 10, meta, "c")).ok).toBe(true);
+    expect(await refundOncePart(acct(u), "c", 4)).toEqual({ credits: 44, refunded: 4 });
+    expect((await getUser(acct(u)))!.paidOnce?.c?.credits).toBe(6);
+    expect(await refundOncePart(acct(u), "c", 99)).toEqual({ credits: 50, refunded: 6 });
+    expect(await refundOncePart(acct(u), "c", 1)).toEqual({ credits: 50, refunded: 0 });
+    expect(await refundOncePart(acct(u), "none", 3)).toEqual({ credits: 50, refunded: 0 });
+    await expect(refundOncePart(acct(u), "c", -1)).rejects.toThrow("invalid_delta");
+    await expect(refundOncePart(acct(u), "c", 1.5)).rejects.toThrow("invalid_delta");
+    expect(await spend(acct(u))).toEqual({ noor: 0 });
   });
 });

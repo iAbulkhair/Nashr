@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { json, newUser, signIn } from "./helpers/session";
-import { getUser } from "@/lib/auth";
+import { acct, getUser } from "@/lib/auth";
 import { charge } from "@/lib/credits";
 
 vi.mock("dns/promises", () => ({ lookup: async () => [{ address: "93.184.216.34", family: 4 }] }));
@@ -19,10 +19,10 @@ describe("saving the profile cannot undo a charge (P1: credits reappear)", () =>
     let charged = false;
     const spy = vi.spyOn(db, "get").mockImplementation(async (key: string) => {
       const value = await realGet(key);
-      if (key === `user:${u.email}` && !charged) {
+      if (key === `user:${acct(u)}` && !charged) {
         charged = true;
         spy.mockRestore();
-        await charge(u.email, 10);
+        await charge(acct(u), 10);
       }
       return value;
     });
@@ -33,7 +33,7 @@ describe("saving the profile cannot undo a charge (P1: credits reappear)", () =>
     expect(charged, "the interleaving must actually have happened or this test proves nothing").toBe(true);
     expect(res.status).toBe(200);
 
-    const after = (await getUser(u.email))!;
+    const after = (await getUser(acct(u)))!;
     expect(after.credits, "the charge must not be reversed by an unrelated profile save").toBe(40);
     expect(after.name, "and the profile edit must still be applied").toBe("Renamed");
   });

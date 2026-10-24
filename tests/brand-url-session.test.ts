@@ -39,10 +39,11 @@ const storedChoice = (u: User) => Promise.all([db.get(personKey.activeBrand(owne
 
 /**
  * An owner with active b1, b2, archived old, the stored choice on default, signed in on an R1 session. `legacyShape`
- * signs in with a session written before R1, which only a legacy owner can hold, so the fixture is a legacy one then.
+ * signs in with a session written before R1, which only a legacy owner can hold, so the fixture is a legacy one then:
+ * a legacy person and an account whose id is its address (`addressId`), as production held them before R2 enable.
  */
 async function ownerWithBrands(prefix: string, opts: { legacyShape?: boolean } = {}) {
-  const owner = await newUser(prefix, { legacy: !!opts.legacyShape });
+  const owner = await newUser(prefix, { legacy: !!opts.legacyShape, addressId: !!opts.legacyShape });
   await setBrands(acct(owner), ["b1", "b2"], ["old"]);
   await seedActiveBrand(owner.email, "default");
   await signIn(owner.email, opts);

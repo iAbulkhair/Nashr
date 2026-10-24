@@ -149,7 +149,9 @@ describe("rule 2740 (1996, R2 half): with OPAQUE_IDS on a new account is opaque,
     const team = read("src/lib/team.ts");
     expect(team).toContain('if (blocked === "held" || (blocked === "moved" && !MULTI_ORG)) return fail("unavailable");');
     expect(team).toContain("addressBlocked(to, oldPid)");
-    expect(read("src/lib/auth.ts")).toContain("idForNewAccount(email, opts.opaque || OPAQUE_IDS || (split && MULTI_ORG) || moved)");
+    // `opts.opaque: false` is a test's account made before R2 enable (rule 3815); no route passes it.
+    expect(read("src/lib/auth.ts")).toContain("const opaque = opts.opaque ?? (OPAQUE_IDS || (split && MULTI_ORG));");
+    expect(read("src/lib/auth.ts")).toContain("idForNewAccount(email, opaque || moved)");
     expect(read("src/lib/email-hold.ts")).not.toMatch(/export async function addressBlocked[^{]*\{\s*if \(!OPAQUE_IDS\)/);
   });
 });

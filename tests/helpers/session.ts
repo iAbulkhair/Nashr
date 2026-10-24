@@ -9,13 +9,21 @@ import { activeBrandIn, setActiveBrandIn } from "@/lib/brands";
 import { newPersonId } from "@/lib/multi-org";
 import { accountKey, storedAccountId, storedPersonId, type AccountId, type PersonId } from "@/lib/keys";
 import { saveBrand, saveTask } from "@/lib/brand";
+import { wsHandle } from "@/lib/ws-handle";
+import { WS_HEADER } from "@/lib/ws-path";
 
-const g = globalThis as unknown as { __testJar: Map<string, string>; __testAfter: Promise<unknown>[]; __testAfterInScope: boolean; __testHeaders?: Record<string, string> };
+const g = globalThis as unknown as { __testJar: Map<string, string>; __testAfter: Promise<unknown>[]; __testAfterInScope: boolean; __testHeaders?: Record<string, string>; __testWs?: string };
 
 /** The cookie jar route handlers see. */
 export const jar = () => g.__testJar;
 /** No cookies at all: an anonymous visitor. */
-export const signOut = () => g.__testJar.clear();
+export const signOut = () => { g.__testJar.clear(); g.__testWs = undefined; };
+/**
+ * The workspace handle the signed-in page sends with every API call (multi-workspace M2, rule 3811): `signIn` sets it to
+ * the handle of the account the session opens, as the browser's `api()` helper sends its page's handle in `x-thakeen-ws`.
+ * `json()` adds it to a request that names no workspace itself; `useWorkspace(null)` stops it, for a test of the 409.
+ */
+export const useWorkspace = (handle: string | null) => { g.__testWs = handle ?? undefined; };
 /**
  * Act as this login: a real session record plus its cookie, exactly what login creates. Works for owners and members
  * alike (the record holds the login email). `imp` makes it a founder impersonation session, as the console writes it.
@@ -31,6 +39,8 @@ export async function signIn(email: string, opts: { imp?: string; legacyShape?: 
   // A key impersonation is tied to the current key as the console writes it (rule 429); WAITLIST_ADMIN_KEY must be set.
   const bind = opts.imp === "key" ? await (await import("@/lib/auth")).keyImpBinding() : null;
   const ids = opts.legacyShape ? {} : await sessionIds(email, { imp: !!opts.imp });
+  const opens = opts.acct ?? (opts.legacyShape ? (await sessionIds(email)).acct : ids.acct);
+  g.__testWs = opens ? wsHandle(opens) : undefined;
   const plain = { email, at: Date.now(), ...ids, ...(opts.acct && !opts.legacyShape ? { acct: opts.acct } : {}) };
   await db.set(sessionKey(token), opts.imp ? { email, at: Date.now(), imp: opts.imp, ...(bind ?? {}), ...ids } : plain, 3600);
   g.__testJar.clear();
@@ -100,8 +110,10 @@ const pMode = (legacy: boolean) => PERSONS === "p" && !legacy;
  * What a fixture may ask for. `legacy`: a legacy person whatever `PERSONS` says (a test that reads `user:{email}`'s
  * hash, `member:{email}`, R1's exact keys). `shadow: false`: no shadow membership, for a test that pins what happens to
  * a person who holds nothing else (a removal or a deletion that takes the login with it, a count of other workspaces).
+ * `addressId` (owners only): an account made before R2 enable, its id its address, as every account production held
+ * then and still holds after the flip (rule 3815); without it a new account's id is an opaque `a_` one.
  */
-export type Fixture = { legacy?: boolean; shadow?: boolean };
+export type Fixture = { legacy?: boolean; shadow?: boolean; addressId?: boolean };
 /** The marker text the shadow account's brand and task hold: a response that contains it read the wrong account. */
 export const SHADOW_MARKER = "SHADOW-";
 
@@ -171,8 +183,8 @@ export async function markVerified(email: string): Promise<User> {
  * account at its address names it in `ownerPid`, the credentials live on `person:`); `{ legacy: true }` or
  * `TEST_PERSONS=legacy` makes today's legacy owner. Either way the owner also holds a shadow membership.
  */
-export async function newUser(prefix = "u", { verified = true, legacy = false, shadow = true }: Fixture & { verified?: boolean } = {}): Promise<User> {
-  const u = await createUser({ email: `${prefix}${++n}-${randomBytes(3).toString("hex")}@test.example`, name: "Test", phone: "", password: "abc12345", lang: "ar" }, { person: pMode(legacy) ? "p" : "legacy" });
+export async function newUser(prefix = "u", { verified = true, legacy = false, shadow = true, addressId = false }: Fixture & { verified?: boolean } = {}): Promise<User> {
+  const u = await createUser({ email: `${prefix}${++n}-${randomBytes(3).toString("hex")}@test.example`, name: "Test", phone: "", password: "abc12345", lang: "ar" }, { person: pMode(legacy) ? "p" : "legacy", ...(addressId ? { opaque: false } : {}) });
   if (shadow) await addShadowMembership(ownerOf(u), u.createdAt);
   return verified ? markVerified(u.email) : u;
 }
@@ -235,6 +247,7 @@ const REASON_ROUTES = /^\/api\/admin\/(users\/[^/?]+|plan|topups|payments\/[^/?]
 export const TEST_REASON = "test reason";
 const withTestReason = (url: string, method: string, body: unknown) =>
   method === "POST" && REASON_ROUTES.test(url) && body && typeof body === "object" && !Array.isArray(body) && !("reason" in body) ? { ...body, reason: TEST_REASON } : body;
+/** A JSON request as the signed-in page sends it: with its workspace handle (`useWorkspace`) unless `headers` names one. */
 export const json = (url: string, method: string, body?: unknown, headers: Record<string, string> = {}) =>
-  new Request(`https://nashr.test${url}`, { method, headers: { "content-type": "application/json", ...headers }, body: body === undefined ? undefined : JSON.stringify(withTestReason(url, method, body)) });
+  new Request(`https://nashr.test${url}`, { method, headers: { "content-type": "application/json", ...(g.__testWs && !(WS_HEADER in headers) ? { [WS_HEADER]: g.__testWs } : {}), ...headers }, body: body === undefined ? undefined : JSON.stringify(withTestReason(url, method, body)) });
 export const params = <T extends Record<string, string>>(p: T) => ({ params: Promise.resolve(p) });

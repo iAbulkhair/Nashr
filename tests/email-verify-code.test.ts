@@ -2,7 +2,7 @@
 import { describe, expect, it } from "vitest";
 import { newUser, markVerified as stampVerified } from "./helpers/session";
 import { db } from "@/lib/db";
-import { getUser } from "@/lib/auth";
+import { acct, getUser } from "@/lib/auth";
 import { VERIFY, checkVerifyCode, hasPendingCode, issueVerifyCode, markVerified, normalizeCode, verifyMail } from "@/lib/verify-email";
 
 const email = () => `code-${Math.random().toString(36).slice(2, 10)}@test.example`;
@@ -29,7 +29,7 @@ describe("verification code store", () => {
     await markVerified(owner.email);
     expect(await hasPendingCode(owner.email)).toBe(false);
     expect(await checkVerifyCode(owner.email, code)).toEqual({ ok: false, reason: "expired" });
-    expect((await getUser(owner.email))!.emailVerifiedAt).toBeTruthy();
+    expect((await getUser(acct(owner)))!.emailVerifiedAt).toBeTruthy();
   });
 
   it("markVerified keeps an existing emailVerifiedAt", async () => {
@@ -37,7 +37,7 @@ describe("verification code store", () => {
     const first = (await stampVerified(owner.email)).emailVerifiedAt;
     await new Promise((r) => setTimeout(r, 5));
     await markVerified(owner.email);
-    expect((await getUser(owner.email))!.emailVerifiedAt).toBe(first);
+    expect((await getUser(acct(owner)))!.emailVerifiedAt).toBe(first);
   });
 
   it("Arabic-Indic digits and spaces are accepted", async () => {

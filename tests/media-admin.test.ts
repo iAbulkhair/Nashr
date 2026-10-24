@@ -6,7 +6,7 @@ import { MEDIA_ENV, mediaEnv, noNetwork, resetMediaCounters } from "./helpers/me
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import * as media from "@/app/api/admin/media/route";
-import { createUser, saveUser, type User } from "@/lib/auth";
+import { createUser, saveUser, sc, type User } from "@/lib/auth";
 import { db, pushCapped } from "@/lib/db";
 import { monthKey } from "@/lib/credits";
 import { mk } from "@/lib/media/keys";
@@ -199,7 +199,7 @@ describe("render spend in the founder overview", () => {
   it("credits used this month count what renders kept (mediaCredits), not one credit per image", async () => {
     const u = await newUser("mediacred");
     const before = (await overview()).revenue.creditsUsedMonth;
-    await saveTask(u.email, task("v", { mediaCredits: 24, videoUrl: `https://thakeen.com/m/${"b".repeat(32)}.mp4`, imageUrl: `https://thakeen.com/m/${"c".repeat(32)}.jpg`, imageProvider: "kie" }), true);
+    await saveTask(sc(u), task("v", { mediaCredits: 24, videoUrl: `https://thakeen.com/m/${"b".repeat(32)}.mp4`, imageUrl: `https://thakeen.com/m/${"c".repeat(32)}.jpg`, imageProvider: "kie" }), true);
     const after = (await overview()).revenue.creditsUsedMonth;
     expect(after - before).toBe(Math.round(TASK_COST.social / TASK_COUNT.social + 24));
   });
@@ -210,7 +210,7 @@ const task = (id: string, over: Partial<Task> = {}): Task => ({ id: `${id}${++tn
 
 describe("owner reports: videos and render credits", () => {
   it("kpis count mediaCredits and videos, fall back to one credit for a legacy image, and statsText names videos", async () => {
-    const s = (await newUser("mediakpi")).email;
+    const s = sc(await newUser("mediakpi"));
     await Promise.all([
       saveTask(s, task("video", { mediaCredits: 24, videoUrl: `https://thakeen.com/m/${"b".repeat(32)}.mp4`, imageUrl: `https://thakeen.com/m/${"c".repeat(32)}.jpg`, imageProvider: "kie" }), true),
       saveTask(s, task("legacy", { imageUrl: "https://v3.fal.media/files/x.jpg", imageProvider: "fal" }), true),

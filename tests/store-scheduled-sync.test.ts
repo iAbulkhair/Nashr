@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { newUser } from "./helpers/session";
+import { sc } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { saveConnection, type Connection } from "@/lib/connectors/store";
 import { AUTO_SYNC_MIN_AGE_MS, getSalesSnapshot, getSyncFailure, syncSales, syncStoreIfDue } from "@/lib/store-sales";
@@ -34,8 +35,8 @@ afterEach(() => { globalThis.fetch = realFetch; vi.unstubAllEnvs(); });
 
 const wooUser = async (tag: string) => {
   const u = await newUser(tag);
-  await saveConnection(u.email, woo());
-  return u.email;
+  await saveConnection(sc(u), woo());
+  return sc(u);
 };
 /** A snapshot of the store as it was `hours` ago, written the way a sync writes it. */
 async function snapshotAgo(scope: string, hours: number) {
@@ -84,47 +85,47 @@ describe("which store a workspace is synced for (rule 624)", () => {
   it("no store connected: nothing is read", async () => {
     const u = await newUser("ss-none");
     fakeWoo();
-    expect(await syncStoreIfDue(u.email)).toBe("none");
+    expect(await syncStoreIfDue(sc(u))).toBe("none");
     expect(asked).toBe(0);
   });
 
   it("several stores and no snapshot is the owner's choice: nothing is read", async () => {
     const u = await newUser("ss-choose");
-    await saveConnection(u.email, woo());
-    await saveConnection(u.email, shopify());
+    await saveConnection(sc(u), woo());
+    await saveConnection(sc(u), shopify());
     fakeWoo();
-    expect(await syncStoreIfDue(u.email)).toBe("choose");
+    expect(await syncStoreIfDue(sc(u))).toBe("choose");
     expect(asked).toBe(0);
-    expect(await getSalesSnapshot(u.email)).toBeNull();
+    expect(await getSalesSnapshot(sc(u))).toBeNull();
   });
 
   it("several stores and a snapshot: only the store of that snapshot is read", async () => {
     const u = await newUser("ss-keep");
-    await saveConnection(u.email, woo());
-    await saveConnection(u.email, shopify());
-    await snapshotAgo(u.email, 20);
+    await saveConnection(sc(u), woo());
+    await saveConnection(sc(u), shopify());
+    await snapshotAgo(sc(u), 20);
     fakeWoo();
-    expect(await syncStoreIfDue(u.email)).toBe("synced:woocommerce");
+    expect(await syncStoreIfDue(sc(u))).toBe("synced:woocommerce");
     const hosts = (globalThis.fetch as unknown as { mock: { calls: [RequestInfo][] } }).mock.calls.map((c) => new URL(String(c[0])).host);
     expect(new Set(hosts)).toEqual(new Set(["shop.example.com"]));
   });
 
   it("a snapshot of a store that is no longer connected is not followed to another one", async () => {
     const u = await newUser("ss-gone");
-    await saveConnection(u.email, woo());
-    await saveConnection(u.email, shopify());
-    await snapshotAgo(u.email, 20);
-    await db.set(`storesales:${u.email}`, { ...(await getSalesSnapshot(u.email))!, provider: "salla" });
+    await saveConnection(sc(u), woo());
+    await saveConnection(sc(u), shopify());
+    await snapshotAgo(sc(u), 20);
+    await db.set(`storesales:${sc(u)}`, { ...(await getSalesSnapshot(sc(u)))!, provider: "salla" });
     fakeWoo();
-    expect(await syncStoreIfDue(u.email)).toBe("choose");
+    expect(await syncStoreIfDue(sc(u))).toBe("choose");
     expect(asked).toBe(0);
   });
 
   it("a connection that needs reconnecting is skipped, not retried every run", async () => {
     const u = await newUser("ss-reconnect");
-    await saveConnection(u.email, woo({ needsReconnect: new Date().toISOString() }));
+    await saveConnection(sc(u), woo({ needsReconnect: new Date().toISOString() }));
     fakeWoo();
-    expect(await syncStoreIfDue(u.email)).toBe("reconnect");
+    expect(await syncStoreIfDue(sc(u))).toBe("reconnect");
     expect(asked).toBe(0);
   });
 });
@@ -201,7 +202,7 @@ describe("the route runs each workspace once per slot (rule 627)", () => {
   it("syncs the workspaces that have a store, leaves the others, and does nothing twice in the same slot", async () => {
     vi.stubEnv("CRON_SECRET", "cron-secret-abcdef");
     const withStore = await wooUser("ss-cron-a");
-    const without = (await newUser("ss-cron-b")).email;
+    const without = sc(await newUser("ss-cron-b"));
     const call = () => storesCron.GET(new Request("https://nashr.test/api/cron/stores", { headers: { authorization: "Bearer cron-secret-abcdef" } }));
     fakeWoo();
     const first = await call();

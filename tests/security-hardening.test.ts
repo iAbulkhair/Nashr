@@ -3,7 +3,7 @@ import { readdirSync, readFileSync } from "fs";
 import { join } from "path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { adminSignIn, jar, json, newUser, signIn, signOut } from "./helpers/session";
-import { createSession, currentUser, dropSession, sessionKey, sessionKeys, sessionRecord } from "@/lib/auth";
+import { acct, createSession, currentUser, dropSession, sessionKey, sessionKeys, sessionRecord } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { legacySettingsPath } from "@/lib/settings-nav";
 
@@ -184,7 +184,7 @@ describe("rules 1347-1349: MCP OAuth tokens", () => {
     const { ACCESS_TTL, issueTokens } = await import("@/lib/oauth");
     expect(ACCESS_TTL).toBe(3600);
     const u = await newUser("mcpttl");
-    const t = await issueTokens(u.email, "client-ttl", "noor");
+    const t = await issueTokens(acct(u), "client-ttl", "noor");
     expect(t.expires_in).toBe(3600);
     const ttl = await db.ttl(`mcptoken:${createHash("sha256").update(t.access_token).digest("hex")}`);
     expect(ttl).toBeGreaterThan(3500);
@@ -195,10 +195,10 @@ describe("rules 1347-1349: MCP OAuth tokens", () => {
     const { userFromBearer } = await import("@/lib/mcp");
     const bearer = (t: string) => new Request("https://thakeen.com/api/mcp", { headers: { authorization: `Bearer ${t}` } });
     const u = await newUser("mcpone");
-    const first = await issueTokens(u.email, "client-a", "noor");
-    const other = await issueTokens(u.email, "client-b", "noor");
-    const second = await issueTokens(u.email, "client-a", "noor");
-    const grants = await listGrants(u.email);
+    const first = await issueTokens(acct(u), "client-a", "noor");
+    const other = await issueTokens(acct(u), "client-b", "noor");
+    const second = await issueTokens(acct(u), "client-a", "noor");
+    const grants = await listGrants(acct(u));
     expect(grants.map((g) => g.client_id).sort()).toEqual(["client-a", "client-b"]);
     expect(await userFromBearer(bearer(first.access_token))).toBeNull();
     expect((await userFromBearer(bearer(second.access_token)))?.email).toBe(u.email);
@@ -215,7 +215,7 @@ describe("rules 1347-1349: MCP OAuth tokens", () => {
     expect(await db.ttl(key)).toBeGreaterThan(CLIENT_TTL - 60);
     await db.expire(key, 100);
     const u = await newUser("mcpcl");
-    await issueTokens(u.email, c.client_id, "noor");
+    await issueTokens(acct(u), c.client_id, "noor");
     expect(await db.ttl(key)).toBeGreaterThan(CLIENT_TTL - 60);
   });
 });

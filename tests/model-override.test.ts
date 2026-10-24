@@ -75,7 +75,7 @@ vi.mock("@/lib/models/route", async (orig) => {
 });
 
 import { db } from "@/lib/db";
-import { currentUser, getUser, saveUser, sc, type User } from "@/lib/auth";
+import { currentUser, getUser, saveUser, sc, type User, acct } from "@/lib/auth";
 import type { Brand, Task } from "@/lib/brand";
 import { createConversation, deleteConversation, liveConversations, renameConversation, setConversationModel, touchConversation, type Conversation } from "@/lib/conversations";
 import { wipeAccount } from "@/lib/account";
@@ -114,14 +114,14 @@ const getModels = () => modelsRoute.GET();
 const convOf = (u: User, id: string) => db.get<Conversation>(`conv:${sc(u)}:${id}`);
 const brandOf = (scope: string) => db.get<Brand>(`brand:${scope}`);
 const askedFor = (purpose: string) => rt.asked.filter((a) => a.purpose === purpose);
-const count = async (u: Pick<User, "email">) => Number((await db.get<number>(chatMsgKey(u.email))) ?? 0);
+const count = async (u: Pick<User, "email">) => Number((await db.get<number>(chatMsgKey(acct(u)))) ?? 0);
 const send = (body: Record<string, unknown>, headers: Record<string, string> = {}) => chatRoute.POST(json("/api/chat", "POST", { text: "مرحبا", ...body }, headers));
 
 /** A signed-in owner on a paid plan with a brand file and credits to spare, and one conversation. */
 async function owner(prefix: string, extra: Partial<User> = {}): Promise<{ u: User; conv: string }> {
   const n = await newUser(prefix);
   await saveUser({ ...n, plan: "starter", credits: 500, ...extra });
-  await db.set(`brand:${n.email}`, brand);
+  await db.set(`brand:${acct(n)}`, brand);
   await signIn(n.email);
   const u = (await currentUser())!;
   const c = await createConversation(sc(u), "t");
@@ -184,10 +184,10 @@ describe("GET and PUT /api/models: authentication and rate limit", () => {
     expect(r.headers.get("Retry-After")).toBe("3600");
     expect((await convOf(u, conv))!.model).toBeUndefined();
     // The bucket is the account's, from the session: a member of the same account shares it.
-    const m = await newMember((await getUser(u.email))!, "admin");
+    const m = await newMember((await getUser(acct(u)))!, "admin");
     await signIn(m.email);
     expect((await put({ target: "brand", model: SONNET })).status).toBe(429);
-    expect((await brandOf(u.email))!.model).toBeUndefined();
+    expect((await brandOf(acct(u)))!.model).toBeUndefined();
   });
 });
 
@@ -226,7 +226,7 @@ describe("GET /api/models", () => {
     for (const k of ["\"rate\"", "cacheRead", "cacheWrite", "\"in\"", "\"out\"", "\"vendor\"", "\"dialect\"", "\"caps\"", "\"strict\"", "\"thinking\"", "\"cache\"", "\"vision\"", "\"tasks\"", "\"auto\"", "\"pick\""]) expect(text, k).not.toContain(k);
     expect(MODELS.filter((m) => m.pick).map((m) => m.id)).toEqual(ids);
     // The owner's confirmation shows once it is stored.
-    await saveUser({ ...(await getUser(u.email))!, chinaHostingOk: true });
+    await saveUser({ ...(await getUser(acct(u)))!, chinaHostingOk: true });
     expect(((await (await getModels()).json()) as { chinaConfirmed: boolean }).chinaConfirmed).toBe(true);
   });
 });
@@ -243,7 +243,7 @@ describe("PUT /api/models: validation", () => {
       }
     }
     expect((await convOf(u, conv))!).not.toHaveProperty("model");
-    expect((await brandOf(u.email))!).not.toHaveProperty("model");
+    expect((await brandOf(acct(u)))!).not.toHaveProperty("model");
   });
 
   it("an entry customers may not pick is rejected not_pickable, even when automatic routing may use it", async () => {
@@ -255,7 +255,7 @@ describe("PUT /api/models: validation", () => {
       expect(await res.json(), target).toEqual({ error: "not_pickable" });
     }
     expect((await convOf(u, conv))!).not.toHaveProperty("model");
-    expect((await brandOf(u.email))!).not.toHaveProperty("model");
+    expect((await brandOf(acct(u)))!).not.toHaveProperty("model");
   });
 
   it("a conversation pick needs tool use: a pickable model without it is not_pickable for chat, and accepted for the brand", async () => {
@@ -265,7 +265,7 @@ describe("PUT /api/models: validation", () => {
     expect(c.status).toBe(400);
     expect(await c.json()).toEqual({ error: "not_pickable" });
     expect((await r.models.PUT(json("/api/models", "PUT", { target: "brand", model: "test-notools-1" }))).status).toBe(200);
-    expect((await brandOf(u.email))!.model).toBe("test-notools-1");
+    expect((await brandOf(acct(u)))!.model).toBe("test-notools-1");
   });
 
   it("a china model without stored confirmation is rejected china_unconfirmed even when the UI was skipped; after the owner confirms it is accepted", async () => {
@@ -280,9 +280,9 @@ describe("PUT /api/models: validation", () => {
     // A confirmation in the request is not the stored one: only `{ confirmChina: true }` alone stores it.
     expect((await call({ target: "conversation", id: conv, model: "test-china-1", chinaHostingOk: true, confirmedChina: true })).status).toBe(409);
     expect((await convOf(u, conv))!).not.toHaveProperty("model");
-    expect((await getUser(u.email))!.chinaHostingOk).toBeUndefined();
+    expect((await getUser(acct(u)))!.chinaHostingOk).toBeUndefined();
     expect((await call({ confirmChina: true })).status).toBe(200);
-    expect((await getUser(u.email))!.chinaHostingOk).toBe(true);
+    expect((await getUser(acct(u)))!.chinaHostingOk).toBe(true);
     expect((await call({ target: "conversation", id: conv, model: "test-china-1" })).status).toBe(200);
     expect((await convOf(u, conv))!.model).toBe("test-china-1");
   });
@@ -298,7 +298,7 @@ describe("PUT /api/models: validation", () => {
 
   it("{ confirmChina: true } sent with a target, an id or a model is a bad request and writes nothing at all", async () => {
     const { u, conv } = await owner("mo-mixed");
-    const before = { user: await getUser(u.email), conv: await convOf(u, conv), brand: await brandOf(sc(u)) };
+    const before = { user: await getUser(acct(u)), conv: await convOf(u, conv), brand: await brandOf(sc(u)) };
     const sets = vi.spyOn(db, "set");
     for (const extra of [{ target: "conversation", id: conv, model: SONNET }, { target: "brand", model: SONNET }, { target: "conversation" }, { id: conv }, { model: null }, { model: SONNET }]) {
       const r = await put({ confirmChina: true, ...extra });
@@ -306,7 +306,7 @@ describe("PUT /api/models: validation", () => {
       expect(await r.json(), JSON.stringify(extra)).toEqual({ error: "bad_request" });
     }
     expect(sets.mock.calls.filter(([k]) => !String(k).startsWith("rate:"))).toEqual([]);
-    expect({ user: await getUser(u.email), conv: await convOf(u, conv), brand: await brandOf(sc(u)) }).toEqual(before);
+    expect({ user: await getUser(acct(u)), conv: await convOf(u, conv), brand: await brandOf(sc(u)) }).toEqual(before);
     // Alone it still works.
     expect((await put({ confirmChina: true })).status).toBe(200);
   });
@@ -316,7 +316,7 @@ describe("PUT /api/models: tenant isolation", () => {
   it("a conversation or brand outside the caller's scope is not_found and nothing is written", async () => {
     const victim = await owner("mo-victim");
     const victimConvBefore = await convOf(victim.u, victim.conv);
-    const victimBrandBefore = await brandOf(victim.u.email);
+    const victimBrandBefore = await brandOf(acct(victim.u));
     const { u } = await owner("mo-attacker");
     const sets = vi.spyOn(db, "set");
     // The victim's conversation id, sent by another account: read under the caller's scope, where it does not exist.
@@ -324,7 +324,7 @@ describe("PUT /api/models: tenant isolation", () => {
     expect(r.status).toBe(404);
     expect(await r.json()).toEqual({ error: "not_found" });
     // A brand id that is not the caller's active brand.
-    for (const id of ["other-brand", victim.u.email, `${victim.u.email}#b1`, "constructor"]) {
+    for (const id of ["other-brand", acct(victim.u), `${acct(victim.u)}#b1`, "constructor"]) {
       const b = await put({ target: "brand", id, model: SONNET });
       expect(b.status, id).toBe(404);
       expect(await b.json(), id).toEqual({ error: "not_found" });
@@ -338,38 +338,38 @@ describe("PUT /api/models: tenant isolation", () => {
     expect((await put({ target: "conversation", id: "default", model: SONNET })).status).toBe(404);
     expect(sets.mock.calls.filter(([k]) => !String(k).startsWith("rate:"))).toEqual([]);
     expect(await convOf(victim.u, victim.conv)).toEqual(victimConvBefore);
-    expect(await brandOf(victim.u.email)).toEqual(victimBrandBefore);
+    expect(await brandOf(acct(victim.u))).toEqual(victimBrandBefore);
     expect(await db.get(`conv:${sc(u)}:${victim.conv}`)).toBeNull();
     // An account with no brand file has nothing to hold a brand pick.
     const bare = await newUser("mo-bare");
     await signIn(bare.email);
     expect((await put({ target: "brand", model: SONNET })).status).toBe(404);
-    expect(await brandOf(bare.email)).toBeNull();
+    expect(await brandOf(acct(bare))).toBeNull();
   });
 
   it("the stored key is built from sc(u), never from a request scope or email", async () => {
     const victim = await owner("mo-victim2");
     const { u, conv } = await owner("mo-keys");
     const sets = vi.spyOn(db, "set");
-    const smuggle = { scope: victim.u.email, email: victim.u.email, owner: victim.u.email, brandId: "b1" };
+    const smuggle = { scope: acct(victim.u), email: victim.u.email, owner: acct(victim.u), brandId: "b1" };
     expect((await put({ ...smuggle, target: "conversation", id: conv, model: SONNET })).status).toBe(200);
     expect((await put({ ...smuggle, target: "brand", model: SONNET })).status).toBe(200);
     expect((await put({ ...smuggle, target: "brand", id: "default", model: OPUS })).status).toBe(200);
     expect((await put({ ...smuggle, confirmChina: true })).status).toBe(200);
     const keys = sets.mock.calls.map(([k]) => String(k)).filter((k) => !k.startsWith("rate:"));
-    expect(keys).toEqual([`conv:${sc(u)}:${conv}`, `brand:${sc(u)}`, `brand:${sc(u)}`, `user:${u.email}`]);
-    for (const k of keys) expect(k).not.toContain(victim.u.email);
+    expect(keys).toEqual([`conv:${sc(u)}:${conv}`, `brand:${sc(u)}`, `brand:${sc(u)}`, `user:${acct(u)}`]);
+    for (const k of keys) { expect(k).not.toContain(victim.u.email); expect(k).not.toContain(acct(victim.u)); }
     expect((await convOf(u, conv))!.model).toBe(SONNET);
     expect((await brandOf(sc(u)))!.model).toBe(OPUS);
-    expect((await getUser(u.email))!.chinaHostingOk).toBe(true);
-    expect((await getUser(victim.u.email))!.chinaHostingOk).toBeUndefined();
-    expect((await brandOf(victim.u.email))!).not.toHaveProperty("model");
+    expect((await getUser(acct(u)))!.chinaHostingOk).toBe(true);
+    expect((await getUser(acct(victim.u)))!.chinaHostingOk).toBeUndefined();
+    expect((await brandOf(acct(victim.u)))!).not.toHaveProperty("model");
   });
 
   it("{ confirmChina: true } writes the caller's account only: the owner, never a member, an admin or a founder impersonating", async () => {
     vi.stubEnv("ADMIN_EMAILS", FOUNDER);
     const { u } = await owner("mo-confirm");
-    const acc = (await getUser(u.email))!;
+    const acc = (await getUser(acct(u)))!;
     for (const role of ["member", "admin"] as const) {
       const m = await newMember(acc, role);
       await signIn(m.email);
@@ -378,29 +378,29 @@ describe("PUT /api/models: tenant isolation", () => {
     }
     await signIn(u.email, { imp: FOUNDER });
     expect((await put({ confirmChina: true })).status).toBe(403);
-    expect((await getUser(u.email))!.chinaHostingOk).toBeUndefined();
+    expect((await getUser(acct(u)))!.chinaHostingOk).toBeUndefined();
     await signIn(u.email);
     for (const v of ["true", 1, false, null, {}]) expect((await put({ confirmChina: v })).status, JSON.stringify(v)).toBe(400);
-    expect((await getUser(u.email))!.chinaHostingOk).toBeUndefined();
-    const before = (await getUser(u.email))!;
+    expect((await getUser(acct(u)))!.chinaHostingOk).toBeUndefined();
+    const before = (await getUser(acct(u)))!;
     expect(await (await put({ confirmChina: true })).json()).toEqual({ ok: true });
     // Only the one field changed on the account.
-    expect(await getUser(u.email)).toEqual({ ...before, chinaHostingOk: true });
+    expect(await getUser(acct(u))).toEqual({ ...before, chinaHostingOk: true });
   });
 
   it("roles: any member may set a conversation's pick; the brand's default needs brand.write (admin or owner)", async () => {
     const { u, conv } = await owner("mo-roles");
-    const acc = (await getUser(u.email))!;
+    const acc = (await getUser(acct(u)))!;
     const member = await newMember(acc, "member");
     await signIn(member.email);
     expect((await put({ target: "conversation", id: conv, model: SONNET })).status).toBe(200);
     expect((await convOf(u, conv))!.model).toBe(SONNET);
     expect((await put({ target: "brand", model: SONNET })).status).toBe(403);
-    expect((await brandOf(u.email))!).not.toHaveProperty("model");
+    expect((await brandOf(acct(u)))!).not.toHaveProperty("model");
     const admin = await newMember(acc, "admin");
     await signIn(admin.email);
     expect((await put({ target: "brand", model: SONNET })).status).toBe(200);
-    expect((await brandOf(u.email))!.model).toBe(SONNET);
+    expect((await brandOf(acct(u)))!.model).toBe(SONNET);
   });
 });
 
@@ -410,11 +410,11 @@ describe("PUT /api/models: setting and clearing", () => {
     expect(await (await put({ target: "conversation", id: conv, model: OPUS })).json()).toMatchObject({ ok: true });
     expect(await (await put({ target: "brand", model: SONNET })).json()).toEqual({ ok: true });
     expect((await convOf(u, conv))!.model).toBe(OPUS);
-    expect((await brandOf(u.email))!.model).toBe(SONNET);
+    expect((await brandOf(acct(u)))!.model).toBe(SONNET);
     expect(await (await put({ target: "conversation", id: conv, model: null })).json()).toMatchObject({ ok: true });
     expect(await (await put({ target: "brand", model: null })).json()).toEqual({ ok: true });
     const c = (await convOf(u, conv))!;
-    const b = (await brandOf(u.email))!;
+    const b = (await brandOf(acct(u)))!;
     expect(c).not.toHaveProperty("model");
     expect(b).not.toHaveProperty("model");
     expect(JSON.stringify([c, b])).not.toContain("null");
@@ -426,7 +426,7 @@ describe("PUT /api/models: setting and clearing", () => {
   it("a conversation pick answers the account's chat status for the model that conversation now runs on, worked out on the server; a brand pick and the confirmation answer none", async () => {
     const { u, conv } = await owner("mo-chatstatus");
     // Some of the allowance already used, so the answer is visibly the account's own counter.
-    await db.set(chatMsgKey(u.email), 3);
+    await db.set(chatMsgKey(acct(u)), 3);
     const opus = await put({ target: "conversation", id: conv, model: OPUS });
     expect(opus.status).toBe(200);
     const j = (await opus.json()) as { ok: boolean; chat: Awaited<ReturnType<typeof chatStatus>> };
@@ -453,8 +453,8 @@ describe("PUT /api/models: setting and clearing", () => {
 
   it("the chat status a pick answers is the caller's account's: a member's pick answers the owner's counter, another account's conversation answers 404 with no status", async () => {
     const { u, conv } = await owner("mo-chatstatus-acc");
-    await db.set(chatMsgKey(u.email), 5);
-    const member = await newMember((await getUser(u.email))!, "member");
+    await db.set(chatMsgKey(acct(u)), 5);
+    const member = await newMember((await getUser(acct(u)))!, "member");
     await signIn(member.email);
     const j = (await (await put({ target: "conversation", id: conv, model: OPUS })).json()) as { chat: { used: number } };
     expect(j.chat.used).toBe(5);
@@ -467,7 +467,7 @@ describe("PUT /api/models: setting and clearing", () => {
 
   it("a pick that landed stays landed when the status read after it fails: 200 { ok: true } without a status, the pick stored, and a warning that names nothing (re-review minor 1)", async () => {
     const { u, conv } = await owner("mo-chatstatus-fail");
-    const counter = chatMsgKey(u.email);
+    const counter = chatMsgKey(acct(u));
     const real = db.get.bind(db) as (k: string) => Promise<unknown>;
     let failed = 0;
     // The counter GET fails once, as an Upstash HTTP error would; its message names the key, so it must not be logged.
@@ -487,7 +487,7 @@ describe("PUT /api/models: setting and clearing", () => {
     expect((await convOf(u, conv))!.model).toBe(OPUS);
     expect(warn).toHaveBeenCalledTimes(1);
     const logged = JSON.stringify(warn.mock.calls);
-    for (const s of [u.email, conv, OPUS, sc(u), counter, "upstash"]) expect(logged, s).not.toContain(s);
+    for (const s of [acct(u), conv, OPUS, sc(u), counter, "upstash"]) expect(logged, s).not.toContain(s);
     // Only that read is caught: the next pick answers the status again.
     const again = (await (await put({ target: "conversation", id: conv, model: null })).json()) as { chat?: unknown };
     expect(again.chat).toEqual(await chatStatus(u, DEFAULTS.chat));
@@ -496,7 +496,7 @@ describe("PUT /api/models: setting and clearing", () => {
   it("the brand pick does not change the brand file's content or its updatedAt", async () => {
     const { u } = await owner("mo-brandfile");
     await put({ target: "brand", model: SONNET });
-    expect(await brandOf(u.email)).toEqual({ ...brand, model: SONNET });
+    expect(await brandOf(acct(u))).toEqual({ ...brand, model: SONNET });
   });
 
   it("the picker reads the stored pick back through the existing scoped routes: GET /api/conversations and GET /api/brand carry `model` while it is set", async () => {
@@ -526,12 +526,12 @@ describe("PUT /api/models: setting and clearing", () => {
     await put({ target: "brand", model: SONNET });
     const save = (b: Record<string, unknown>) => brandRoute.PUT(json("/api/brand", "PUT", { ...brand, name: "مقهى جديد", ...b }));
     expect((await save({})).status).toBe(200);
-    expect((await brandOf(u.email))!).toMatchObject({ name: "مقهى جديد", model: SONNET });
+    expect((await brandOf(acct(u)))!).toMatchObject({ name: "مقهى جديد", model: SONNET });
     expect((await save({ model: OPUS })).status).toBe(200);
-    expect((await brandOf(u.email))!.model).toBe(SONNET);
+    expect((await brandOf(acct(u)))!.model).toBe(SONNET);
     await put({ target: "brand", model: null });
     expect((await save({ model: OPUS })).status).toBe(200);
-    expect((await brandOf(u.email))!).not.toHaveProperty("model");
+    expect((await brandOf(acct(u)))!).not.toHaveProperty("model");
   });
 });
 
@@ -704,6 +704,7 @@ describe("conversation writers share one lock: no stale copy is written back, no
     expect(warn).toHaveBeenCalled();
     // Nothing the warning logs names the account or the conversation.
     expect(JSON.stringify(warn.mock.calls)).not.toContain(u.email);
+    expect(JSON.stringify(warn.mock.calls)).not.toContain(acct(u));
     expect(JSON.stringify(warn.mock.calls)).not.toContain(conv);
     await db.unlockOwned(`convlock:${sc(u)}:${conv}`, token!);
   });
@@ -754,14 +755,14 @@ describe("account wipe takes each conversation's lock: a writer in flight cannot
     const h = hold("get", convKey(u, conv));
     const writer = write(u, conv);
     await h.reached;
-    const wipe = wipeAccount(u.email);
+    const wipe = wipeAccount(acct(u));
     await wait(200);
     h.release();
     await Promise.all([writer, wipe]);
     expect(await db.get(convKey(u, conv)), `the record of a wiped account came back after ${name}`).toBeNull();
     expect(await indexed(u, conv)).toBe(false);
     expect([...(await liveConversations(sc(u), [conv]))]).toEqual([]);
-    expect(await db.get(`user:${u.email}`)).toBeNull();
+    expect(await db.get(`user:${acct(u)}`)).toBeNull();
   });
 
   it("every conversation goes through its own lock, past the newest 100, and the lock is released", async () => {
@@ -769,7 +770,7 @@ describe("account wipe takes each conversation's lock: a writer in flight cannot
     const ids: string[] = [];
     for (let i = 0; i < 102; i++) ids.push((await createConversation(sc(u), `c${i}`)).id);
     const locks = vi.spyOn(db, "lockOwned");
-    await wipeAccount(u.email);
+    await wipeAccount(acct(u));
     const taken = locks.mock.calls.map(([k]) => String(k)).filter((k) => k.startsWith("convlock:"));
     for (const id of ids) expect(taken, id).toContain(`convlock:${sc(u)}:${id}`);
     for (const id of ids) {
@@ -785,18 +786,18 @@ describe("account wipe takes each conversation's lock: a writer in flight cannot
     expect(token).not.toBeNull();
     vi.useFakeTimers({ toFake: ["setTimeout"] });
     try {
-      const wipe = wipeAccount(u.email);
+      const wipe = wipeAccount(acct(u));
       const failed = expect(wipe).rejects.toThrow(/conversation/);
       await vi.advanceTimersByTimeAsync(10_000);
       await failed;
     } finally {
       vi.useRealTimers();
     }
-    expect(await db.get(`user:${u.email}`), "the account record was deleted although a conversation could not be locked").not.toBeNull();
+    expect(await db.get(`user:${acct(u)}`), "the account record was deleted although a conversation could not be locked").not.toBeNull();
     expect(await db.get(convKey(u, conv))).not.toBeNull();
     await db.unlockOwned(`convlock:${sc(u)}:${conv}`, token!);
-    await wipeAccount(u.email);
-    expect(await db.get(`user:${u.email}`)).toBeNull();
+    await wipeAccount(acct(u));
+    expect(await db.get(`user:${acct(u)}`)).toBeNull();
     expect(await db.get(convKey(u, conv))).toBeNull();
   });
 });
@@ -882,12 +883,12 @@ describe("call time: generation", () => {
   it("a brand pick runs the batch on it and charges its price, from one decision", async () => {
     const { u } = await owner("mo-gen-pick");
     await put({ target: "brand", model: SONNET });
-    const before = (await getUser(u.email))!.credits;
+    const before = (await getUser(acct(u)))!.credits;
     const r = await generateBatch(u, sc(u), { type: "social", source: "manual", via: "app" });
     await settle();
     expect(r.ok).toBe(true);
     expect(sdk.calls.filter((c) => c.api === "generate").map((c) => c.model)).toEqual([SONNET]);
-    expect(before - (await getUser(u.email))!.credits).toBe(creditsFor(base, SONNET, "generate"));
+    expect(before - (await getUser(acct(u)))!.credits).toBe(creditsFor(base, SONNET, "generate"));
     expect(r.ok && r.modelRejected).toBeUndefined();
     expect(askedFor("generate")).toHaveLength(1);
     expect(askedFor("generate")[0].ctx).toMatchObject({ stored: SONNET, confirmedChina: false, task: "social" });
@@ -899,13 +900,13 @@ describe("call time: generation", () => {
     cat.sonnetTasks = ["social", "article"];
     try {
       expect(modelById(SONNET)!.tasks?.includes("ads")).toBe(false);
-      const before = (await getUser(u.email))!.credits;
+      const before = (await getUser(acct(u)))!.credits;
       const r = await generateBatch(u, sc(u), { type: "ads", source: "manual", via: "app" });
       await settle();
       expect(r.ok).toBe(true);
       expect(r.ok && r.modelRejected).toBe("task_not_allowed");
       expect(sdk.calls.filter((c) => c.api === "generate").map((c) => c.model)).toEqual([TASK_MODELS.ads.write]);
-      expect(before - (await getUser(u.email))!.credits).toBe(TASK_COST.ads);
+      expect(before - (await getUser(acct(u)))!.credits).toBe(TASK_COST.ads);
     } finally {
       cat.sonnetTasks = undefined;
     }
@@ -914,12 +915,12 @@ describe("call time: generation", () => {
   it("a brand pick of Sonnet 5.5 runs article, a Sonnet-written type, at x1 (rule 902)", async () => {
     const { u } = await owner("mo-gen-own");
     await put({ target: "brand", model: SONNET });
-    const before = (await getUser(u.email))!.credits;
+    const before = (await getUser(acct(u)))!.credits;
     const r = await generateBatch(u, sc(u), { type: "article", source: "manual", via: "app" });
     await settle();
     expect(r.ok && r.modelRejected).toBeUndefined();
     expect(sdk.calls.filter((c) => c.api === "generate").map((c) => c.model)).toEqual([SONNET]);
-    expect(before - (await getUser(u.email))!.credits).toBe(TASK_COST.article);
+    expect(before - (await getUser(acct(u)))!.credits).toBe(TASK_COST.article);
   });
 
   it("a rejected brand pick falls back and POST /api/generate carries the notice in the reply language", async () => {

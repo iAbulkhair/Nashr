@@ -10,11 +10,10 @@ import { wsHandle } from "@/lib/ws-handle";
 import { WS_HEADER, appHref, oldAppTarget, switchTarget } from "@/lib/ws-path";
 import { addShadowMembership, newUser, signIn, withHeaders } from "./helpers/session";
 
-vi.mock("@/lib/multi-org", async (orig) => ({ ...(await orig<typeof import("@/lib/multi-org")>()), MULTI_ORG: true }));
 
 /**
  * The workspace and the brand in one link, `/{lang}/app/w/{handle}/b/{brand}/…` (multi-workspace M2 on top of Part C),
- * with `MULTI_ORG` on for this file. Rule 2113 (one builder carries both; one proxy rewrite strips `w/{handle}` and the
+ * with `MULTI_ORG` on (the release switch since M2 enable). Rule 2113 (one builder carries both; one proxy rewrite strips `w/{handle}` and the
  * brand pages serve the rest), rule 889 (one fetch wrapper sends both headers), rule 2112 (the handle picks the account
  * first, then the brand is one of THAT account's brands). tests/multi-org-brand-url-off.test.ts proves that with the
  * switch off every link is Part C's.

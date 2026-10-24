@@ -85,7 +85,7 @@ vi.mock("@/lib/models/route", async (orig) => {
 });
 
 import { db } from "@/lib/db";
-import { currentUser, getUser, saveUser, type User } from "@/lib/auth";
+import { currentUser, getUser, saveUser, type User, acct, sc } from "@/lib/auth";
 import type { Brand, Task } from "@/lib/brand";
 import { agentSpendFor } from "@/lib/credits";
 import { chatMsgKey } from "@/lib/usage";
@@ -119,12 +119,12 @@ const askedFor = (purpose: string) => rt.asked.filter((a) => a.purpose === purpo
 async function owner(prefix: string, used = 0): Promise<User> {
   const u = await newUser(prefix);
   await saveUser({ ...u, plan: "starter", credits: 500 });
-  await db.set(`brand:${u.email}`, brand);
-  if (used) await db.set(chatMsgKey(u.email), used);
+  await db.set(`brand:${acct(u)}`, brand);
+  if (used) await db.set(chatMsgKey(acct(u)), used);
   await signIn(u.email);
   return (await currentUser())!;
 }
-const count = async (u: Pick<User, "email">) => Number((await db.get<number>(chatMsgKey(u.email))) ?? 0);
+const count = async (u: Pick<User, "email">) => Number((await db.get<number>(chatMsgKey(acct(u)))) ?? 0);
 const send = (body: Record<string, unknown> = {}) => chatRoute.POST(json("/api/chat", "POST", { text: "مرحبا", ...body }));
 const ask = async (token: string, message: string) =>
   (await (await mcpRoute.POST(new Request("https://nashr.test/api/mcp", { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${token}` }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "ask_noor", arguments: { message } } }) }))).json()) as { result: { content: { text: string }[]; isError?: boolean } };
@@ -180,7 +180,7 @@ describe("chat: the model the turn runs on is the model its messages were counte
   it("over MCP (ask_noor) too: the model sent and the messages counted are Opus 5.5's", async () => {
     rt.pick.chat = OPUS;
     const u = await owner("mrc-mcp");
-    const out = await ask(await createMcpToken(u.email), "مرحبا");
+    const out = await ask(await createMcpToken(acct(u)), "مرحبا");
     expect(out.result.isError).toBeFalsy();
     expect(calls("stream").map((c) => c.model)).toEqual([OPUS]);
     expect(await count(u)).toBe(chatUnitsFor(OPUS));
@@ -230,11 +230,11 @@ describe("generation: the model the batch is charged for is the model generate()
 
   async function run(o: { type?: "social" | "gtm_plan" | "article"; model?: string } = {}) {
     const u = await owner("mrg");
-    const before = (await getUser(u.email))!.credits;
-    const r = await generateBatch(u, u.email, { type: o.type ?? "social", source: "manual", via: "app", ...(o.model ? { model: o.model } : {}) });
+    const before = (await getUser(acct(u)))!.credits;
+    const r = await generateBatch(u, sc(u), { type: o.type ?? "social", source: "manual", via: "app", ...(o.model ? { model: o.model } : {}) });
     await settle();
-    const after = (await getUser(u.email))!;
-    return { r, u, spent: before - after.credits, agentSpend: agentSpendFor(after, u.email) };
+    const after = (await getUser(acct(u)))!;
+    return { r, u, spent: before - after.credits, agentSpend: agentSpendFor(after, sc(u)) };
   }
 
   it("by default the batch runs on Opus 5.5 and costs its base credits; route(\"generate\") was asked once", async () => {

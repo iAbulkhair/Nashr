@@ -164,7 +164,7 @@ describe("rule 2121: connections and composioUserId are per scope and unchanged 
   });
 
   it("a legacy owner's scopes are still its address and its address#brand, whichever person signs in", async () => {
-    const legacy = await newUser("rt-legacy", { shadow: false, legacy: true });
+    const legacy = await newUser("rt-legacy", { shadow: false, legacy: true, addressId: true });
     await signIn(legacy.email);
     const u = (await currentUser())!;
     expect(sc(u)).toBe(legacy.email);

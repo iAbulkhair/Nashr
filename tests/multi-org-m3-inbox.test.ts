@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { randomBytes } from "crypto";
 import * as acceptRoute from "@/app/api/team/accept/route";
 import * as invitesRoute from "@/app/api/workspaces/invites/route";
@@ -8,11 +8,10 @@ import { accountKey, globalKey, storedAccountId } from "@/lib/keys";
 import { cancelInvite, createInvite, discardInvite, inviteId } from "@/lib/team";
 import { json, newUser, signIn, signOut } from "./helpers/session";
 
-vi.mock("@/lib/multi-org", async (orig) => ({ ...(await orig<typeof import("@/lib/multi-org")>()), MULTI_ORG: true }));
 
 /**
  * Multi-workspace M3, the invitations inbox (docs/specs/2026-10-18-multi-org.md section 9; rule 2753), with `MULTI_ORG`
- * on for this file. `invitesfor:{email}` is written with the invite and read only for the signed-in person's own
+ * on (the release switch since M2 enable). `invitesfor:{email}` is written with the invite and read only for the signed-in person's own
  * verified address; the answer never holds an invite id, a token or an account id; accept, cancel and discard take the
  * entry out, and what no longer stands is dropped at read.
  */

@@ -1,6 +1,6 @@
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { adminSignIn, jar, json, newUser, params, signIn } from "./helpers/session";
-import { getUser, saveUser, type Plan, type User } from "@/lib/auth";
+import { acct, getUser, saveUser, type Plan, type User } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ALL_VIDEO_MODELS, entitlements, parseVideoGrant, type EntitlementView } from "@/lib/entitlements";
 import { seatLimit } from "@/lib/pricing";
@@ -29,7 +29,7 @@ const logLength = async () => (await db.lrange("admin:log", 0, -1)).length;
 const lastLog = async () => JSON.parse((await db.lrange("admin:log", 0, 0))[0]) as { what: string; before: { plan: string; video: string }; after: { plan: string; video: string }; actor: string };
 async function account(p: Plan, prefix = "grant"): Promise<User> {
   const u = await newUser(prefix);
-  const x = { ...(await getUser(u.email))!, plan: p };
+  const x = { ...(await getUser(acct(u)))!, plan: p };
   await saveUser(x);
   return x;
 }
@@ -60,7 +60,7 @@ describe("the founder's video grant (rule 783)", () => {
     const r = await call(u.email, { videoGrant: { until, note: "demo for agency lead" } });
     expect(r.status).toBe(200);
     const body = (await r.json()) as { user: { videoGrant: Record<string, unknown> | null } };
-    const g = (await getUser(u.email))!.grants?.video;
+    const g = (await getUser(acct(u)))!.grants?.video;
     expect(g).toMatchObject({ value: "all", until, note: "demo for agency lead", by: "key" });
     expect(Date.parse(g!.at)).not.toBeNaN();
     expect(body.user.videoGrant).toEqual(g);
@@ -69,7 +69,7 @@ describe("the founder's video grant (rule 783)", () => {
     expect([log.before.video, log.after.video]).toEqual(["plan", `all@${until}`]);
     expect(log.actor).toBe("key");
     // And the trial now includes every video model (rule 780), which is what the grant is for.
-    expect(entitlements((await getUser(u.email))!).media.video).toEqual(ALL_VIDEO_MODELS);
+    expect(entitlements((await getUser(acct(u)))!).media.video).toEqual(ALL_VIDEO_MODELS);
   });
 
   it("reads only until and note from the body; a second grant replaces the first and logs the one it replaced", async () => {
@@ -77,13 +77,13 @@ describe("the founder's video grant (rule 783)", () => {
     const first = dayFromNow(5);
     const second = dayFromNow(30);
     expect((await call(u.email, { videoGrant: { until: first, value: "none", by: "someone else", at: "1999-01-01T00:00:00Z" } })).status).toBe(200);
-    const g1 = (await getUser(u.email))!.grants!.video!;
+    const g1 = (await getUser(acct(u)))!.grants!.video!;
     expect(g1).toMatchObject({ value: "all", by: "key", until: first });
     expect(Date.parse(g1.at), "the time is the server's, not the body's").toBeGreaterThan(Date.parse("2020-01-01T00:00:00Z"));
     expect(g1).not.toHaveProperty("note");
 
     expect((await call(u.email, { videoGrant: { until: second } })).status).toBe(200);
-    expect((await getUser(u.email))!.grants!.video).toMatchObject({ until: second });
+    expect((await getUser(acct(u)))!.grants!.video).toMatchObject({ until: second });
     const log = await lastLog();
     expect([log.before.video, log.after.video]).toEqual([`all@${first}`, `all@${second}`]);
   });
@@ -91,11 +91,11 @@ describe("the founder's video grant (rule 783)", () => {
   it("a note is one line; a blank one is no note", async () => {
     const u = await account("trial");
     await call(u.email, { videoGrant: { until: dayFromNow(3), note: "  demo\n\tfor   the\r\nagency  " } });
-    expect((await getUser(u.email))!.grants!.video!.note).toBe("demo for the agency");
+    expect((await getUser(acct(u)))!.grants!.video!.note).toBe("demo for the agency");
     await call(u.email, { videoGrant: { until: dayFromNow(3), note: " \n " } });
-    expect((await getUser(u.email))!.grants!.video).not.toHaveProperty("note");
+    expect((await getUser(acct(u)))!.grants!.video).not.toHaveProperty("note");
     await call(u.email, { videoGrant: { until: dayFromNow(3), note: "x".repeat(200) } });
-    expect((await getUser(u.email))!.grants!.video!.note).toHaveLength(200);
+    expect((await getUser(acct(u)))!.grants!.video!.note).toHaveLength(200);
   });
 
   it("accepts tomorrow and 366 days ahead, the two ends of the range", async () => {
@@ -103,7 +103,7 @@ describe("the founder's video grant (rule 783)", () => {
     for (const n of [1, 366]) {
       const until = dayFromNow(n);
       expect((await call(u.email, { videoGrant: { until } })).status, until).toBe(200);
-      expect((await getUser(u.email))!.grants!.video!.until).toBe(until);
+      expect((await getUser(acct(u)))!.grants!.video!.until).toBe(until);
     }
   });
 
@@ -121,7 +121,7 @@ describe("the founder's video grant (rule 783)", () => {
       const r = await call(u.email, { videoGrant: bad });
       expect([r.status, (await r.json()).error], JSON.stringify(bad)).toEqual([400, "bad_grant"]);
     }
-    expect((await getUser(u.email))!.grants).toBeUndefined();
+    expect((await getUser(acct(u)))!.grants).toBeUndefined();
     expect(await logLength()).toBe(n);
   });
 
@@ -130,7 +130,7 @@ describe("the founder's video grant (rule 783)", () => {
     const n = await logLength();
     const r = await call(u.email, { plan: "pro", addCredits: 50, videoGrant: { until: "soon" } });
     expect([r.status, (await r.json()).error]).toEqual([400, "bad_grant"]);
-    const after = (await getUser(u.email))!;
+    const after = (await getUser(acct(u)))!;
     expect(after.plan).toBe("trial");
     expect(after.credits).toBe(u.credits);
     expect(await logLength()).toBe(n);
@@ -144,11 +144,11 @@ describe("the founder's video grant (rule 783)", () => {
     const u = await account("trial");
     await call(u.email, { videoGrant: { until: dayFromNow(5) } });
     await call(u.email, { plan: "pro" });
-    expect((await getUser(u.email))!.grants?.video).toBeTruthy();
+    expect((await getUser(acct(u)))!.grants?.video).toBeTruthy();
     const r = await call(u.email, { videoGrant: null });
     expect(r.status).toBe(200);
     expect(((await r.json()) as { user: { videoGrant: unknown } }).user.videoGrant).toBeNull();
-    const after = (await getUser(u.email))!;
+    const after = (await getUser(acct(u)))!;
     expect(after.grants?.video).toBeUndefined();
     expect(after, "the empty grants object goes with its last grant").not.toHaveProperty("grants");
     const log = await lastLog();
@@ -160,11 +160,11 @@ describe("the founder's video grant (rule 783)", () => {
   it("clearing when there is no grant is harmless; an unrelated change leaves the grant and logs it unchanged", async () => {
     const u = await account("trial");
     expect((await call(u.email, { videoGrant: null })).status).toBe(200);
-    expect((await getUser(u.email))!.grants).toBeUndefined();
+    expect((await getUser(acct(u)))!.grants).toBeUndefined();
     const until = dayFromNow(9);
     await call(u.email, { videoGrant: { until } });
     await call(u.email, { addCredits: 10 });
-    expect((await getUser(u.email))!.grants!.video!.until).toBe(until);
+    expect((await getUser(acct(u)))!.grants!.video!.until).toBe(until);
     const log = await lastLog();
     expect(log.what).not.toContain("video:");
     expect([log.before.video, log.after.video]).toEqual([`all@${until}`, `all@${until}`]);
@@ -176,7 +176,7 @@ describe("the founder's video grant (rule 783)", () => {
     const n = await logLength();
     expect((await call(u.email, { videoGrant: { until: dayFromNow(5) } })).status).toBe(401);
     expect((await call(u.email, { videoGrant: null })).status).toBe(401);
-    expect((await getUser(u.email))!.grants).toBeUndefined();
+    expect((await getUser(acct(u)))!.grants).toBeUndefined();
     expect(await logLength()).toBe(n);
   });
 
@@ -243,7 +243,7 @@ describe("the founder's detail carries the entitlement view (rule 784)", () => {
     expect(v.ent.credits.monthly).toBe(entitlements(u).credits.monthly);
     expect(v.ent.media.video).toEqual(ALL_VIDEO_MODELS);
     expect(v.used.seats).toBe(1);
-    expect(v.used.credits).toBe((await getUser(u.email))!.credits);
+    expect(v.used.credits).toBe((await getUser(acct(u)))!.credits);
     expect(v.used.chat).toMatchObject({ used: 0, allowance: v.ent.chat.monthly, period: "month" });
     expect(v.resetsAt).toMatch(/^\d{4}-\d{2}-01$/);
     expect(v.grants.video).toMatchObject({ value: "all", until, note: "for the demo", by: "key", expired: false });
@@ -251,7 +251,7 @@ describe("the founder's detail carries the entitlement view (rule 784)", () => {
 
   it("carries the plan's own values as base beside the effective ones (ruling R12)", async () => {
     const u = await account("pro");
-    await saveUser({ ...(await getUser(u.email))!, seats: 9 });
+    await saveUser({ ...(await getUser(acct(u)))!, seats: 9 });
     const v = ((await (await detail(u.email)).json()) as { entitlements: EntitlementView }).entitlements;
     expect(v.base.seats).toBe(seatLimit({ plan: "pro" }));
     expect(v.ent.seats).toBe(9);
@@ -260,7 +260,7 @@ describe("the founder's detail carries the entitlement view (rule 784)", () => {
 
   it("a trial whose grant has run out reads as the trial's own list, with the grant marked expired", async () => {
     const u = await account("trial");
-    await saveUser({ ...(await getUser(u.email))!, grants: { video: { value: "all", until: dayFromNow(-3), by: "key", at: "2026-01-01T00:00:00.000Z" } } });
+    await saveUser({ ...(await getUser(acct(u)))!, grants: { video: { value: "all", until: dayFromNow(-3), by: "key", at: "2026-01-01T00:00:00.000Z" } } });
     const v = ((await (await detail(u.email)).json()) as { entitlements: EntitlementView }).entitlements;
     expect(v.ent.media.video).toEqual(TRIAL_VIDEO_MODELS);
     expect(v.grants.video).toMatchObject({ value: "all", expired: true });

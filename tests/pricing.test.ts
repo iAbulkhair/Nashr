@@ -5,7 +5,7 @@ import {
   type AgencyDeal, type Plan,
 } from "@/lib/pricing";
 import * as auth from "@/lib/auth";
-import { getUser, saveUser, type User } from "@/lib/auth";
+import { acct, getUser, saveUser, type User } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { monthKey, renewIfDue } from "@/lib/credits";
 import { chatUsdPerMessage, overview, usersCsv } from "@/lib/admin-stats";
@@ -141,7 +141,7 @@ describe("renewal grants allowanceOf (rule 243)", () => {
   const due = async (over: Partial<User>) => {
     const u = await newUser("renew");
     await saveUser({ ...u, credits: 3, renewedAt: "2020-01", ...over });
-    return u.email;
+    return acct(u);
   };
 
   it("business renews to 1,500 and an agency deal to the deal's credits", async () => {
@@ -164,21 +164,21 @@ describe("renewal grants allowanceOf (rule 243)", () => {
 
   it("a legacy enterprise record reads as agency through getUser, renews to 1,500 and is written back as agency", async () => {
     const u = await newUser("legacy");
-    await db.set(`user:${u.email}`, { ...u, plan: "enterprise", credits: 10000, renewedAt: "2020-01" });
-    const read = (await getUser(u.email))!;
+    await db.set(`user:${acct(u)}`, { ...u, plan: "enterprise", credits: 10000, renewedAt: "2020-01" });
+    const read = (await getUser(acct(u)))!;
     expect(read.plan).toBe("agency");
     expect(seatLimit(read)).toBe(7);
-    expect(await renewIfDue(u.email)).toBe(true);
-    expect((await getUser(u.email))!.credits).toBe(1500);
-    expect((await db.get<{ plan: string }>(`user:${u.email}`))!.plan, "the locked save writes the mapped plan").toBe("agency");
+    expect(await renewIfDue(acct(u))).toBe(true);
+    expect((await getUser(acct(u)))!.credits).toBe(1500);
+    expect((await db.get<{ plan: string }>(`user:${acct(u)}`))!.plan, "the locked save writes the mapped plan").toBe("agency");
   });
 
   it("an unknown stored plan reads as trial and never renews", async () => {
     const u = await newUser("junkplan");
-    await db.set(`user:${u.email}`, { ...u, plan: "gold", credits: 7, renewedAt: "2020-01" });
-    expect((await getUser(u.email))!.plan).toBe("trial");
-    expect(await renewIfDue(u.email)).toBe(false);
-    expect((await getUser(u.email))!.credits).toBe(7);
+    await db.set(`user:${acct(u)}`, { ...u, plan: "gold", credits: 7, renewedAt: "2020-01" });
+    expect((await getUser(acct(u)))!.plan).toBe("trial");
+    expect(await renewIfDue(acct(u))).toBe(false);
+    expect((await getUser(acct(u)))!.credits).toBe(7);
   });
 
   it("a trial never renews, and a paid plan renews once a month", async () => {

@@ -8,7 +8,7 @@ import { ipHeaders, mediaEnv, resetMediaCounters } from "./helpers/media";
 import { GET, HEAD } from "@/app/m/[name]/route";
 import { writeToStore } from "@/lib/media/store";
 import { SHARE_TTL_S, shareUrl, shareValid } from "@/lib/media/share";
-import { sc, type User } from "@/lib/auth";
+import { acct, sc, type User } from "@/lib/auth";
 
 /**
  * Our media files are private by default (rules 1754-1758): `/m/{name}` serves a file to a signed-in member of the
@@ -194,7 +194,7 @@ describe("account deletion takes the files with it (rule 1761)", () => {
     const gone = await newUser("mservewipe");
     const mine = await store(sc(gone));
     const theirs = await store(sc(other));
-    await wipeAccount(gone.email);
+    await wipeAccount(acct(gone));
     await expect(fs.stat(mediaPath(mine)!)).rejects.toThrow();
     expect(await db.get(MEDIA_KEYS.entry(sc(gone), mine))).toBeNull();
     expect(await db.smembers(MEDIA_KEYS.names(sc(gone)))).toEqual([]);

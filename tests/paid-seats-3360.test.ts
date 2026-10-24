@@ -82,12 +82,12 @@ const ip = () => { ipN++; return { "x-forwarded-for": `198.19.${Math.floor(ipN /
 /** An owner on `plan`, signed in, resolved with its owner actor. */
 async function owner(plan: User["plan"], extra: Partial<User> = {}): Promise<User> {
   const u = await newUser("seat");
-  await saveUser({ ...(await getUser(u.email))!, plan, ...extra });
+  await saveUser({ ...(await getUser(acct(u)))!, plan, ...extra });
   await signIn(u.email);
   return (await currentUser())!;
 }
 const me = async (email: string) => { await signIn(email); return (await currentUser())!; };
-const stored = async (u: User) => (await getUser(u.email))!;
+const stored = async (u: User) => (await getUser(acct(u)))!;
 const inviteOne = (u: User, opts: { addSeat?: boolean } = {}, actor: Actor = u.actor!, role = "member") => createInvite(u, actor, freshEmail(), role, "en", {}, opts);
 const inviteViewer = (u: User, opts: { addSeat?: boolean } = {}) => inviteOne(u, opts, u.actor!, "viewer");
 
@@ -337,7 +337,7 @@ describe("leaving and renewal (rules 3370-3372)", () => {
   async function subscribedStarter(): Promise<User> {
     const billing: Billing = { provider: "paymob", plan: "starter", status: "active", paidThrough: ksaDay(), anchor: Number(ksaDay().slice(8, 10)), autoRenew: true, failures: 0, txns: [], card: { brand: "MasterCard", last4: "2346" } };
     const u = await owner("starter", { phone: "+966500000123", renewedAt: monthKey(), billing });
-    await db.set(cardKey(u.email), { token: "tok_" + randomBytes(16).toString("hex"), last4: "2346", brand: "MasterCard", expMonth: "01", expYear: "38", savedAt: new Date().toISOString(), orderId: 1 });
+    await db.set(cardKey(acct(u)), { token: "tok_" + randomBytes(16).toString("hex"), last4: "2346", brand: "MasterCard", expMonth: "01", expYear: "38", savedAt: new Date().toISOString(), orderId: 1 });
     return u;
   }
   it("the renewal charges plan + seats × 25 + VAT on the saved card", async () => {
@@ -345,7 +345,7 @@ describe("leaving and renewal (rules 3370-3372)", () => {
     expect((await inviteOne(u, { addSeat: true })).ok).toBe(true);
     expect((await inviteOne(await me(u.email), { addSeat: true })).ok).toBe(true);
     payAmount = 40135;
-    expect(await renewPaymob(u.email)).toBe("paymob_renewed");
+    expect(await renewPaymob(acct(u))).toBe("paymob_renewed");
     const intention = calls.find((c) => c.path === "/v1/intention/")!;
     expect(intention.body).toMatchObject({ amount: 40135 });
     expect((await stored(u)).extraSeats).toBe(2);
@@ -357,14 +357,14 @@ describe("leaving and renewal (rules 3370-3372)", () => {
     const fresh = await me(u.email);
     await cancelInvite(fresh, fresh.actor!, (r1 as { id: string }).id);
     payAmount = 37260; // (29900 + 2500) × 1.15
-    expect(await renewPaymob(u.email)).toBe("paymob_renewed");
+    expect(await renewPaymob(acct(u))).toBe("paymob_renewed");
     expect(calls.find((c) => c.path === "/v1/intention/")!.body).toMatchObject({ amount: 37260 });
     expect((await stored(u)).extraSeats).toBe(1);
   });
   it("an account with no seats renews at the plan price, as before", async () => {
     const u = await subscribedStarter();
     payAmount = 34385;
-    expect(await renewPaymob(u.email)).toBe("paymob_renewed");
+    expect(await renewPaymob(acct(u))).toBe("paymob_renewed");
     expect(calls.find((c) => c.path === "/v1/intention/")!.body).toMatchObject({ amount: 34385 });
   });
 });

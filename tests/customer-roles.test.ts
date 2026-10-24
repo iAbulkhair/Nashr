@@ -115,8 +115,8 @@ describe("rule 3750: Editor is the stored member role (expand step)", () => {
 describe("rule 3752: a Viewer reads and comments, and is refused every write, agent run and spend", () => {
   it("each route answers 403 and nothing changes", async () => {
     const { owner, viewer } = await team();
-    await saveTask(owner.email, task("v1", "pending"), true);
-    const before = (await getUser(owner.email))!.credits;
+    await saveTask(acct(owner), task("v1", "pending"), true);
+    const before = (await getUser(acct(owner)))!.credits;
     await as(viewer);
     expect(await status(generateRoute.POST(json("/api/generate", "POST", { type: "social" })))).toBe(403);
     expect(await status(chatRoute.POST(json("/api/chat", "POST", { message: "اكتب منشور" })))).toBe(403);
@@ -128,21 +128,21 @@ describe("rule 3752: a Viewer reads and comments, and is refused every write, ag
     expect(await status(taskRoute.PATCH(await vjson("/api/tasks/v1", "PATCH", { status: "approved" }), params({ id: "v1" })))).toBe(403);
     expect(await status(taskRoute.PATCH(await vjson("/api/tasks/v1", "PATCH", { status: "rejected" }), params({ id: "v1" })))).toBe(403);
     expect(await status(publishRoute.POST(await vjson("/api/publish/v1", "POST", { provider: "telegram" }), params({ id: "v1" })))).toBe(403);
-    expect(await getTask(owner.email, "v1")).toMatchObject({ status: "pending", body: "قهوة طازجة" });
-    expect((await getUser(owner.email))!.credits).toBe(before);
+    expect(await getTask(acct(owner), "v1")).toMatchObject({ status: "pending", body: "قهوة طازجة" });
+    expect((await getUser(acct(owner)))!.credits).toBe(before);
     expect(published).toEqual([]);
   });
 
   it("a comment is kept with its author and changes nothing else; mixed with an edit it is refused", async () => {
     const { owner, viewer, viewerPid } = await team();
-    await saveTask(owner.email, task("c1", "pending"), true);
+    await saveTask(acct(owner), task("c1", "pending"), true);
     await as(viewer);
     expect(await status(taskRoute.PATCH(json("/api/tasks/c1", "PATCH", { comment: "  الصورة تحتاج شعار\u0007 " }), params({ id: "c1" })))).toBe(200);
-    const t = (await getTask(owner.email, "c1"))!;
+    const t = (await getTask(acct(owner), "c1"))!;
     expect(t.status).toBe("pending");
     expect(t.comments).toEqual([expect.objectContaining({ pid: viewerPid, text: "الصورة تحتاج شعار" })]);
     expect(await status(taskRoute.PATCH(json("/api/tasks/c1", "PATCH", { comment: "x", editedBody: "y" }), params({ id: "c1" })))).toBe(400);
-    expect((await getTask(owner.email, "c1"))!.editedBody).toBeUndefined();
+    expect((await getTask(acct(owner), "c1"))!.editedBody).toBeUndefined();
   });
 });
 
@@ -152,14 +152,14 @@ describe("rule 3760: the approve toggle", () => {
   });
   it("an Editor or Viewer approves only with the toggle on, and the approval names them", async () => {
     const { owner, editor, viewer, viewerPid } = await team();
-    await Promise.all([saveTask(owner.email, task("a1", "pending"), true), saveTask(owner.email, task("a2", "pending"), true)]);
+    await Promise.all([saveTask(acct(owner), task("a1", "pending"), true), saveTask(acct(owner), task("a2", "pending"), true)]);
     await as(editor);
     expect(await status(taskRoute.PATCH(await vjson("/api/tasks/a1", "PATCH", { status: "approved" }), params({ id: "a1" })))).toBe(403);
     const o = await ownerSession(owner);
     expect(await setAccess(o, o.actor!, viewer, { approves: true })).toEqual({ ok: true });
     await as(viewer);
     expect(await status(taskRoute.PATCH(await vjson("/api/tasks/a2", "PATCH", { status: "approved" }), params({ id: "a2" })))).toBe(200);
-    expect((await getTask(owner.email, "a2"))!.approvedBy).toMatchObject({ pid: viewerPid });
+    expect((await getTask(acct(owner), "a2"))!.approvedBy).toMatchObject({ pid: viewerPid });
     // The toggle lets them approve, not edit.
     expect(await status(taskRoute.PATCH(await vjson("/api/tasks/a2", "PATCH", { editedBody: "نص" }), params({ id: "a2" })))).toBe(403);
   });
@@ -186,7 +186,7 @@ describe("rule 3762: no publishing without an allowed approval when the owner tu
     await as(owner.email);
     expect(await status(teamRoute.PATCH(json("/api/team", "PATCH", { approvalRequired: "yes" })))).toBe(400);
     expect(await status(teamRoute.PATCH(json("/api/team", "PATCH", { approvalRequired: true })))).toBe(200);
-    expect((await getUser(owner.email))!.approvalRequired).toBe(true);
+    expect((await getUser(acct(owner)))!.approvalRequired).toBe(true);
   });
 
   it("refuses an item approved by nobody it can name, or by someone no longer allowed; accepts the owner's approval", async () => {
@@ -204,9 +204,9 @@ describe("rule 3762: no publishing without an allowed approval when the owner tu
 
   it("the publish route refuses with approval_required and posts nothing", async () => {
     const { owner } = await team();
-    await saveTask(owner.email, task("pp", "approved"), true);
-    await saveConnection(owner.email, { provider: "telegram", data: { token: "t", chat: "c" }, connectedAt: new Date().toISOString() });
-    const u = (await getUser(owner.email))!;
+    await saveTask(acct(owner), task("pp", "approved"), true);
+    await saveConnection(acct(owner), { provider: "telegram", data: { token: "t", chat: "c" }, connectedAt: new Date().toISOString() });
+    const u = (await getUser(acct(owner)))!;
     await saveUser({ ...u, approvalRequired: true });
     await as(owner.email);
     const r = await publishRoute.POST(await vjson("/api/publish/pp", "POST", { provider: "telegram" }), params({ id: "pp" }));
@@ -219,11 +219,11 @@ describe("rule 3762: no publishing without an allowed approval when the owner tu
 describe("rule 3757: a member narrowed to some brands sees and acts in those only", () => {
   it("the switcher lists the allowed brand, a switch elsewhere is not found, and the session lands in the allowed brand", async () => {
     const { owner, editor } = await team();
-    await saveUser({ ...(await getUser(owner.email))!, plan: "business" });
+    await saveUser({ ...(await getUser(acct(owner)))!, plan: "business" });
     const o = await ownerSession(owner);
     const b = await addBrand(o, "Second");
     if ("error" in b) throw new Error(`addBrand: ${b.error}`);
-    await saveTask(owner.email, task("only-default", "pending"), true);
+    await saveTask(acct(owner), task("only-default", "pending"), true);
     expect(await setAccess(o, o.actor!, editor, { brands: [b.id] })).toEqual({ ok: true });
     const u = await as(editor);
     expect(u.brandId).toBe(b.id);
@@ -265,14 +265,14 @@ describe("rule 3764: a fresh agent draft is assigned to an approver of its brand
 
   it("sets the assignee on a new pending draft and rings the bell once", async () => {
     const { owner } = await team();
-    await saveTask(owner.email, task("as1", "pending"), true);
-    const t = (await getTask(owner.email, "as1"))!;
+    await saveTask(acct(owner), task("as1", "pending"), true);
+    const t = (await getTask(acct(owner), "as1"))!;
     expect(t.assignee?.pid).toBeTruthy();
-    const bell = await listNotifs(acct((await getUser(owner.email))!));
+    const bell = await listNotifs(acct((await getUser(acct(owner)))!));
     expect(bell.some((n) => n.about === `assign:${t.assignee!.pid}`)).toBe(true);
     // An approved item saved as new is not a draft waiting for anyone.
-    await saveTask(owner.email, task("as2", "approved"), true);
-    expect((await getTask(owner.email, "as2"))!.assignee).toBeUndefined();
+    await saveTask(acct(owner), task("as2", "approved"), true);
+    expect((await getTask(acct(owner), "as2"))!.assignee).toBeUndefined();
   });
 });
 
@@ -362,7 +362,7 @@ describe("rule 3755: the contract script renames the stored Editor role, idempot
 /** An account on the business plan with a second brand, and its Editor narrowed to that brand. */
 async function narrowed() {
   const t = await team();
-  await saveUser({ ...(await getUser(t.owner.email))!, plan: "business" });
+  await saveUser({ ...(await getUser(acct(t.owner)))!, plan: "business" });
   const o = await ownerSession(t.owner);
   const b = await addBrand(o, "Second");
   if ("error" in b) throw new Error(`addBrand: ${b.error}`);
@@ -424,7 +424,7 @@ describe("rule 3773: the bell, the month's usage and the approval stats keep to 
 
   it("the month's usage and the approval stats count the member's brands only", async () => {
     const { o, editor, admin, def, sec, second } = await narrowed();
-    await Promise.all([saveTask(o.email, task("u-def", "pending"), true), saveTask(sec, task("u-sec", "pending"), true)]);
+    await Promise.all([saveTask(acct(o), task("u-def", "pending"), true), saveTask(sec, task("u-sec", "pending"), true)]);
     const at = new Date().toISOString();
     await Promise.all([recordDecisions(def, [decisionOf(task("d-def", "approved"), "approve", at)]), recordDecisions(sec, [decisionOf(task("d-sec", "approved"), "approve", at)])]);
     const count = (m: Awaited<ReturnType<typeof monthUsage>>) => Object.values(m.usage).reduce((n, x) => n + x.count, 0);

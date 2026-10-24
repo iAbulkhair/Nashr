@@ -15,15 +15,18 @@ import { suspensionEnd, suspensionExpired } from "./suspension";
  */
 export async function endExpiredSuspension(email: string, now: number = Date.now()): Promise<boolean> {
   try {
-    const until = await withUserLock(email, async (x) => {
+    const done = await withUserLock(email, async (x) => {
       if (!suspensionExpired(x, now)) return null;
       const end = suspensionEnd(x);
       x.suspended = false;
       await saveUser(x);
-      return end;
+      return { end, address: x.email };
     });
-    if (until === null) return false;
-    await adminAudit({ actor: "system", section: "users", target: email, what: "suspension expired", action: "suspension.expired", before: { suspended: true, until }, after: { suspended: false } });
+    if (done === null) return false;
+    const until = done.end;
+    // The founder's log names an account by its sign-in address, as every other console row does (rule 3819); `email`
+    // here is the account id.
+    await adminAudit({ actor: "system", section: "users", target: done.address, what: "suspension expired", action: "suspension.expired", before: { suspended: true, until }, after: { suspended: false } });
     return true;
   } catch (e) {
     log.error("suspension tidy failed", e);

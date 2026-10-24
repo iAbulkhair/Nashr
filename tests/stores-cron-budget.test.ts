@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { newUser } from "./helpers/session";
+import { acct } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { globalKey } from "@/lib/keys";
 import { getConnection, saveConnection, type Connection } from "@/lib/connectors/store";
@@ -22,7 +23,7 @@ afterEach(() => {
 
 describe("the Shopify subscription pass has a deadline (rule 2208)", () => {
   it("past the deadline no store is started: nothing is asked, nothing is marked, all stay due", async () => {
-    const ws = await newUser("budget-late").then((u) => u.email);
+    const ws = await newUser("budget-late").then(acct);
     await saveConnection(ws, shopConn("late.myshopify.com"));
     const fetchSpy = vi.fn();
     vi.stubGlobal("fetch", fetchSpy);
@@ -37,7 +38,7 @@ describe("a chained hop only continues the syncs (rule 2208)", () => {
 
   it("on a later hop no redaction, keep-alive, subscription or count runs, and the answer leaves them out", async () => {
     vi.stubEnv("CRON_SECRET", "cron-secret-budget");
-    const gone = await newUser("budget-hop").then((u) => u.email);
+    const gone = await newUser("budget-hop").then(acct);
     await Promise.all([db.del(globalKey.shopifyRedact()), db.del(globalKey.connectionHealth())]);
     await saveConnection(gone, shopConn("hop.myshopify.com"));
     await recordCompliance("shop/redact", { shop_domain: "hop.myshopify.com" });

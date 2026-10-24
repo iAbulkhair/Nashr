@@ -14,11 +14,10 @@ import { recordDevice } from "@/lib/devices";
 import { enrolledStaff } from "./helpers/staff";
 import { addShadowMembership, jar, json, markVerified, params, signIn, signOut } from "./helpers/session";
 
-vi.mock("@/lib/multi-org", async (orig) => ({ ...(await orig<typeof import("@/lib/multi-org")>()), MULTI_ORG: true }));
 
 /**
  * Multi-workspace M3, the founder console's people view (docs/specs/2026-10-18-multi-org.md section 14; rules 2130,
- * 2755) and the impersonation half of rule 2130, with `MULTI_ORG` on for this file. The fixtures are `a_` accounts owned
+ * 2755) and the impersonation half of rule 2130, with `MULTI_ORG` on (the release switch since M2 enable). The fixtures are `a_` accounts owned
  * by `p_` persons and a `p_` member whatever `TEST_PERSONS` says: the view reads any person `getLogin` finds.
  */
 

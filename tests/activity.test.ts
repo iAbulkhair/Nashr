@@ -14,7 +14,7 @@ vi.mock("@/lib/connectors/publish", async (orig) => ({
 import { json, newMember, newUser, params, settle, signIn, signOut, supportAccess } from "./helpers/session";
 import { vjson } from "./helpers/version";
 import { CAPS, db } from "@/lib/db";
-import { currentUser, getUser, saveUser } from "@/lib/auth";
+import { currentUser, getUser, saveUser, acct } from "@/lib/auth";
 import { getTask, saveTask, type Task } from "@/lib/brand";
 import { listDecisions } from "@/lib/decisions";
 import { addBrand, scopeFor } from "@/lib/brands";
@@ -48,7 +48,7 @@ const brand = { name: "مقهى الفنجان", website: "", industry: "مقا�
 /** An owner with a brand, signed in; the user a request resolves to (`currentUser` sets `actor`, which the role gates need). */
 const owner = async (prefix: string) => {
   const u = await newUser(prefix);
-  await db.set(`brand:${u.email}`, brand);
+  await db.set(`brand:${acct(u)}`, brand);
   await signIn(u.email);
   return (await currentUser())!;
 };
@@ -68,8 +68,8 @@ afterEach(async () => {
 describe("the log itself: bounded rows, a recorder that never throws, one sorted and filtered read (rule 236)", () => {
   it("keeps only the known fields, at most ten task ids and 200 characters of one-line note", async () => {
     const u = await newUser("act-bound");
-    await recordActivity(u.email, [row({ tasks: Array.from({ length: 12 }, (_, i) => `t${i}`), note: `a\nb\u0000${"x".repeat(300)}`, count: Number.NaN, ...({ extra: "dropped" } as object) }), null, false, undefined]);
-    const [r] = await rows(u.email);
+    await recordActivity(acct(u), [row({ tasks: Array.from({ length: 12 }, (_, i) => `t${i}`), note: `a\nb\u0000${"x".repeat(300)}`, count: Number.NaN, ...({ extra: "dropped" } as object) }), null, false, undefined]);
+    const [r] = await rows(acct(u));
     expect(r.tasks).toHaveLength(10);
     expect(r.note).toHaveLength(200);
     expect(r.note!.startsWith("a b x")).toBe(true);
@@ -82,8 +82,8 @@ describe("the log itself: bounded rows, a recorder that never throws, one sorted
     const u = await newUser("act-throw");
     vi.spyOn(db, "lpush").mockRejectedValue(new Error("upstash down"));
     const err = vi.spyOn(console, "error").mockImplementation(() => {});
-    await expect(recordActivity(u.email, [row({})])).resolves.toBeUndefined();
-    await expect(recordRun(u.email, { id: "dana_weekly_report", agent: "dana", type: "weekly_report", via: "routine", by: { kind: "system", job: "routine" }, period: "2026-09-27", ttlS: 60 }, "ok:1")).resolves.toBeUndefined();
+    await expect(recordActivity(acct(u), [row({})])).resolves.toBeUndefined();
+    await expect(recordRun(acct(u), { id: "dana_weekly_report", agent: "dana", type: "weekly_report", via: "routine", by: { kind: "system", job: "routine" }, period: "2026-09-27", ttlS: 60 }, "ok:1")).resolves.toBeUndefined();
     expect(err).toHaveBeenCalledWith("activity record failed", { error: "Error" });
   });
 
@@ -91,7 +91,7 @@ describe("the log itself: bounded rows, a recorder that never throws, one sorted
     const u = await newUser("act-list");
     const t0 = Date.parse("2026-09-29T10:00:00.000Z");
     // Pushed out of order, as parallel lpushes land; two rows share one time.
-    await recordActivity(u.email, [
+    await recordActivity(acct(u), [
       row({ at: iso(t0 + 3000), agent: "noor", kind: "generated", note: "c" }),
       row({ at: iso(t0 + 1000), agent: "razan", kind: "judged", note: "a" }),
       row({ at: iso(t0 + 4000), agent: "noor", kind: "decision", note: "d" }),
@@ -104,19 +104,19 @@ describe("the log itself: bounded rows, a recorder that never throws, one sorted
       JSON.stringify({ ...row({}), type: "novel" }), JSON.stringify({ at: iso(t0), kind: "generated", via: "app" }), JSON.stringify({ ...row({}), at: "yesterday" }),
       JSON.stringify({ ...row({}), tasks: [1] }), JSON.stringify({ ...row({}), count: "3" }), JSON.stringify({ ...row({}), note: { html: "<b>" } }), JSON.stringify({ ...row({}), media: "audio" }),
     ];
-    await Promise.all(bad.map((b) => db.lpush(`activity:${u.email}`, b)));
+    await Promise.all(bad.map((b) => db.lpush(`activity:${acct(u)}`, b)));
     // Rows of one time have no order of their own.
-    const notes = (await rows(u.email)).map((r) => r.note);
+    const notes = (await rows(acct(u))).map((r) => r.note);
     expect([notes.slice(0, 2), notes.slice(2, 4).sort(), notes[4], notes.length]).toEqual([["d", "c"], ["b1", "b2"], "a", 5]);
-    expect((await listActivity(u.email, { agent: "noor", kind: "judged" })).rows.map((r) => r.note)).toEqual(["b1"]);
-    expect((await listActivity(u.email, { agent: "sami" })).rows).toEqual([]);
-    expect(await listActivity(u.email, { limit: 0 })).toEqual({ rows: [], next: null });
+    expect((await listActivity(acct(u), { agent: "noor", kind: "judged" })).rows.map((r) => r.note)).toEqual(["b1"]);
+    expect((await listActivity(acct(u), { agent: "sami" })).rows).toEqual([]);
+    expect(await listActivity(acct(u), { limit: 0 })).toEqual({ rows: [], next: null });
 
     // A page of 3 ends on the shared time, so it takes both rows of it; the next page starts strictly before it.
-    const p1 = await listActivity(u.email, { limit: 3 });
+    const p1 = await listActivity(acct(u), { limit: 3 });
     expect(p1.rows.map((r) => r.note).sort()).toEqual(["b1", "b2", "c", "d"]);
     expect(p1.next).toBe(iso(t0 + 2000));
-    const p2 = await listActivity(u.email, { limit: 3, before: p1.next! });
+    const p2 = await listActivity(acct(u), { limit: 3, before: p1.next! });
     expect(p2).toEqual({ rows: [expect.objectContaining({ note: "a" })], next: null });
   });
 
@@ -131,8 +131,8 @@ describe("the log itself: bounded rows, a recorder that never throws, one sorted
 describe("the owner's own actions are recorded once, in the caller's scope, with who acted (rule 233)", () => {
   it("a decision on an item: one row with the action, the owning agent, the title and `by` from the session; a founder is the founder", async () => {
     const u = await owner("act-dec");
-    await saveTask(u.email, task("d1"), true);
-    await saveTask(u.email, task("d2"), true);
+    await saveTask(acct(u), task("d1"), true);
+    await saveTask(acct(u), task("d2"), true);
     const patch = async (id: string, body: unknown) => taskRoute.PATCH(await vjson(`/api/tasks/${id}`, "PATCH", body), params({ id }));
     // The impersonation cookies alone, set on the owner's own session, change nothing: still the owner.
     await supportAccess(u.email);
@@ -141,7 +141,7 @@ describe("the owner's own actions are recorded once, in the caller's scope, with
     await signIn(u.email, { imp: "support-founder@test.example" });
     expect((await patch("d2", { status: "rejected", note: "too long", by: { kind: "owner" } })).status).toBe(200);
     await settle();
-    const got = await rows(u.email);
+    const got = await rows(acct(u));
     expect(got).toHaveLength(2);
     expect(got.find((r) => r.tasks?.[0] === "d1")).toMatchObject({ kind: "decision", agent: "razan", type: "pricing_review", via: "app", outcome: "approve", note: "مراجعة الأسعار", by: { kind: "owner", email: u.email } });
     expect(got.find((r) => r.tasks?.[0] === "d2")).toMatchObject({ kind: "decision", outcome: "reject", by: { kind: "founder", email: u.email, imp: "support-founder@test.example" } });
@@ -149,18 +149,18 @@ describe("the owner's own actions are recorded once, in the caller's scope, with
 
   it("every publish is one `published` row with the provider, from the app or from chat; a publish never adds a `decision` row", async () => {
     const u = await owner("act-pub");
-    await saveConnection(u.email, { provider: "telegram", data: { token: "t", chat: "c" }, connectedAt: new Date().toISOString() });
-    await saveTask(u.email, task("p1", { type: "social", channel: "instagram", title: "عرض الجمعة" }), true);
+    await saveConnection(acct(u), { provider: "telegram", data: { token: "t", chat: "c" }, connectedAt: new Date().toISOString() });
+    await saveTask(acct(u), task("p1", { type: "social", channel: "instagram", title: "عرض الجمعة" }), true);
     // Approved by a person (`decidedAt`): chat publishes nothing that only auto-approval passed (rule 214).
-    await saveTask(u.email, task("p2", { type: "social", channel: "instagram", status: "approved", decidedAt: new Date().toISOString() }), true);
-    await saveTask(u.email, task("p3", { type: "social", channel: "instagram", status: "approved" }), true);
+    await saveTask(acct(u), task("p2", { type: "social", channel: "instagram", status: "approved", decidedAt: new Date().toISOString() }), true);
+    await saveTask(acct(u), task("p3", { type: "social", channel: "instagram", status: "approved" }), true);
     expect((await publishRoute.POST(await vjson("/api/publish/p1", "POST", { provider: "telegram" }), params({ id: "p1" }))).status).toBe(200);
     expect(await runTool(u, "publish_item", { task_id: "p2", provider: "telegram" }, [])).toMatch(/^Published/);
     // A publish that did not go out is no row: a repeat refused by `publishOnce` (route and chat), an auto-approved item.
     expect((await publishRoute.POST(await vjson("/api/publish/p1", "POST", { provider: "telegram" }), params({ id: "p1" }))).status).toBe(409);
     expect(await runTool(u, "publish_item", { task_id: "p2", provider: "telegram" }, [])).toMatch(/Not published again/);
     expect(await runTool(u, "publish_item", { task_id: "p3", provider: "telegram" }, [])).toMatch(/approved automatically/);
-    const got = await rows(u.email);
+    const got = await rows(acct(u));
     expect(got.map((r) => r.kind)).toEqual(["published", "published"]);
     expect(got.find((r) => r.via === "app")).toMatchObject({ agent: "noor", type: "social", tasks: ["p1"], outcome: "telegram", note: "عرض الجمعة", by: { kind: "owner", email: u.email } });
     expect(got.find((r) => r.via === "chat")).toMatchObject({ agent: "noor", tasks: ["p2"], outcome: "telegram", by: { kind: "owner", email: u.email } });
@@ -168,14 +168,14 @@ describe("the owner's own actions are recorded once, in the caller's scope, with
 
   it("a post found live after an unknown attempt (`earlier_live`) is one `published` row at the attempt's time, and a pending item's publish decision", async () => {
     const u = await owner("act-earlier");
-    await saveConnection(u.email, { provider: "telegram", data: { token: "t", chat: "c" }, connectedAt: new Date().toISOString() });
-    await saveTask(u.email, task("e1", { type: "social", channel: "instagram", title: "عرض الجمعة" }), true);
+    await saveConnection(acct(u), { provider: "telegram", data: { token: "t", chat: "c" }, connectedAt: new Date().toISOString() });
+    await saveTask(acct(u), task("e1", { type: "social", channel: "instagram", title: "عرض الجمعة" }), true);
     const publish = async (body: Record<string, unknown>) => publishRoute.POST(await vjson("/api/publish/e1", "POST", body), params({ id: "e1" }));
     // No answer: it may be live, so nothing is recorded yet.
     pub.fail = new Error("fetch failed");
     expect((await (await publish({ provider: "telegram" })).json()).error).toBe("publish_unknown");
     await settle();
-    expect(await rows(u.email)).toEqual([]);
+    expect(await rows(acct(u))).toEqual([]);
     // The owner's "Publish again" gets "already posted": the first attempt went out, and is recorded now.
     pub.fail = new Error("x_duplicate");
     const res = await publish({ provider: "telegram", again: true });
@@ -183,12 +183,12 @@ describe("the owner's own actions are recorded once, in the caller's scope, with
     const { error, at } = await res.json();
     expect(error).toBe("earlier_live");
     await settle();
-    const got = await rows(u.email);
+    const got = await rows(acct(u));
     expect(got).toHaveLength(1);
     expect(got[0]).toMatchObject({ at, kind: "published", agent: "noor", via: "app", type: "social", tasks: ["e1"], outcome: "telegram", note: "عرض الجمعة", by: { kind: "owner", email: u.email } });
     // The owner's publish approved the pending item when that attempt went out: `decidedAt` and a `publish` decision.
-    expect(await getTask(u.email, "e1")).toMatchObject({ status: "approved", decidedAt: at });
-    expect(await listDecisions(u.email)).toMatchObject([{ task: "e1", action: "publish", at, by: { kind: "owner", email: u.email } }]);
+    expect(await getTask(acct(u), "e1")).toMatchObject({ status: "approved", decidedAt: at });
+    expect(await listDecisions(acct(u))).toMatchObject([{ task: "e1", action: "publish", at, by: { kind: "owner", email: u.email } }]);
   });
 
   it("chat changes to the files: the talking agent and the file name, never the value; a brand change from chat is no row until Save (rule 568)", async () => {
@@ -198,7 +198,7 @@ describe("the owner's own actions are recorded once, in the caller's scope, with
     await runTool(u, "write_file", { name: "offers.md", content: "# offers" }, [], [], undefined, { agent: "majed", by: member });
     // Outside a chat turn (no context): who is read from the session, and no agent is claimed.
     await runTool(u, "update_brand", { field: "city", value: "جدة" }, []);
-    const got = await rows(u.email);
+    const got = await rows(acct(u));
     expect(got.find((r) => r.kind === "file_written")).toMatchObject({ agent: "majed", via: "chat", by: member, note: "offers.md" });
     // update_brand only proposes: the brand file did not change, so there is no brand_changed row.
     expect(got.filter((r) => r.kind === "brand_changed")).toEqual([]);
@@ -211,12 +211,12 @@ describe("the owner's own actions are recorded once, in the caller's scope, with
     // Proposals change nothing, so they are no rows; neither is a dismissal. Adding banned words is a proposal too.
     expect(await runTool(u, "update_brand", { field: "banned", value: "مضمون، رخيص" }, [], [], undefined, { agent: "noor", proposed })).toMatch(/^Not saved yet/);
     expect(await runTool(u, "update_brand", { field: "offers", value: "خصم 50% على كل شيء" }, [], [], undefined, { agent: "sami", proposed })).toMatch(/^Not saved yet/);
-    expect(await rows(u.email)).toEqual([]);
+    expect(await rows(acct(u))).toEqual([]);
     const decide = (id: string, action: string) => proposalRoute.POST(json(`/api/brand/proposals/${id}`, "POST", { action }), params({ id }));
     expect((await decide(proposed[1].id, "dismiss")).status).toBe(200);
-    expect(await rows(u.email)).toHaveLength(0);
+    expect(await rows(acct(u))).toHaveLength(0);
     expect((await decide(proposed[0].id, "apply")).status).toBe(200);
-    const got = await rows(u.email);
+    const got = await rows(acct(u));
     expect(got).toHaveLength(1);
     // By whoever pressed Save (from the session), for the agent that proposed it; the field's name, never the words.
     expect(got[0]).toMatchObject({ kind: "brand_changed", via: "app", agent: "noor", by: { kind: "owner", email: u.email }, note: "banned" });
@@ -225,11 +225,11 @@ describe("the owner's own actions are recorded once, in the caller's scope, with
 
   it("a draft saved by a connected app: `external_draft`, no agent, by the token, via MCP, its title kept as text", async () => {
     const u = await owner("act-mcp");
-    const token = await createMcpToken(u.email);
+    const token = await createMcpToken(acct(u));
     const res = await mcpRoute.POST(new Request("https://nashr.test/api/mcp", { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${token}` }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "save_draft", arguments: { type: "social", title: "Summer post", body: "Iced coffee is back." } } }) }));
     const id = (JSON.parse(((await res.json()) as { result: { content: { text: string }[] } }).result.content[0].text) as { id: string }).id;
-    expect(await rows(u.email)).toEqual([expect.objectContaining({ kind: "external_draft", by: { kind: "token", email: u.email }, via: "mcp", type: "social", tasks: [id], count: 1, note: "Summer post" })]);
-    expect((await rows(u.email))[0]).not.toHaveProperty("agent");
+    expect(await rows(acct(u))).toEqual([expect.objectContaining({ kind: "external_draft", by: { kind: "token", email: u.email }, via: "mcp", type: "social", tasks: [id], count: 1, note: "Summer post" })]);
+    expect((await rows(acct(u)))[0]).not.toHaveProperty("agent");
   });
 
   it("governance: a save that changed something is `gov_changed` with the changed settings, a no-op is nothing, a restore is `gov_rollback`", async () => {
@@ -238,7 +238,7 @@ describe("the owner's own actions are recorded once, in the caller's scope, with
     const first = (await (await put({ reviewer: false, agentCaps: { razan: 40 } })).json()) as { entry: { id: string } };
     await put({ reviewer: false }); // nothing changes
     expect((await rollbackRoute.POST(json("/api/governance/rollback", "POST", { id: first.entry.id }))).status).toBe(200);
-    const got = await rows(u.email);
+    const got = await rows(acct(u));
     expect(got.map((r) => r.kind)).toEqual(["gov_rollback", "gov_changed"]);
     expect(got[1]).toMatchObject({ via: "app", by: { kind: "owner", email: u.email }, count: 2, note: "reviewer, agentCaps.razan" });
     expect(got[0]).toMatchObject({ note: "reviewer, agentCaps.razan" });
@@ -250,11 +250,11 @@ describe("the owner's own actions are recorded once, in the caller's scope, with
     vi.spyOn(db, "lpush").mockImplementation((k: string, v: string) => (k.startsWith("activity:") ? Promise.reject(new Error("upstash down")) : lpush(k, v)));
     vi.spyOn(console, "error").mockImplementation(() => {});
     expect((await govRoute.PUT(json("/api/governance", "PUT", { learning: false }))).status).toBe(200);
-    expect((await getGov(u.email)).learning).toBe(false);
-    await saveTask(u.email, task("x1"), true);
+    expect((await getGov(acct(u))).learning).toBe(false);
+    await saveTask(acct(u), task("x1"), true);
     expect((await taskRoute.PATCH(await vjson("/api/tasks/x1", "PATCH", { status: "approved" }), params({ id: "x1" }))).status).toBe(200);
     await settle();
-    expect(await listActivity(u.email)).toEqual({ rows: [], next: null });
+    expect(await listActivity(acct(u))).toEqual({ rows: [], next: null });
   });
 });
 
@@ -278,7 +278,7 @@ describe("GET /api/activity and the CSV export read only the caller's own log (r
   it("pages of 50 with a time cursor, filtered, and never another account's rows whatever the request says", async () => {
     const a = await owner("act-a");
     const t0 = Date.now() - 3600_000;
-    await recordActivity(a.email, Array.from({ length: 55 }, (_, i) => row({ at: iso(t0 + i * 1000), agent: i % 2 ? "noor" : "dana", note: `n${i}` })));
+    await recordActivity(acct(a), Array.from({ length: 55 }, (_, i) => row({ at: iso(t0 + i * 1000), agent: i % 2 ? "noor" : "dana", note: `n${i}` })));
     const first = (await (await listRoute.GET(json("/api/activity", "GET"))).json()) as { rows: Activity[]; next: string };
     expect(first.rows).toHaveLength(50);
     expect(first.rows[0].note).toBe("n54");
@@ -288,19 +288,19 @@ describe("GET /api/activity and the CSV export read only the caller's own log (r
     expect(dana.rows.every((r) => r.agent === "dana")).toBe(true);
 
     const b = await owner("act-b");
-    const other = (await (await listRoute.GET(json(`/api/activity?scope=${encodeURIComponent(a.email)}&email=${encodeURIComponent(a.email)}`, "GET"))).json()) as { rows: Activity[] };
+    const other = (await (await listRoute.GET(json(`/api/activity?scope=${encodeURIComponent(acct(a))}&email=${encodeURIComponent(acct(a))}`, "GET"))).json()) as { rows: Activity[] };
     expect(other.rows).toEqual([]);
     const csv = new TextDecoder().decode(await (await exportRoute.GET(new Request("http://t/api/activity/export"))).arrayBuffer());
     expect(csv.split("\n")).toHaveLength(1); // the header only
-    expect(b.email).not.toBe(a.email);
+    expect(acct(b)).not.toBe(acct(a));
   });
 
   it("the export: UTF-8 with a BOM, an attachment, every row, and a formula-like title neutralised", async () => {
     const u = await owner("act-csv");
-    const token = await createMcpToken(u.email);
+    const token = await createMcpToken(acct(u));
     const evil = '=HYPERLINK("https://evil.example","open")';
     await mcpRoute.POST(new Request("https://nashr.test/api/mcp", { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${token}` }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "save_draft", arguments: { type: "social", title: evil, body: "نص المسودة" } } }) }));
-    await recordActivity(u.email, [row({ agent: "razan", kind: "render_failed", media: "video", refunded: true, credits: 12, tasks: ["a", "b"], by: { kind: "member", email: "m@team.example", role: "admin" } })]);
+    await recordActivity(acct(u), [row({ agent: "razan", kind: "render_failed", media: "video", refunded: true, credits: 12, tasks: ["a", "b"], by: { kind: "member", email: "m@team.example", role: "admin" } })]);
     const res = await exportRoute.GET(new Request("http://t/api/activity/export"));
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toBe("text/csv; charset=utf-8");
@@ -320,12 +320,12 @@ describe("support access reaches the account's logins as support, never as which
     vi.stubEnv("WAITLIST_ADMIN_KEY", "test-admin-key-0123456789");
     const founder = "support-founder@test.example";
     const u = await owner("act-imp");
-    await saveTask(u.email, task("i1"), true);
+    await saveTask(acct(u), task("i1"), true);
     // The founder's support access rejects an item: the row is stored with `imp`, the founder's own console login.
     await signIn(u.email, { imp: founder });
     expect((await taskRoute.PATCH(await vjson("/api/tasks/i1", "PATCH", { status: "rejected", note: "no" }), params({ id: "i1" }))).status).toBe(200);
     await settle();
-    expect((await rows(u.email)).map((r) => r.by)).toEqual([{ kind: "founder", email: u.email, imp: founder }]);
+    expect((await rows(acct(u))).map((r) => r.by)).toEqual([{ kind: "founder", email: u.email, imp: founder }]);
 
     // A plain member of the account: GET /api/activity and the page's props (serialized into the page) name support only.
     const m = await newMember(u, "member", "act-imp-m");
@@ -352,7 +352,7 @@ describe("the Activity page renders the first page on the server (rule 238)", ()
 
   it("one h1, the rows in plain words with who and via, the filters and the download, in Arabic too; another account sees none", async () => {
     const u = await owner("act-page");
-    await recordActivity(u.email, [
+    await recordActivity(acct(u), [
       row({ agent: "razan", kind: "generated", type: "pricing_review", count: 1, credits: 6, via: "chat" }),
       row({ kind: "external_draft", note: "<script>alert(1)</script>", via: "mcp", by: { kind: "token", email: u.email } }),
     ]);
@@ -384,10 +384,10 @@ describe("the founder console shows each brand's latest 100 rows (rule 239)", ()
     vi.stubEnv("WAITLIST_ADMIN_KEY", "test-admin-key-0123456789");
     const u = await newUser("act-admin");
     await saveUser({ ...u, plan: "agency" });
-    const second = await addBrand((await getUser(u.email))!, "Second");
+    const second = await addBrand((await getUser(acct(u)))!, "Second");
     if ("error" in second) throw new Error(second.error);
-    await recordActivity(u.email, Array.from({ length: 105 }, (_, i) => row({ at: iso(Date.now() - i * 1000), note: `d${i}` })));
-    await recordActivity(scopeFor(u.email, second.id), [row({ agent: "sami", kind: "judged", score: 81 })]);
+    await recordActivity(acct(u), Array.from({ length: 105 }, (_, i) => row({ at: iso(Date.now() - i * 1000), note: `d${i}` })));
+    await recordActivity(scopeFor(acct(u), second.id), [row({ agent: "sami", kind: "judged", score: 81 })]);
     const get = (h: Record<string, string>) => adminUser.GET(json(`/api/admin/users/x`, "GET", undefined, h), params({ email: encodeURIComponent(u.email) }));
     expect((await get({})).status).toBe(401);
     const body = (await (await get({ "x-admin-key": "test-admin-key-0123456789" })).json()) as { activity: { brand: string; rows: Activity[] }[] };
@@ -401,9 +401,9 @@ describe("the log goes with the account (rule 240)", () => {
   it("wipeAccount deletes activity:{s} and the routines' markers for every brand", async () => {
     const u = await newUser("act-wipe");
     await saveUser({ ...u, plan: "agency" });
-    const second = await addBrand((await getUser(u.email))!, "Second");
+    const second = await addBrand((await getUser(acct(u)))!, "Second");
     if ("error" in second) throw new Error(second.error);
-    const scopes = [u.email, scopeFor(u.email, second.id)];
+    const scopes = [acct(u), scopeFor(acct(u), second.id)];
     const run = { id: "dana_weekly_report", agent: "dana" as const, type: "weekly_report" as const, via: "routine" as const, by: { kind: "system" as const, job: "routine" as const }, period: periodOf("weekly"), ttlS: 8 * 86400 };
     // A marker lives `periodDays` from the first idle day of its period, so one set on a period's last day is still alive
     // two periods on: Majed's monthly review idle on 31 August lives to 5 October; Dana's report idle on a Saturday lives
@@ -419,11 +419,11 @@ describe("the log goes with the account (rule 240)", () => {
       await recordRun(s, run, "idle");
       for (const r of old) await recordRun(s, r, "idle");
     }
-    expect(routineSkipKeys(u.email)).toContain(actSkipKey(u.email, "dana_weekly_report", periodOf("weekly")));
-    for (const r of old) expect(routineSkipKeys(u.email)).toContain(actSkipKey(u.email, r.id, r.period));
-    await wipeAccount(u.email);
+    expect(routineSkipKeys(acct(u))).toContain(actSkipKey(acct(u), "dana_weekly_report", periodOf("weekly")));
+    for (const r of old) expect(routineSkipKeys(acct(u))).toContain(actSkipKey(acct(u), r.id, r.period));
+    await wipeAccount(acct(u));
     const mem = (globalThis as unknown as { __nashrMem: { kv: Map<string, unknown>; lists: Map<string, string[]> } }).__nashrMem;
-    const left = [...mem.kv.keys(), ...mem.lists.keys()].filter((k) => /^act(ivity|skip):/.test(k) && k.includes(u.email));
+    const left = [...mem.kv.keys(), ...mem.lists.keys()].filter((k) => /^act(ivity|skip):/.test(k) && k.includes(acct(u)));
     expect(left).toEqual([]);
   });
 });

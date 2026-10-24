@@ -9,7 +9,7 @@ import { log } from "@/lib/log";
 import { getPerson } from "@/lib/person";
 import { wipeAccount } from "@/lib/account";
 import { moveMemberLogin } from "@/lib/team";
-import { moveUnverifiedAccount } from "@/lib/verify-email";
+import { moveOwnerLogin } from "@/lib/verify-email";
 
 /**
  * Customer passkeys, Task 6 fix round 1 (review minor 3): what the two address moves do when `movePasskeys` answers
@@ -17,6 +17,10 @@ import { moveUnverifiedAccount } from "@/lib/verify-email";
  * `wipeAccount`'s `keepPasskeys`. Both moves log `passkey_move_skipped`, finish, and keep every passkey key of the old
  * pid (inert under rules 2402 and 2405); nothing else of the old person stays. Legacy fixtures: only a legacy person's
  * address moves before release M2.
+ *
+ * The owner tests pin R1's copy move, `moveOwnerLogin` (a legacy owner whose account id is its address, `addressId: true`):
+ * with `OPAQUE_IDS` on, `moveUnverifiedAccount` moves a person in place (rule 2741) and never copies, so the passkey step
+ * these tests force is reached only through `moveOwnerLogin` itself, which the flag-off contract keeps.
  */
 
 const forced = vi.hoisted(() => ({ skip: false }));
@@ -26,6 +30,8 @@ vi.mock("@/lib/passkeys", async (orig) => {
 });
 
 const addr = (p: string) => `${p}-${randomBytes(4).toString("hex")}@test.example`;
+/** The typo fix as R1 ran it: the gated owner's account is copied to the new address (`verify-email.ts` `moveUnverifiedAccount`, flag off). */
+const gatedMove = (from: Awaited<ReturnType<typeof ownerUser>>, to: string) => moveOwnerLogin(from, to, { may: (x) => x.gatedSignup === true && !x.emailVerifiedAt, isCopy: (x) => x.gatedSignup === true && !x.emailVerifiedAt });
 const rawSet = (pid: string) => db.get(personKey.passkeys(storedPersonId(pid)));
 const ownerUser = async (email: string) => {
   await signIn(email);
@@ -52,13 +58,13 @@ describe("Task 6 fix round 1: keepPasskeys and the skipped branches", () => {
   });
 
   it("the owner move: a skipped passkey step is logged, the move finishes and the old pid keeps every passkey key", async () => {
-    const u = await newUser("pkskipo", { legacy: true, shadow: false, verified: false });
+    const u = await newUser("pkskipo", { legacy: true, addressId: true, shadow: false, verified: false });
     const e = await enrolPasskeys(u.email);
     const residue = passkeyResidue(e.pid);
     const warn = vi.spyOn(log, "warn");
     forced.skip = true;
     const to = addr("pkskiponew");
-    expect(await moveUnverifiedAccount(await ownerUser(u.email), to)).toBe("ok");
+    expect(await gatedMove(await ownerUser(u.email), to)).toBe("ok");
     expect(warn).toHaveBeenCalledWith("owner move kept passkeys", { reason: "passkey_move_skipped" });
     // The move finished: the old account and person are gone, the new address signs in.
     expect(await getLogin(u.email)).toBeNull();
@@ -70,11 +76,11 @@ describe("Task 6 fix round 1: keepPasskeys and the skipped branches", () => {
   });
 
   it("the owner move control: not skipped, the old pid keeps nothing", async () => {
-    const u = await newUser("pkskipc", { legacy: true, shadow: false, verified: false });
+    const u = await newUser("pkskipc", { legacy: true, addressId: true, shadow: false, verified: false });
     const e = await enrolPasskeys(u.email);
     const warn = vi.spyOn(log, "warn");
     const to = addr("pkskipcnew");
-    expect(await moveUnverifiedAccount(await ownerUser(u.email), to)).toBe("ok");
+    expect(await gatedMove(await ownerUser(u.email), to)).toBe("ok");
     expect(warn).not.toHaveBeenCalledWith("owner move kept passkeys", expect.anything());
     expect(passkeyResidue(e.pid)).toEqual([]);
     expect(await rawSet(to)).not.toBeNull();

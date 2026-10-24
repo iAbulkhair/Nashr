@@ -40,7 +40,7 @@ async function suspendPerson(email: string, suspended: unknown) {
 
 describe("rule 2131 (pre-R1 half): person suspension refuses a session written before R1", () => {
   it("a legacy owner's pre-R1 session is refused while the person is suspended, and resolves again when the suspension ends", async () => {
-    const owner = await newUser("sp", { legacy: true, shadow: false });
+    const owner = await newUser("sp", { legacy: true, addressId: true, shadow: false });
     await signIn(owner.email, { legacyShape: true });
     expect(acct((await currentUser())!)).toBe(acct(owner));
     await suspendPerson(owner.email, true);
@@ -56,7 +56,7 @@ describe("rule 2131 (pre-R1 half): person suspension refuses a session written b
   });
 
   it("a legacy member's pre-R1 session is refused while the member's person is suspended; the owner is untouched", async () => {
-    const owner = await newUser("spo", { legacy: true, shadow: false });
+    const owner = await newUser("spo", { legacy: true, addressId: true, shadow: false });
     const m = await newMember(owner, "member", "spm", { legacy: true, shadow: false });
     await signIn(m.email, { legacyShape: true });
     expect(acct((await currentUser())!)).toBe(acct(owner));
@@ -68,7 +68,7 @@ describe("rule 2131 (pre-R1 half): person suspension refuses a session written b
   });
 
   it("an owner's person suspension does not refuse the member's pre-R1 session (it is the member's person that counts)", async () => {
-    const owner = await newUser("spx", { legacy: true, shadow: false });
+    const owner = await newUser("spx", { legacy: true, addressId: true, shadow: false });
     const m = await newMember(owner, "member", "spxm", { legacy: true, shadow: false });
     await suspendPerson(owner.email, true);
     await signIn(m.email, { legacyShape: true });

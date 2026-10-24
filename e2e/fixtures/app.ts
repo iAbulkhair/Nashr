@@ -1,4 +1,6 @@
 import { test as base, expect, type ConsoleMessage, type Locator, type Page, type Request, type Response } from "@playwright/test";
+import { installWorkspaceHeader } from "./workspace-header";
+import { stripWs } from "../../src/lib/ws-path";
 
 /**
  * The shared fixture. Every test gets a page already watching for the two failure classes the suite treats as automatic
@@ -26,9 +28,20 @@ type Fixtures = {
   allowHttp: RegExp[];
 };
 
-export const test = base.extend<Fixtures>({
+export const test = base.extend<Fixtures, { workspaceHeader: void }>({
   allowConsole: [[], { option: true }],
   allowHttp: [[], { option: true }],
+
+  // Every direct API call of the worker names its workspace (e2e/fixtures/workspace-header.ts, rule 3810).
+  workspaceHeader: [
+    async ({ playwright }, runTest) => {
+      const ctx = await playwright.request.newContext();
+      installWorkspaceHeader(ctx);
+      await ctx.dispose();
+      await runTest();
+    },
+    { scope: "worker", auto: true },
+  ],
 
   // The second argument is Playwright's "provide the fixture value and then tear it down" callback. It is passed
   // positionally, so it is named `runTest` rather than the conventional `use`: React's lint rules treat a call to
@@ -83,6 +96,12 @@ export const test = base.extend<Fixtures>({
 });
 
 export { expect };
+
+/**
+ * A browser path without its `w/{handle}` segment (rule 3810): with `MULTI_ORG` on every workspace page is served under
+ * `/{lang}/app/w/{handle}/…`, and the handle is new per account, so a spec names the page and compares this.
+ */
+export const appPath = (url: string | URL): string => stripWs(new URL(url).pathname);
 
 /** Open a route and return the top-level response, so a spec can assert the status and the final URL after redirects. */
 export async function open(page: Page, path: string) {

@@ -1,8 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { readFileSync } from "fs";
 import { jar, json, newMember, newUser, signIn, signOut } from "./helpers/session";
-import { currentUser, getUser, sessionRecord } from "@/lib/auth";
+import { acct, currentUser, getUser, sessionRecord } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { aidOf, ownerOf } from "@/lib/membership";
 import { loginHolds } from "@/lib/secretary-feed";
 import { getMember } from "@/lib/team";
 import * as sessionsRoute from "@/app/api/account/sessions/route";
@@ -49,14 +50,14 @@ describe("rule 1170: the limit counts wrong passwords only, and the feed and boo
   });
 
   it("the owner's sign-out stamps devicesAfter, never sessionsAfter, so a feed or booking link made earlier still holds", async () => {
-    // Pins the legacy shape (multi-org M1): the stamps are read on the legacy `user:{email}` record.
+    // Pins the legacy person shape (multi-org M1): the stamps are read on the account record, `user:{id}`.
     const u = await newUser("so4", { legacy: true });
-    const before = (await getUser(u.email))!.sessionsAfter;
-    const rec = { login: u.email, scope: u.email, createdAt: new Date().toISOString() };
+    const before = (await getUser(acct(u)))!.sessionsAfter;
+    const rec = { login: u.email, scope: acct(u), createdAt: new Date().toISOString(), pid: ownerOf(u), aid: aidOf(u) }; // a link as M1 writes it: an opaque account has no login-only link
     await new Promise((r) => setTimeout(r, 5));
     await signIn(u.email);
     expect((await post("abc12345")).status).toBe(200);
-    const after = (await getUser(u.email))!;
+    const after = (await getUser(acct(u)))!;
     expect(after.sessionsAfter).toBe(before);
     expect(after.devicesAfter).toBeTruthy();
     expect(new Date(after.devicesAfter!).getTime()).toBeGreaterThan(new Date(rec.createdAt).getTime());
@@ -67,7 +68,7 @@ describe("rule 1170: the limit counts wrong passwords only, and the feed and boo
     const owner = await newUser("so4");
     // Pins the legacy shape (multi-org M1): the stamps are read on the legacy `member:{email}` record.
     const m = await newMember(owner, "member", "m", { legacy: true });
-    const rec = { login: m.email, scope: owner.email, createdAt: new Date().toISOString() };
+    const rec = { login: m.email, scope: acct(owner), createdAt: new Date().toISOString(), pid: m.pid, aid: aidOf(owner) };
     await new Promise((r) => setTimeout(r, 5));
     const other = await signIn(m.email);
     await signIn(m.email);
@@ -84,7 +85,7 @@ describe("rule 1170: the limit counts wrong passwords only, and the feed and boo
   it("a record without devicesAfter signs nothing out (the expand reads old records as before)", async () => {
     const u = await newUser("so4");
     const t = await signIn(u.email);
-    expect((await getUser(u.email))!.devicesAfter).toBeUndefined();
+    expect((await getUser(acct(u)))!.devicesAfter).toBeUndefined();
     jar().set("thakeen_session", t);
     expect((await currentUser())?.email).toBe(u.email);
   });
@@ -103,18 +104,18 @@ describe("rule 1170: the limit counts wrong passwords only, and the feed and boo
 
 describe("rule 1171: the new session is written before the old ones end", () => {
   it("when the stamp cannot be saved the device is still signed in", async () => {
-    // Pins the legacy shape (multi-org M1): the failing write is the legacy `user:{email}` record's.
+    // Pins the legacy shape (multi-org M1): the failing write is the account record's, `user:{id}`.
     const u = await newUser("so4", { legacy: true });
     await signIn(u.email);
     const real = db.set.bind(db);
     vi.spyOn(db, "set").mockImplementation(((key: string, ...rest: unknown[]) => {
-      if (key === `user:${u.email}`) return Promise.reject(new Error("store down"));
+      if (key === `user:${acct(u)}`) return Promise.reject(new Error("store down"));
       return (real as (...a: unknown[]) => Promise<unknown>)(key, ...rest);
     }) as typeof db.set);
     await expect(post("abc12345")).rejects.toThrow();
     vi.restoreAllMocks();
     expect((await currentUser())?.email).toBe(u.email);
-    expect((await getUser(u.email))!.devicesAfter).toBeUndefined();
+    expect((await getUser(acct(u)))!.devicesAfter).toBeUndefined();
   });
 
   it("on success the old session record is gone and only the new one holds", async () => {

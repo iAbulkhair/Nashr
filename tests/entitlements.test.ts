@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { ALL_VIDEO_MODELS, entitlementView, entitlements, grantActive, isUtcDay, type EntUser } from "@/lib/entitlements";
-import { getUser, saveUser, type User } from "@/lib/auth";
+import { acct, getLogin, saveUser, type User } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { chatStatus } from "@/lib/chat-allowance";
 import { route } from "@/lib/models/route";
@@ -136,7 +136,9 @@ describe("entitlements (rule 780)", () => {
 /** A stored account, saved after `patch` is applied to it. */
 async function stored(patch: Partial<User>): Promise<User> {
   const base = await newUser("view");
-  const u = { ...(await getUser(base.email))!, ...patch };
+  const login = await getLogin(base.email);
+  if (login?.kind !== "owner") throw new Error("the fixture owner signs in as an owner");
+  const u = { ...login.user, ...patch };
   await saveUser(u);
   return u;
 }
@@ -144,13 +146,13 @@ async function stored(patch: Partial<User>): Promise<User> {
 describe("entitlementView (rule 784)", () => {
   it("a trial with an expired grant: the plan's own list, the expired grant marked, use read from the store", async () => {
     const u = await stored({ plan: "trial", trialEnds: "2026-10-20T00:00:00Z", credits: 37, grants: grant(day(-2)) });
-    await db.set(chatTrialKey(u.email), 4);   // four chat messages used, so `used.chat` is not just the empty default
+    await db.set(chatTrialKey(acct(u)), 4);   // four chat messages used, so `used.chat` is not just the empty default
     const v = await entitlementView(u, NOW);
     expect(v.ent).toEqual(entitlements(u, NOW));
     expect(v.ent.media.video).toEqual(TRIAL_VIDEO_MODELS);
     expect(v.used.credits).toBe(37);
     expect(v.used.credits).toBe(u.credits);
-    expect(v.used.seats).toBe(await seatsUsed(u.email));
+    expect(v.used.seats).toBe(await seatsUsed(acct(u)));
     expect(v.used.chat).toEqual(await chatStatus(u, route("chat").model));
     expect(v.used.chat.counted).toBe(4);
     expect(v.resetsAt).toBeNull();
@@ -243,7 +245,7 @@ describe("entitlementView (rule 784)", () => {
     const paused = await newMember(owner, "member", "m", { legacy: true });
     await saveMember({ ...(await getMember(paused.email))!, disabled: "seats" });   // what enforceSeats does when a plan shrinks
     const v = await entitlementView(owner, NOW);
-    expect(v.used.seats).toBe(await seatsUsed(owner.email));
+    expect(v.used.seats).toBe(await seatsUsed(acct(owner)));
     expect(v.used.seats).toBe(2);   // the owner and the one active member
   });
 

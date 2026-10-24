@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { jar, json, markVerified, newUser, params, settle, signIn, signOut } from "./helpers/session";
+import { jar, json, markVerified, newUser, params, settle, signIn, signOut, useWorkspace } from "./helpers/session";
 import { vjson } from "./helpers/version";
-import { getUser, saveUser } from "@/lib/auth";
+import { wsHandle } from "@/lib/ws-handle";
+import { acct, getLogin, getUser, saveUser } from "@/lib/auth";
 import { getBrand, getTask, listLite, type Task } from "@/lib/brand";
 import { listFiles } from "@/lib/files";
 import { saveConnection } from "@/lib/connectors/store";
@@ -52,7 +53,11 @@ describe("journey: sign up, build the workspace, generate, approve, publish", ()
     // 1. Sign up. The response sets a session cookie, so every later step is this account.
     expect((await signupRoute.POST(json("/api/auth/signup", "POST", { email, name: "Roastery", password: "coffee123", lang: "ar" }))).status).toBe(200);
     expect(jar().get("thakeen_session")).toBeTruthy();
-    expect((await getUser(email))!.credits).toBe(50);
+    // The account is opaque: its id is read from the address's login, never built from it.
+    const aid = (await getLogin(email))!.acct!;
+    // The page the signup opens sends its workspace handle with every call.
+    useWorkspace(wsHandle(aid));
+    expect((await getUser(aid))!.credits).toBe(50);
     // Signup leaves the account unverified, so its session reads as signed out until the address is proved (rule 751).
     await markVerified(email);
 
@@ -62,9 +67,9 @@ describe("journey: sign up, build the workspace, generate, approve, publish", ()
     expect(await confirmed.json()).toEqual({ ok: true, cost: 0 });
     const events = await drain(await onboardRoute.POST(json("/api/onboard", "POST", { url: "roastery.example" })));
     expect(events.at(-1)!.type).toBe("done");
-    expect(await getBrand(email)).not.toBeNull();
-    expect((await listFiles(email)).map((f) => f.name)).toContain("brand.md");
-    expect((await getUser(email))!.credits).toBe(50); // the first brand's onboarding never charges
+    expect(await getBrand(aid)).not.toBeNull();
+    expect((await listFiles(aid)).map((f) => f.name)).toContain("brand.md");
+    expect((await getUser(aid))!.credits).toBe(50); // the first brand's onboarding never charges
 
     // 3. Generate a batch of social posts: ten items, ten credits.
     const gen = await body(await generateRoute.POST(json("/api/generate", "POST", { type: "social" })));
@@ -82,29 +87,29 @@ describe("journey: sign up, build the workspace, generate, approve, publish", ()
     const patched = await body(await taskRoute.PATCH(await vjson(`/api/tasks/${target.id}`, "PATCH", { status: "approved", editedBody: "نص المالك بعد التعديل" }), params({ id: target.id })));
     expect(patched).toMatchObject({ ok: true });
     await settle();
-    const saved = (await getTask(email, target.id))!;
+    const saved = (await getTask(aid, target.id))!;
     expect(saved.status).toBe("approved");
     expect(saved.editedBody).toBe("نص المالك بعد التعديل");
     expect(saved.decidedAt).toBeTruthy();
 
     // 6. Approving takes it out of the pending set, and the light index the dashboards read agrees with the task.
     expect((await body(await tasksRoute.GET(json("/api/tasks?count=pending", "GET")))) as unknown as { pending: number }).toMatchObject({ pending: 9 });
-    expect((await listLite(email)).find((l) => l.id === target.id)).toMatchObject({ status: "approved", edited: true });
+    expect((await listLite(aid)).find((l) => l.id === target.id)).toMatchObject({ status: "approved", edited: true });
 
     // 7. Publishing needs a connected platform; then the item records where it went.
     expect((await publishRoute.POST(await vjson(`/api/publish/${target.id}`, "POST", { provider: "telegram" }), params({ id: target.id }))).status).toBe(400); // nothing connected yet
-    await saveConnection(email, { provider: "telegram", data: { botToken: "t", chatId: "c" }, connectedAt: new Date().toISOString() });
+    await saveConnection(aid, { provider: "telegram", data: { botToken: "t", chatId: "c" }, connectedAt: new Date().toISOString() });
     expect((await publishRoute.POST(await vjson(`/api/publish/${target.id}`, "POST", { provider: "telegram" }), params({ id: target.id }))).status).toBe(200);
-    expect(published).toEqual([{ id: target.id, scope: email }]);
-    expect((await getTask(email, target.id))!.published).toHaveLength(1);
+    expect(published).toEqual([{ id: target.id, scope: aid }]);
+    expect((await getTask(aid, target.id))!.published).toHaveLength(1);
 
     // 8. The owner's own workspace file survives the whole run and can be deleted again.
     await filesRoute.PUT(json("/api/files", "PUT", { name: "notes.md", content: "ملاحظاتي" }));
-    expect((await listFiles(email)).map((f) => f.name)).toContain("notes.md");
+    expect((await listFiles(aid)).map((f) => f.name)).toContain("notes.md");
     await filesRoute.DELETE(json("/api/files?name=notes.md", "DELETE"));
-    expect((await listFiles(email)).map((f) => f.name)).not.toContain("notes.md");
+    expect((await listFiles(aid)).map((f) => f.name)).not.toContain("notes.md");
     // The index must lose the name too, not just the record: it is what listFiles reads.
-    expect(await db.smembers(`files:${email}`)).not.toContain("notes.md");
+    expect(await db.smembers(`files:${aid}`)).not.toContain("notes.md");
   });
 });
 
@@ -112,36 +117,36 @@ describe("journey: an account works in a second brand", () => {
   it("keeps the two workspaces apart, charges the second brand's setup once, and a bearer token follows the active brand", async () => {
     // A trial has one brand (rule 1390); the founder cap gives this one room for a second (rule 1393).
     const u = await newUser("second");
-    await saveUser({ ...(await getUser(u.email))!, brandCap: 2 });
+    await saveUser({ ...(await getUser(acct(u)))!, brandCap: 2 });
     await signIn(u.email);
-    expect((await getUser(u.email))!.credits).toBe(50);
+    expect((await getUser(acct(u)))!.credits).toBe(50);
 
     // A second brand, and the app switches to it.
     const added = (await body(await brandsRoute.POST(json("/api/brands", "POST", { action: "add", name: "Second" })))) as unknown as { ok: boolean; brand: { id: string } };
     expect(added.ok).toBe(true);
     const second = added.brand.id;
-    const scope = `${u.email}#${second}`;
+    const scope = `${acct(u)}#${second}`;
 
     // Onboarding runs again for the new brand: it has its own brand file and its own files. The confirmation is the
     // active brand's own, like everything else in the scope, and it shows what the build will cost (rule 246).
     const confirmed = await confirmRoute.POST(json("/api/onboard/confirm", "POST", { url: "second.example" }));
     expect(await confirmed.json()).toEqual({ ok: true, cost: ONBOARD_EXTRA_BRAND_COST });
-    expect(await db.get(`onboardok:${u.email}`), "the default brand confirmed nothing").toBeNull();
+    expect(await db.get(`onboardok:${acct(u)}`), "the default brand confirmed nothing").toBeNull();
     expect((await drain(await onboardRoute.POST(json("/api/onboard", "POST", { url: "second.example" })))).at(-1)!.type).toBe("done");
     expect(await getBrand(scope)).not.toBeNull();
     // An added brand's setup is charged once, to Noor in that brand: 50 → 41.
     expect(ONBOARD_EXTRA_BRAND_COST).toBe(9);
-    expect((await getUser(u.email))!.credits).toBe(41);
-    expect((await getUser(u.email))!.agentSpend?.by[scope]).toEqual({ noor: ONBOARD_EXTRA_BRAND_COST });
-    expect(await getBrand(u.email)).toBeNull(); // the default brand was never onboarded
+    expect((await getUser(acct(u)))!.credits).toBe(41);
+    expect((await getUser(acct(u)))!.agentSpend?.by[scope]).toEqual({ noor: ONBOARD_EXTRA_BRAND_COST });
+    expect(await getBrand(acct(u))).toBeNull(); // the default brand was never onboarded
 
     // Items generated now belong to the second brand only.
     expect(await body(await generateRoute.POST(json("/api/generate", "POST", { type: "whatsapp" })))).toMatchObject({ ok: true, created: 3, credits: 41 - TASK_COST.whatsapp });
     expect(await listLite(scope)).toHaveLength(3);
-    expect(await listLite(u.email)).toHaveLength(0);
+    expect(await listLite(acct(u))).toHaveLength(0);
 
     // The MCP bearer token is the same account: it must land in the brand the owner has active, not in the default one.
-    const token = await createMcpToken(u.email);
+    const token = await createMcpToken(acct(u));
     expect(await rpcText(await mcpRoute.POST(rpc("tools/call", { name: "list_inbox", arguments: { status: "pending" } }, token)))).toMatch(/pending/);
     expect(await rpcText(await mcpRoute.POST(rpc("tools/call", { name: "list_files", arguments: {} }, token)))).toMatch(/brand\.md/);
 
@@ -155,7 +160,7 @@ describe("journey: losing and regaining control of an account", () => {
   it("a password change ends every other session and every bearer token issued under the old password", async () => {
     const u = await newUser("pw");
     const stolenSession = await signIn(u.email);
-    const stolenToken = await createMcpToken(u.email);
+    const stolenToken = await createMcpToken(acct(u));
     // The token works while the password stands.
     expect((await mcpRoute.POST(rpc("tools/call", { name: "list_files", arguments: {} }, stolenToken))).status).toBe(200);
     expect(await rpcText(await mcpRoute.POST(rpc("tools/call", { name: "list_files", arguments: {} }, stolenToken)))).toBe("No files.");
@@ -182,11 +187,11 @@ describe("journey: what a batch costs the business", () => {
   it("records tokens and money per kind of call, so the cost of one request type per account is a read", async () => {
     const u = await newUser("cost");
     const { meter } = await import("@/lib/usage");
-    await meter(u.email, "claude-opus-5-5", "generate", { input_tokens: 1200, output_tokens: 4700, cache_read_input_tokens: 7500 });
-    await meter(u.email, "claude-sonnet-5-5", "review", { input_tokens: 4100, output_tokens: 1800 });
-    await meter(u.email, "claude-sonnet-5-5", "judge", { input_tokens: 4400, output_tokens: 1500 });
+    await meter(acct(u), "claude-opus-5-5", "generate", { input_tokens: 1200, output_tokens: 4700, cache_read_input_tokens: 7500 });
+    await meter(acct(u), "claude-sonnet-5-5", "review", { input_tokens: 4100, output_tokens: 1800 });
+    await meter(acct(u), "claude-sonnet-5-5", "judge", { input_tokens: 4400, output_tokens: 1500 });
 
-    const usage = await getUsage(u.email);
+    const usage = await getUsage(acct(u));
     expect(usage.calls).toBe(3);
     expect(Object.keys(usage.byKind).sort()).toEqual(["generate", "judge", "review"]);
     // Opus 5.5 output at $20/M is what a batch actually costs; the two Sonnet passes together are a fraction of it.

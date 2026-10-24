@@ -1,7 +1,10 @@
 import { createHash, randomBytes } from "node:crypto";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { globalKey, runClaim } from "../src/lib/keys";
+import bcrypt from "bcryptjs";
+import { accountKey, globalKey, runClaim } from "../src/lib/keys";
+import { PLAN_CREDITS } from "../src/lib/pricing";
+import { signupConsent } from "../src/lib/consent";
 
 /**
  * The end-to-end server's start command (rule 1207). CI's Build step has already run `npm run build:hostinger` (rule
@@ -42,13 +45,33 @@ export const E2E_CONNECT_SECRET = (process.env.E2E_CONNECT_SECRET ??= randomByte
 /**
  * Rule 2590: what the end-to-end server's memory store starts with (`E2E_SEED_KV`, read by `seedForE2e` in src/lib/db.ts),
  * for the two screens no request can stage: this month's Razan routine held for the seeded owner after a kill (rule 2479),
- * and a daily cron report beside its heartbeat (rules 2484-2485). Keys come from the app's own builders. The owner's account
- * id is its address (`OPAQUE_IDS` is off) and its default brand's scope is that id.
+ * and a daily cron report beside its heartbeat (rules 2484-2485). Keys come from the app's own builders.
+ *
+ * Rule 3827: with `OPAQUE_IDS` on a sign-up gets a random `a_` id no seed can name, so the owner is seeded too, as an
+ * account made before R2 enable: `user:{address}` with no `id`, its hash and its proved address, the shape every account
+ * production holds from then (`getLogin` reads it through its legacy record). Its id and its default brand's scope are its
+ * address; the suite's sign-up of it answers 409 and logs in (`signUpOrLogIn`). Accounts a spec signs up are opaque.
  */
-export function e2eSeed(owner: string, now = new Date()): string {
+export function e2eSeed(owner: { email: string; password: string; name: string }, now = new Date()): string {
   const at = now.toISOString();
+  const account = {
+    email: owner.email,
+    name: owner.name,
+    phone: "",
+    plan: "trial",
+    credits: PLAN_CREDITS.trial,
+    trialEnds: new Date(now.getTime() + 3 * 864e5).toISOString(),
+    createdAt: at,
+    lang: "en",
+    gatedSignup: true,
+    consent: signupConsent("en", now),
+    emailVerifiedAt: at,
+    passHash: bcrypt.hashSync(owner.password, 4),
+    sessionsAfter: at,
+  };
   return JSON.stringify({
-    [globalKey.runReceipt(runClaim.routine(owner, HELD_ROUTINE, at.slice(0, 7)))]: { state: "held", at },
+    [accountKey.user(owner.email)]: account,
+    [globalKey.runReceipt(runClaim.routine(owner.email, HELD_ROUTINE, at.slice(0, 7)))]: { state: "held", at },
     [globalKey.cronReport("daily")]: { at, period: at.slice(0, 10), chain: 1, ...E2E_CRON_REPORT },
     "cronbeat:daily": now.getTime(),
     // The reset links no mailbox can deliver here (no mail is configured on the test server): the password-reset spec signs the
