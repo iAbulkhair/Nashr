@@ -333,6 +333,12 @@ export const accountKey = {
    * that person exists; 30 days (account-id R2, D1, rule 2743). Read and written only while `OPAQUE_IDS` is on.
    */
   emailHold: (login: string) => `emailhold:${login}`,
+  /** json `SavedCard`: the account's Geidea card token and card-on-file agreement (rules 3906, 3910). Never shown or logged. */
+  payCard: (email: string) => `pay:card:${email}`,
+  /** string: the reference of the account's last Geidea checkout, read by the billing page's status (rule 3909). 7 days. */
+  payLast: (email: string) => `pay:last:${email}`,
+  /** marker: one Geidea renewal attempt for this account on this KSA day (rule 3910). */
+  payAttempt: (email: string, day: string) => `pay:attempt:${email}:${day}`,
 } as const;
 
 export const globalKey = {
@@ -374,6 +380,23 @@ export const globalKey = {
   usageAll: (month: string) => `usage:_all:${month}`,
   /** string: the payment id whose Paymob refund ended the plan, or `none` when it found no plan to end (`endPlanOnRefund`, src/lib/billing.ts). */
   paymobRefundEnded: (txnId: number) => `paymob:refund_ended:${txnId}`,
+  // Geidea (rules 3900-3917): new families under `pay:`, keyed by our checkout reference or the provider's own id.
+  /** json `PayIntent`: one checkout under our UUID reference; the account comes from here, never from the callback. 30 days. */
+  payIntent: (ref: string) => `pay:intent:${ref}`,
+  /** sorted set: references of Geidea checkouts not yet settled, scored by start time, read by the reconciliation cron (rule 3909). */
+  payOpen: () => "pay:open",
+  /** json `TxnRecord`: one settled provider order. */
+  payTxn: (provider: string, id: string) => `pay:txn:${provider}:${id}`,
+  /** marker: the provider order was applied (exactly once, rule 3906). */
+  payDone: (provider: string, id: string) => `pay:done:${provider}:${id}`,
+  /** lock: one provider order's application. */
+  payTxLock: (provider: string, id: string) => `pay:txlock:${provider}:${id}`,
+  /** marker: we refunded the provider order. */
+  payRefunded: (provider: string, id: string) => `pay:refunded:${provider}:${id}`,
+  /** lock: one provider order's refund. */
+  payRefundLock: (provider: string, id: string) => `pay:refundlock:${provider}:${id}`,
+  /** string: like `paymobRefundEnded`, for a Geidea order. */
+  payRefundEnded: (provider: string, id: string) => `pay:refund_ended:${provider}:${id}`,
   /** list: Shopify compliance webhook receipts, topic + store + time only (rule 2169). */
   shopifyCompliance: () => "shopify:compliance",
   /** hash: store domain → time of a pending `shop/redact`, applied by the stores cron (rules 2170-2171). */

@@ -19,7 +19,7 @@ const FEATURES: readonly { id: FeatureId; any: readonly string[]; name: Feature[
   { id: "images", any: ["fal"], name: { ar: "الصور", en: "Images" }, what: { ar: "صورة لكل منشور بنموذج الصورة الافتراضي، وإلا تظهر بطاقة بديلة بلا كريدت", en: "An image per post with the default image model; otherwise a placeholder card that costs nothing" } },
   { id: "media", any: ["kie", "higgsfield"], name: { ar: "صور ومقاطع أعلى جودة", en: "Higher-quality images and video" }, what: { ar: "نماذج الصور والمقاطع الإضافية", en: "The extra image and video models" } },
   { id: "email", any: ["resend"], name: { ar: "التنبيهات بالبريد", en: "Email notices" }, what: { ar: "الملخص والتذكيرات والدعوات بالبريد", en: "Briefs, reminders and invites by email" } },
-  { id: "card", any: ["paymob"], name: { ar: "الدفع بالبطاقة", en: "Card payments" }, what: { ar: "الاشتراك والتجديد بالبطاقة داخل ذكين", en: "Subscribing and renewing by card inside Thakeen" } },
+  { id: "card", any: ["paymob", "geidea"], name: { ar: "الدفع بالبطاقة", en: "Card payments" }, what: { ar: "الاشتراك والتجديد بالبطاقة داخل ذكين", en: "Subscribing and renewing by card inside Thakeen" } },
   { id: "apps", any: ["composio"], name: { ar: "ربط لينكدإن وتيك توك والإعلانات", en: "LinkedIn, TikTok and ads connections" }, what: { ar: "المنصات التي تُربط عبر شريكنا للربط", en: "Platforms connected through our connection partner" } },
 ];
 
