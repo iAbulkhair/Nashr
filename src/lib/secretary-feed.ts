@@ -178,7 +178,8 @@ async function legacyHolds(rec: Pick<FeedRecord, "login" | "scope" | "createdAt"
     if (isSuspended(login.user) || !emailVerified(login.user)) return false;
     if (olderThan(rec.createdAt, login.user.createdAt)) return false;
     if (olderThan(rec.createdAt, login.user.sessionsAfter)) return false;
-    owner = login.user.email;
+    // The account id, not the address: an owner whose address moved in place keeps the id (rule 3817).
+    owner = acct(login.user);
   } else {
     const { member: m, owner: u } = login;
     // A person known only through membership rows (multi-workspace M1, test persons only) holds no legacy link.
@@ -191,7 +192,7 @@ async function legacyHolds(rec: Pick<FeedRecord, "login" | "scope" | "createdAt"
     if (!(new Date(m.acceptedAt).getTime() >= new Date(u.createdAt).getTime())) return false;
     if (olderThan(rec.createdAt, m.acceptedAt)) return false;
     if (olderThan(rec.createdAt, m.sessionsAfter) || olderThan(rec.createdAt, u.teamSessionsAfter)) return false;
-    owner = u.email;
+    owner = acct(u);
     membership = getMembership(aidOf(u), pidFrom(memberPid(m)));
   }
   const id = brandIdOf(rec.scope, owner);

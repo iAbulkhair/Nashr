@@ -4,7 +4,7 @@ import { join } from "path";
 import { json, newMember, newUser, params, signOut, withHeaders } from "./helpers/session";
 import { enrolledStaff } from "./helpers/staff";
 import { db } from "@/lib/db";
-import { getUser, saveUser, type Actor, type User } from "@/lib/auth";
+import { acct, getUser, saveUser, type Actor, type User } from "@/lib/auth";
 import { storedPersonId } from "@/lib/keys";
 import { isSuspended, parseSuspendFor, suspendedMessage, suspensionEnd, suspensionExpired, SUSPEND_MAX_DAYS, SUSPENDED_UNTIL } from "@/lib/suspension";
 import { endExpiredSuspension } from "@/lib/suspension-server";
@@ -96,9 +96,9 @@ describe("rule 2071: `isSuspended` is the only reader of a stored `suspended`", 
 describe("rules 2072-2073: an ended suspension stops blocking at read time, and is tidied with one audit row", () => {
   it("a sign-in after the end date succeeds, clears the field and writes `suspension.expired` once, as actor system", async () => {
     const u = await newUser("exp");
-    await store(u.email, { suspended: { until: new Date(Date.now() - 60_000).toISOString() } });
+    await store(acct(u), { suspended: { until: new Date(Date.now() - 60_000).toISOString() } });
     expect((await login(u.email)).status).toBe(200);
-    expect((await getUser(u.email))!.suspended).toBe(false);
+    expect((await getUser(acct(u)))!.suspended).toBe(false);
     signOut();
     expect((await login(u.email)).status).toBe(200);
     const rows = await rowsFor(u.email, "suspension.expired");
@@ -111,16 +111,16 @@ describe("rules 2072-2073: an ended suspension stops blocking at read time, and 
   it("endExpiredSuspension never clears a live or indefinite suspension", async () => {
     const [a, b] = await Promise.all([newUser("live"), newUser("indef")]);
     const until = new Date(Date.now() + DAY).toISOString();
-    await Promise.all([store(a.email, { suspended: { until } }), store(b.email, { suspended: true })]);
-    expect(await endExpiredSuspension(a.email)).toBe(false);
-    expect(await endExpiredSuspension(b.email)).toBe(false);
-    expect((await getUser(a.email))!.suspended).toEqual({ until });
-    expect((await getUser(b.email))!.suspended).toBe(true);
+    await Promise.all([store(acct(a), { suspended: { until } }), store(acct(b), { suspended: true })]);
+    expect(await endExpiredSuspension(acct(a))).toBe(false);
+    expect(await endExpiredSuspension(acct(b))).toBe(false);
+    expect((await getUser(acct(a)))!.suspended).toEqual({ until });
+    expect((await getUser(acct(b)))!.suspended).toBe(true);
   });
 
   it("staff opening the account tidies an ended suspension too, and the detail says not suspended", async () => {
     const u = await newUser("exp-admin");
-    await store(u.email, { suspended: { until: new Date(Date.now() - 60_000).toISOString() } });
+    await store(acct(u), { suspended: { until: new Date(Date.now() - 60_000).toISOString() } });
     const body = await (await detail(u.email)).json();
     expect(body.user.suspended).toBe(false);
     expect(body.user.suspendedUntil).toBeNull();
@@ -145,7 +145,7 @@ describe("rule 2074: the console shows the effective state and the end date", ()
     const end = Date.parse(body.suspendedUntil);
     expect(end).toBeGreaterThanOrEqual(t0 + 7 * DAY - 1000);
     expect(end).toBeLessThanOrEqual(Date.now() + 7 * DAY + 1000);
-    expect((await getUser(u.email))!.suspended).toEqual({ until: body.suspendedUntil });
+    expect((await getUser(acct(u)))!.suspended).toEqual({ until: body.suspendedUntil });
     const [row] = await rowsFor(u.email, "suspend");
     expect(row).toMatchObject({ before: { suspended: false, until: null }, after: { suspended: true, until: body.suspendedUntil } });
     expect((await (await detail(u.email)).json()).user).toMatchObject({ suspended: true, suspendedUntil: body.suspendedUntil });
@@ -156,7 +156,7 @@ describe("rule 2074: the console shows the effective state and the end date", ()
   it("a request without `for` keeps the old meaning: indefinite, stored as `true`", async () => {
     const u = await newUser("sold");
     expect((await act(u.email, { action: "suspend" })).status).toBe(200);
-    expect((await getUser(u.email))!.suspended).toBe(true);
+    expect((await getUser(acct(u)))!.suspended).toBe(true);
     expect((await (await detail(u.email)).json()).user).toMatchObject({ suspended: true, suspendedUntil: null });
   });
 
@@ -164,7 +164,7 @@ describe("rule 2074: the console shows the effective state and the end date", ()
     const u = await newUser("sun");
     await act(u.email, { action: "suspend", for: "30" });
     expect((await act(u.email, { action: "unsuspend" })).status).toBe(200);
-    expect((await getUser(u.email))!.suspended).toBe(false);
+    expect((await getUser(acct(u)))!.suspended).toBe(false);
     const [row] = await rowsFor(u.email, "unsuspend");
     expect(row.before?.suspended).toBe(true);
     expect(typeof row.before?.until).toBe("string");
@@ -176,7 +176,7 @@ describe("rule 2075: the customer sees the end date in their language", () => {
   it("a timed suspension refuses sign-in with 403 and the end date; an indefinite one without it", async () => {
     const [a, b] = await Promise.all([newUser("cust-t"), newUser("cust-i")]);
     const until = new Date(Date.now() + 3 * DAY).toISOString();
-    await Promise.all([store(a.email, { suspended: { until } }), store(b.email, { suspended: true })]);
+    await Promise.all([store(acct(a), { suspended: { until } }), store(acct(b), { suspended: true })]);
     const ra = await login(a.email);
     expect(ra.status).toBe(403);
     expect(await ra.json()).toEqual({ ok: false, error: "suspended", until });
@@ -225,7 +225,7 @@ describe("rule 2076: staff pick indefinite, 7 days, 30 days or a date; anything 
     const res = await act(u.email, { action: "suspend", for: "date", date: "2001-01-01" });
     expect(res.status).toBe(400);
     expect((await res.json()).error).toBe("bad_until");
-    expect((await getUser(u.email))!.suspended ?? false).toBe(false);
+    expect((await getUser(acct(u)))!.suspended ?? false).toBe(false);
     expect(await rowsFor(u.email, "suspend")).toHaveLength(0);
   });
 });
@@ -243,8 +243,8 @@ describe("rule 2078: the workspace permission fails closed", () => {
 describe("rules 2077, 2079-2082: the read-only workspace view", () => {
   async function team() {
     const owner = await newUser("ws-owner");
-    await store(owner.email, { seats: 5, brandCap: 3 });
-    const o = (await getUser(owner.email))!;
+    await store(acct(owner), { seats: 5, brandCap: 3 });
+    const o = (await getUser(acct(owner)))!;
     const [m1, m2] = await Promise.all([newMember(o, "admin", "wsa"), newMember(o, "member", "wsm")]);
     const actor: Actor = { kind: "owner", pid: storedPersonId(o.email), home: true, email: o.email, name: o.name, lang: o.lang, role: "owner" };
     const inv = await createInvite(o, actor, `invitee-${Date.now()}@test.example`, "member", "ar");
@@ -310,13 +310,13 @@ describe("rules 2077, 2079-2082: the read-only workspace view", () => {
 
   it("rule 2079: peekInvites never drops an index entry; listInvites still tidies it", async () => {
     const { owner } = await team();
-    await db.sadd(`invites:${owner.email}`, "f".repeat(64));
-    expect((await peekInvites(owner.email)).length).toBe(1);
-    expect(await db.smembers(`invites:${owner.email}`)).toContain("f".repeat(64));
+    await db.sadd(`invites:${acct(owner)}`, "f".repeat(64));
+    expect((await peekInvites(acct(owner))).length).toBe(1);
+    expect(await db.smembers(`invites:${acct(owner)}`)).toContain("f".repeat(64));
     await openWs(owner.email);
-    expect(await db.smembers(`invites:${owner.email}`)).toContain("f".repeat(64));
-    expect((await listInvites(owner.email)).length).toBe(1);
-    expect(await db.smembers(`invites:${owner.email}`)).not.toContain("f".repeat(64));
+    expect(await db.smembers(`invites:${acct(owner)}`)).toContain("f".repeat(64));
+    expect((await listInvites(acct(owner))).length).toBe(1);
+    expect(await db.smembers(`invites:${acct(owner)}`)).not.toContain("f".repeat(64));
   });
 
   it("rule 2080: lastSignIn reads the newest indexed sign-in and null when there is none", async () => {

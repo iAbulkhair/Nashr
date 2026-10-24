@@ -12,6 +12,8 @@ import { push } from "@/lib/chat";
 import { ownerOf } from "@/lib/membership";
 import { deleteMembership, withAccountTeamLock, writeMembership, type TeamRole } from "@/lib/team";
 import { accountKey, personKey, storedAccountId, type AccountId, type PersonId } from "@/lib/keys";
+import { wsHandle } from "@/lib/ws-handle";
+import { WS_HEADER } from "@/lib/ws-path";
 
 import * as tasksRoute from "@/app/api/tasks/route";
 import * as taskRoute from "@/app/api/tasks/[id]/route";
@@ -263,7 +265,9 @@ function requestFor(p: Person, active: AccountId): Call {
   const others = accounts.filter((a) => a.aid !== active);
   const o = pick(others);
   const forged = { scope: scopeFor(o.aid, pick(o.brands)), email: o.u.email, acct: o.aid, aid: o.aid, pid: o.ownerPid, accountId: o.aid, ownerPid: o.ownerPid };
-  const headers = { "x-thakeen-ws": o.aid, "x-thakeen-acct": o.aid, "x-account": o.aid };
+  // The page names its own workspace by handle (the switch is on, rule 3810); the forgeries ride beside it. Another
+  // account's handle in that header is tests/multi-org-isolation-handles.test.ts's property.
+  const headers = { [WS_HEADER]: wsHandle(active), "x-thakeen-acct": o.aid, "x-account": o.aid };
   const own = accById(active)!;
   const qs = `acct=${encodeURIComponent(o.aid)}&pid=${encodeURIComponent(o.ownerPid)}&scope=${encodeURIComponent(forged.scope)}`;
   const calls: Call[] = [

@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { db } from "./db";
-import { adminEmails, getUser, type User } from "./auth";
+import { accountByLogin, adminEmails, type User } from "./auth";
 import { SAR_PER_USD } from "./pricing";
 import { monthKey } from "./credits";
 import { mediaCostKey } from "./usage";
@@ -115,10 +115,11 @@ export function fairUseAlertText(plan: string, lang: "ar" | "en") {
 async function alertFounders(u: Pick<User, "email" | "plan">, month: string): Promise<void> {
   try {
     if (!(await db.setNx(fairUseAlertedKey(month, u.email), 1, ALERTED_TTL_S))) return;
-    const founders = (await Promise.all(adminEmails().map((e) => getUser(e)))).filter((f): f is User => !!f);
+    // A founder is found through the login (rule 3816): an `a_` account is never at user:{address}.
+    const founders = (await Promise.all(adminEmails().map((e) => accountByLogin(e)))).filter((f): f is User => !!f);
     await Promise.all(founders.map((f) => {
       const lang = f.lang === "en" ? "en" : "ar";
-      return notifyItem(f.email, lang, { kind: "credits", ...fairUseAlertText(u.plan, lang), href: `/${lang}/admin/usage#margin` }, `fairuse:${month}:${tag(u.email)}`, 35);
+      return notifyItem(acct(f), lang, { kind: "credits", ...fairUseAlertText(u.plan, lang), href: `/${lang}/admin/usage#margin` }, `fairuse:${month}:${tag(u.email)}`, 35);
     }));
   } catch (e) {
     log.error("fair_use_alert_failed", e);

@@ -470,9 +470,9 @@ function calls(sf: ts.SourceFile, name: string): ts.CallExpression[] {
 const hasProp = (e: ts.Expression | undefined, name: string) =>
   !!e && (!ts.isObjectLiteralExpression(e) || e.properties.some((p) => p.name && ts.isIdentifier(p.name) && p.name.text === name) || e.properties.some(ts.isSpreadAssignment));
 
-describe("rule 2132 (scan): the switch is off and nothing in product code makes a p_ person", () => {
-  it("MULTI_ORG is false", () => {
-    expect(MULTI_ORG).toBe(false);
+describe("rule 2132 (scan): only the listed files branch on the switch, and only the sign-up and the invite accept make a p_ person", () => {
+  it("MULTI_ORG is true (rule 3810, the enable release; false through M1-M3)", () => {
+    expect(MULTI_ORG).toBe(true);
   });
 
   // M2 (docs/superpowers/plans/2026-10-20-multi-org-m2.md): the files that build the enable step branch on the switch

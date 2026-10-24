@@ -99,7 +99,7 @@ export async function finishLogin(l: Login, opts: FinishVia): Promise<Finish> {
   await createSession(email);
   // Product analytics count ACCOUNTS: a member's activity is the owner's account being active.
   const counted = accountOf(l);
-  if (counted) await track(counted.email, "login");
+  if (counted) await track(acct(counted), "login");
   return l.kind === "owner" ? { kind: "signed_in", verify: !emailVerified(l.user) } : { kind: "signed_in" };
 }
 

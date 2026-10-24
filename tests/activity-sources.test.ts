@@ -3,7 +3,7 @@ import { randomBytes } from "crypto";
 import { json, newUser, settle, signIn, signOut } from "./helpers/session";
 import { fakeAdapter, fakeDeps, mediaEnv, noNetwork, resetMediaCounters } from "./helpers/media";
 import { CAPS, db } from "@/lib/db";
-import { currentUser, getUser, saveUser, type User } from "@/lib/auth";
+import { currentUser, getUser, saveUser, type User, acct } from "@/lib/auth";
 import { saveGov } from "@/lib/governance";
 import { getBrand, saveTask, type Brand, type Task } from "@/lib/brand";
 import { scopeFor } from "@/lib/brands";
@@ -46,8 +46,8 @@ const clean = { completeness: 90, brand: 90, honesty: 90, language: 90, format: 
 
 async function owner(prefix: string): Promise<User> {
   const u = await newUser(prefix);
-  await db.set(`brand:${u.email}`, brand);
-  return (await getUser(u.email))!;
+  await db.set(`brand:${acct(u)}`, brand);
+  return { ...(await getUser(acct(u)))!, scope: acct(u) };
 }
 const rows = async (scope: string) => (await listActivity(scope, { limit: CAPS.activity })).rows;
 const kinds = async (scope: string) => (await rows(scope)).map((r) => r.kind).sort();
@@ -102,11 +102,11 @@ describe("a batch is one row with the owning agent, who asked and where; the jud
     await signIn(u.email);
     expect((await m.generate.POST(json("/api/generate", "POST", { type: "pricing_review" }))).status).toBe(200);
     await settle();
-    const got = await rows(u.email);
+    const got = await rows(acct(u));
     const gen = got.find((r) => r.kind === "generated")!;
     expect(gen).toMatchObject({ agent: "razan", by: { kind: "owner", email: u.email }, via: "app", type: "pricing_review", count: 2, credits: TASK_COST.pricing_review });
     expect(gen.tasks).toHaveLength(2);
-    const tasks = await Promise.all(gen.tasks!.map(async (id) => (await import("@/lib/brand")).getTask(u.email, id)));
+    const tasks = await Promise.all(gen.tasks!.map(async (id) => (await import("@/lib/brand")).getTask(acct(u), id)));
     const mean = Math.round(tasks.reduce((s, t) => s + t!.quality!.score, 0) / 2);
     expect(got.find((r) => r.kind === "judged")).toMatchObject({ agent: "razan", by: { kind: "system" }, via: "app", type: "pricing_review", count: 2, score: mean, tasks: gen.tasks });
     const failed = tasks.find((t) => t!.quality!.autofail)!;
@@ -119,51 +119,51 @@ describe("a batch is one row with the owning agent, who asked and where; the jud
     const { judgeTasks } = await import("@/lib/judge");
     const t = (id: string): Task => ({ id, type: "pricing_review", channel: "doc", title: id, body: "نص", status: "pending", createdAt: new Date().toISOString(), lang: "ar" });
     const u = await owner("as-judge-gone");
-    await Promise.all([saveTask(u.email, t("j1"), true), saveTask(u.email, t("j2"), true)]);
-    await db.del(`task:${u.email}:j2`); // the owner deleted it while the judge worked
-    await judgeTasks(u.email, u.email, brand, [t("j1"), t("j2")]);
-    expect(await rows(u.email)).toEqual([expect.objectContaining({ kind: "judged", tasks: ["j1"], count: 1 })]);
+    await Promise.all([saveTask(acct(u), t("j1"), true), saveTask(acct(u), t("j2"), true)]);
+    await db.del(`task:${acct(u)}:j2`); // the owner deleted it while the judge worked
+    await judgeTasks(acct(u), u.email, brand, [t("j1"), t("j2")]);
+    expect(await rows(acct(u))).toEqual([expect.objectContaining({ kind: "judged", tasks: ["j1"], count: 1 })]);
 
     const v = await owner("as-judge-wiped");
-    await Promise.all([saveTask(v.email, t("k1"), true), saveTask(v.email, t("k2"), true)]);
-    await wipeAccount(v.email);
-    await judgeTasks(v.email, v.email, brand, [t("k1"), t("k2")]);
+    await Promise.all([saveTask(acct(v), t("k1"), true), saveTask(acct(v), t("k2"), true)]);
+    await wipeAccount(acct(v));
+    await judgeTasks(acct(v), v.email, brand, [t("k1"), t("k2")]);
     const mem = (globalThis as unknown as { __nashrMem: { kv: Map<string, unknown>; lists: Map<string, string[]> } }).__nashrMem;
-    expect([...mem.kv.keys(), ...mem.lists.keys()].filter((k) => k.startsWith("activity:") && k.includes(v.email)), "no log recreated for a wiped account").toEqual([]);
-    expect(await db.get(`task:${v.email}:k1`)).toBeNull();
+    expect([...mem.kv.keys(), ...mem.lists.keys()].filter((k) => k.startsWith("activity:") && k.includes(acct(v))), "no log recreated for a wiped account").toEqual([]);
+    expect(await db.get(`task:${acct(v)}:k1`)).toBeNull();
   });
 
   it("a refusal at the charge is one row, nothing charged: `cap_reached` with spent/cap, `no_credits` with the cost", async () => {
     const m = await load({ state: "mock" });
     const u = await owner("as-cap");
     await signIn(u.email);
-    await saveGov(u.email, { agentCaps: { razan: 0 } });
+    await saveGov(acct(u), { agentCaps: { razan: 0 } });
     expect((await m.generate.POST(json("/api/generate", "POST", { type: "pricing_review" }))).status).toBe(402);
     const broke = await owner("as-broke");
-    await db.set(`user:${broke.email}`, { ...broke, credits: 0 });
+    await db.set(`user:${acct(broke)}`, { ...broke, credits: 0 });
     await signIn(broke.email);
     expect((await m.generate.POST(json("/api/generate", "POST", { type: "social" }))).status).toBe(402);
-    expect(await rows(u.email)).toEqual([expect.objectContaining({ kind: "cap_reached", agent: "razan", by: { kind: "owner", email: u.email }, via: "app", type: "pricing_review", credits: TASK_COST.pricing_review, outcome: "0/0" })]);
-    expect(await rows(broke.email)).toEqual([expect.objectContaining({ kind: "no_credits", agent: "noor", via: "app", credits: TASK_COST.social })]);
+    expect(await rows(acct(u))).toEqual([expect.objectContaining({ kind: "cap_reached", agent: "razan", by: { kind: "owner", email: u.email }, via: "app", type: "pricing_review", credits: TASK_COST.pricing_review, outcome: "0/0" })]);
+    expect(await rows(acct(broke))).toEqual([expect.objectContaining({ kind: "no_credits", agent: "noor", via: "app", credits: TASK_COST.social })]);
   });
 
   it("MCP: via `mcp`, by the token; chat: the turn's login and agent reach the batch and the files", async () => {
     const m = await load({ state: "mock" });
     const u = await owner("as-mcp");
-    const token = await createMcpToken(u.email);
+    const token = await createMcpToken(acct(u));
     const res = await m.mcp.POST(new Request("https://nashr.test/api/mcp", { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${token}` }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "generate_content", arguments: { type: "gbp" } } }) }));
     expect(((await res.json()) as { result: { isError?: boolean } }).result.isError).toBeUndefined();
-    expect(await rows(u.email)).toEqual([expect.objectContaining({ kind: "generated", agent: "noor", by: { kind: "token", email: u.email }, via: "mcp", type: "gbp" })]);
+    expect(await rows(acct(u))).toEqual([expect.objectContaining({ kind: "generated", agent: "noor", by: { kind: "token", email: u.email }, via: "mcp", type: "gbp" })]);
 
     const v = await owner("as-chat");
     const member = { kind: "member" as const, email: "sara@team.example", role: "member" as const };
     // A type draft_items refuses (rule 250: only DRAFT_TYPES) reaches no batch and writes no row.
     expect(await m.chat.runTool(v, "draft_items", { type: "sales_script", count: 1, brief: "b" }, [], [], undefined, { agent: "faris", by: member })).toMatch(/^Not a draft type/);
-    expect(await rows(v.email)).toEqual([]);
+    expect(await rows(acct(v))).toEqual([]);
     // Faris talking, not Majed: since step 3b Majed leads and proposes other agents' work instead (rule 273).
     await m.chat.runTool(v, "draft_items", { type: "whatsapp", count: 1, brief: "b" }, [], [], undefined, { agent: "faris", by: member });
     // The batch's agent is the type's owner (Noor), not the talking agent (Faris); `by` is the turn's.
-    expect(await rows(v.email)).toEqual([expect.objectContaining({ kind: "generated", agent: "noor", by: member, via: "chat", type: "whatsapp", count: 1 })]);
+    expect(await rows(acct(v))).toEqual([expect.objectContaining({ kind: "generated", agent: "noor", by: member, via: "chat", type: "whatsapp", count: 1 })]);
   });
 
   it("a chat turn passes its agent and its login: the founder's support access talking to Sami is recorded as the founder, with Sami", async () => {
@@ -177,14 +177,14 @@ describe("a batch is one row with the owning agent, who asked and where; the jud
     const s = (await currentUser())!;
     await m.chat.chat(s, "غيّر النبرة", undefined, "sami", { lang: "ar" });
     // The tool only proposes (rule 568): no row and no change until a Save, and the proposal names the talking agent.
-    expect(await rows(u.email)).toEqual([]);
-    const p = (await m.chat.history(u.email)).at(-1)!.proposals![0];
+    expect(await rows(acct(u))).toEqual([]);
+    const p = (await m.chat.history(acct(u))).at(-1)!.proposals![0];
     expect(p).toMatchObject({ field: "tone", to: "هادئة", agent: "sami", via: "chat" });
     // The Save, pressed in the same session: the row is by that login (the founder's support access), for Sami.
     const route = await import("@/app/api/brand/proposals/[id]/route");
     expect((await route.POST(json(`/api/brand/proposals/${p.id}`, "POST", { action: "apply" }), { params: Promise.resolve({ id: p.id }) })).status).toBe(200);
-    expect(await rows(u.email)).toEqual([expect.objectContaining({ kind: "brand_changed", agent: "sami", by: { kind: "founder", email: u.email, imp: "support-founder@test.example" }, via: "app", note: "tone" })]);
-    expect((await getBrand(u.email))!.tone).toBe("هادئة");
+    expect(await rows(acct(u))).toEqual([expect.objectContaining({ kind: "brand_changed", agent: "sami", by: { kind: "founder", email: u.email, imp: "support-founder@test.example" }, via: "app", note: "tone" })]);
+    expect((await getBrand(acct(u)))!.tone).toBe("هادئة");
   });
 });
 
@@ -198,10 +198,10 @@ describe("an added brand's setup is Noor's charge in that brand: its charge, a r
     const [onboard, brands] = await Promise.all([import("@/app/api/onboard/route"), import("@/app/api/brands/route")]);
     const u = await owner(prefix);
     // Room for a second brand on any plan: the founder brand cap (rule 1393).
-    await saveUser({ ...(await getUser(u.email))!, brandCap: 2 });
+    await saveUser({ ...(await getUser(acct(u)))!, brandCap: 2 });
     await signIn(u.email);
     const res = await brands.POST(json("/api/brands", "POST", { action: "add", name: "Second" }));
-    const scope = scopeFor(u.email, ((await res.json()) as { brand: { id: string } }).brand.id);
+    const scope = scopeFor(acct(u), ((await res.json()) as { brand: { id: string } }).brand.id);
     /** A confirmed site (the start page's confirm, written as it writes it), then the build. */
     const run = async (url: string) => {
       await confirmOnboard(scope, url);
@@ -215,9 +215,9 @@ describe("an added brand's setup is Noor's charge in that brand: its charge, a r
     expect((await drain(await run("second.example"))).at(-1)!.type).toBe("done");
     await settle();
     // What Governance counts against Noor in that brand is in its log too.
-    expect((await getUser(u.email))!.agentSpend?.by[scope]?.noor).toBe(COST);
+    expect((await getUser(acct(u)))!.agentSpend?.by[scope]?.noor).toBe(COST);
     expect(await rows(scope)).toEqual([expect.objectContaining({ kind: "onboard_charged", agent: "noor", by, via: "app", credits: COST })]);
-    expect(await rows(u.email), "nothing in the default brand").toEqual([]);
+    expect(await rows(acct(u)), "nothing in the default brand").toEqual([]);
 
     const v = await added("as-onb-fail");
     expect((await drain(await v.run("fail.example"))).at(-1)).toMatchObject({ type: "error", refunded: COST });
@@ -227,7 +227,7 @@ describe("an added brand's setup is Noor's charge in that brand: its charge, a r
 
     // A run that reuses the charge a killed run held adds no second charge row: the charge was taken once.
     const w = await added("as-onb-reuse");
-    const held = await chargeOnboard(w.u.email, COST, { scope: w.scope, agent: "noor" });
+    const held = await chargeOnboard(acct(w.u), COST, { scope: w.scope, agent: "noor" });
     expect(held).toMatchObject({ ok: true, reused: false });
     expect((await drain(await w.run("killed.example"))).at(-1)!.type).toBe("done");
     await settle();
@@ -244,7 +244,7 @@ describe("an added brand's setup is Noor's charge in that brand: its charge, a r
     await saveGov(scope, { agentCaps: { noor: COST } });
     const lockOwned = store.lockOwned.bind(store);
     vi.spyOn(store, "lockOwned").mockImplementationOnce(async (key, ttl) => {
-      await saveUser({ ...(await getUser(u.email))!, credits: 0 });
+      await saveUser({ ...(await getUser(acct(u)))!, credits: 0 });
       return lockOwned(key, ttl);
     });
     const res = await run("capped.example");
@@ -254,22 +254,22 @@ describe("an added brand's setup is Noor's charge in that brand: its charge, a r
     expect(got).toHaveLength(2);
     expect(got.find((r) => r.kind === "no_credits")).toMatchObject({ agent: "noor", by, via: "app", credits: COST });
     // An ended trial is refused and adds nothing, as for a text batch.
-    await saveUser({ ...(await getUser(u.email))!, credits: 50, trialEnds: new Date(Date.now() - 864e5).toISOString() });
+    await saveUser({ ...(await getUser(acct(u)))!, credits: 50, trialEnds: new Date(Date.now() - 864e5).toISOString() });
     expect(await (await run("capped.example")).json()).toMatchObject({ error: "trial_over" });
     expect(await rows(scope)).toHaveLength(2);
-    expect((await getUser(u.email))!.agentSpend?.by[scope]?.noor ?? 0, "nothing charged").toBe(0);
+    expect((await getUser(acct(u)))!.agentSpend?.by[scope]?.noor ?? 0, "nothing charged").toBe(0);
   });
 
   it("the daily sweep's refund is one `onboard_refunded` row by the cron in that brand; a hold it only drops adds none", async () => {
     const u = await owner("as-onb-sweep");
-    const [lost, built] = [scopeFor(u.email, "b2"), scopeFor(u.email, "b3")];
+    const [lost, built] = [scopeFor(acct(u), "b2"), scopeFor(acct(u), "b3")];
     // Two runs the platform killed after their charge, a day ago; the second brand was saved, the first never was.
-    const a = await chargeOnboard(u.email, COST, { scope: lost, agent: "noor" });
-    const b = await chargeOnboard(u.email, COST, { scope: built, agent: "noor" });
+    const a = await chargeOnboard(acct(u), COST, { scope: lost, agent: "noor" });
+    const b = await chargeOnboard(acct(u), COST, { scope: built, agent: "noor" });
     if (!a.ok || !b.ok) throw new Error("charge failed");
     const old = new Date(Date.now() - ONBOARD_HOLD_MS - 60e3).toISOString();
-    await Promise.all([saveUser({ ...(await getUser(u.email))!, onboardPaid: { [lost]: { ...a.hold, at: old }, [built]: { ...b.hold, at: old } } }), db.set(`brand:${built}`, brand)]);
-    const swept = await sweepOnboardHolds((await getUser(u.email))!);
+    await Promise.all([saveUser({ ...(await getUser(acct(u)))!, onboardPaid: { [lost]: { ...a.hold, at: old }, [built]: { ...b.hold, at: old } } }), db.set(`brand:${built}`, brand)]);
+    const swept = await sweepOnboardHolds((await getUser(acct(u)))!);
     expect(swept).toMatchObject({ refunded: [{ scope: lost, agent: "noor", credits: COST }], dropped: [built], credits: 50 - COST });
     expect(await rows(lost)).toEqual([expect.objectContaining({ kind: "onboard_refunded", agent: "noor", by: { kind: "system", job: "cron" }, via: "cron", credits: COST, refunded: true })]);
     expect(await rows(built), "its charge stands: nothing to record").toEqual([]);
@@ -282,47 +282,47 @@ describe("a scheduled run adds its outcome once; nothing-new at most once a peri
   it("a routine that ran: `generated` by the routine and `routine_ran`; at the agent's cap: only `routine_skipped`, no second refusal row", async () => {
     const m = await load({ state: "on" });
     const u = await owner("as-rt");
-    await Promise.all([db.set(`storesales:${u.email}`, snap()), saveSchedule(u.email, { routines: { razan_cash_forecast: true } })]);
+    await Promise.all([db.set(`storesales:${acct(u)}`, snap()), saveSchedule(acct(u), { routines: { razan_cash_forecast: true } })]);
     const out = await m.routines.runRoutine(u, "razan_cash_forecast");
     expect(out).toMatch(/^ok:[1-9]$/);
     const n = Number(out.slice(3));
     const sys = { kind: "system", job: "routine" };
-    const got = await rows(u.email);
+    const got = await rows(acct(u));
     expect(got.find((r) => r.kind === "generated")).toMatchObject({ agent: "razan", by: sys, via: "routine", type: "cash_forecast", count: n });
     expect(got.find((r) => r.kind === "routine_ran")).toMatchObject({ agent: "razan", by: sys, via: "routine", type: "cash_forecast", count: n, outcome: out });
 
     const v = await owner("as-rt-cap");
-    await Promise.all([db.set(`storesales:${v.email}`, snap()), saveSchedule(v.email, { routines: { razan_cash_forecast: true } }), saveGov(v.email, { agentCaps: { razan: 0 } })]);
+    await Promise.all([db.set(`storesales:${acct(v)}`, snap()), saveSchedule(acct(v), { routines: { razan_cash_forecast: true } }), saveGov(acct(v), { agentCaps: { razan: 0 } })]);
     expect(await m.routines.runRoutine(v, "razan_cash_forecast")).toBe("agent_cap");
-    expect(await rows(v.email)).toEqual([expect.objectContaining({ kind: "routine_skipped", agent: "razan", by: sys, via: "routine", outcome: "agent_cap" })]);
+    expect(await rows(acct(v))).toEqual([expect.objectContaining({ kind: "routine_skipped", agent: "razan", by: sys, via: "routine", outcome: "agent_cap" })]);
   });
 
   it("idle is one row a period however often the cron asks; off and retries are none; a throw is `error` and still throws", async () => {
     const m = await load({ state: "on" });
     const u = await owner("as-idle");
-    await saveSchedule(u.email, { routines: { dana_weekly_report: true } });
+    await saveSchedule(acct(u), { routines: { dana_weekly_report: true } });
     expect(await m.routines.runRoutine(u, "dana_weekly_report")).toBe("idle");
     expect(await m.routines.runRoutine(u, "dana_weekly_report")).toBe("idle");
-    expect(await rows(u.email)).toEqual([expect.objectContaining({ kind: "routine_skipped", agent: "dana", outcome: "idle", type: "weekly_report" })]);
-    expect(await db.get(actSkipKey(u.email, "dana_weekly_report", periodOf("weekly")))).not.toBeNull();
-    await saveSchedule(u.email, { routines: { dana_weekly_report: false } });
+    expect(await rows(acct(u))).toEqual([expect.objectContaining({ kind: "routine_skipped", agent: "dana", outcome: "idle", type: "weekly_report" })]);
+    expect(await db.get(actSkipKey(acct(u), "dana_weekly_report", periodOf("weekly")))).not.toBeNull();
+    await saveSchedule(acct(u), { routines: { dana_weekly_report: false } });
     expect(await m.routines.runRoutine(u, "dana_weekly_report")).toBe("off");
-    expect(await rows(u.email)).toHaveLength(1);
+    expect(await rows(acct(u))).toHaveLength(1);
 
     // The same rules at the recorder: the next period records its idle again; retries, "off" and done periods never do.
     const run = { id: "dana_weekly_report", agent: "dana" as const, type: "weekly_report" as const, via: "routine" as const, by: { kind: "system" as const, job: "routine" as const }, ttlS: 60 };
-    for (const o of ["retry:locked", "retry:paused", "off", "already_this_period", "skip:mock", "no_brand"]) await recordRun(u.email, { ...run, period: "p1" }, o);
-    await recordRun(u.email, { ...run, period: "next-week" }, "idle");
-    await recordRun(u.email, { ...run, period: "next-week" }, "no_data");
-    for (const o of ["attempts_exhausted", "attempts_exhausted", "cap_reached", "trial_over", "no_credits"]) await recordRun(u.email, { ...run, period: "p1" }, o);
-    expect((await rows(u.email)).map((r) => r.outcome).sort()).toEqual(["attempts_exhausted", "attempts_exhausted", "cap_reached", "idle", "idle", "no_credits", "trial_over"]);
+    for (const o of ["retry:locked", "retry:paused", "off", "already_this_period", "skip:mock", "no_brand"]) await recordRun(acct(u), { ...run, period: "p1" }, o);
+    await recordRun(acct(u), { ...run, period: "next-week" }, "idle");
+    await recordRun(acct(u), { ...run, period: "next-week" }, "no_data");
+    for (const o of ["attempts_exhausted", "attempts_exhausted", "cap_reached", "trial_over", "no_credits"]) await recordRun(acct(u), { ...run, period: "p1" }, o);
+    expect((await rows(acct(u))).map((r) => r.outcome).sort()).toEqual(["attempts_exhausted", "attempts_exhausted", "cap_reached", "idle", "idle", "no_credits", "trial_over"]);
 
     const v = await owner("as-throw");
-    await Promise.all([db.set(`storesales:${v.email}`, snap()), saveSchedule(v.email, { routines: { razan_cash_forecast: true } })]);
+    await Promise.all([db.set(`storesales:${acct(v)}`, snap()), saveSchedule(acct(v), { routines: { razan_cash_forecast: true } })]);
     // The attempt counter's write fails after the lock: the run throws, and its outcome is still recorded.
     vi.spyOn(m.db, "incrby").mockRejectedValueOnce(new Error("upstash down"));
     await expect(m.routines.runRoutine(v, "razan_cash_forecast")).rejects.toThrow("upstash down");
-    expect(await rows(v.email)).toEqual([expect.objectContaining({ kind: "routine_skipped", outcome: "error", agent: "razan" })]);
+    expect(await rows(acct(v))).toEqual([expect.objectContaining({ kind: "routine_skipped", outcome: "error", agent: "razan" })]);
   });
 
   it("the Sunday plan: the cron's run is the system's, the owner's Run now is the owner's", async () => {
@@ -332,17 +332,17 @@ describe("a scheduled run adds its outcome once; nothing-new at most once a peri
     expect(out).toMatch(/^ok:[1-9]$/);
     await settle();
     const cron = { kind: "system", job: "cron" };
-    expect(await kinds(u.email)).toEqual(["generated", "judged", "routine_ran"]);
-    expect((await rows(u.email)).find((r) => r.kind === "routine_ran")).toMatchObject({ agent: "noor", by: cron, via: "weekly", type: "weekly_plan", count: Number(out.slice(3)), outcome: out });
-    expect((await rows(u.email)).find((r) => r.kind === "generated")).toMatchObject({ by: cron, via: "weekly" });
+    expect(await kinds(acct(u))).toEqual(["generated", "judged", "routine_ran"]);
+    expect((await rows(acct(u))).find((r) => r.kind === "routine_ran")).toMatchObject({ agent: "noor", by: cron, via: "weekly", type: "weekly_plan", count: Number(out.slice(3)), outcome: out });
+    expect((await rows(acct(u))).find((r) => r.kind === "generated")).toMatchObject({ by: cron, via: "weekly" });
     // The judge's row carries the batch's via, not a default.
-    expect((await rows(u.email)).find((r) => r.kind === "judged")).toMatchObject({ agent: "noor", by: { kind: "system" }, via: "weekly" });
+    expect((await rows(acct(u))).find((r) => r.kind === "judged")).toMatchObject({ agent: "noor", by: { kind: "system" }, via: "weekly" });
 
     const v = await owner("as-week-now");
     await signIn(v.email);
     await m.schedule.POST(json("/api/schedule", "POST", { run: "weekly" }));
     await settle();
-    expect((await rows(v.email)).filter((r) => r.kind !== "judged").map((r) => [r.kind, r.by])).toEqual(expect.arrayContaining([["generated", { kind: "owner", email: v.email }], ["routine_ran", { kind: "owner", email: v.email }]]));
+    expect((await rows(acct(v))).filter((r) => r.kind !== "judged").map((r) => [r.kind, r.by])).toEqual(expect.arrayContaining([["generated", { kind: "owner", email: v.email }], ["routine_ran", { kind: "owner", email: v.email }]]));
   });
 });
 
@@ -358,11 +358,11 @@ describe("a render is recorded at its start and its end, under the job's own sco
 
   const taskFor = async (u: User, over: Partial<Task> = {}) => {
     const t: Task = { id: `t${randomBytes(4).toString("hex")}`, type: "social", channel: "instagram", title: "عرض", body: "نص", status: "pending", createdAt: new Date().toISOString(), lang: "ar", ...over };
-    await saveTask(u.email, t, true);
+    await saveTask(acct(u), t, true);
     return t;
   };
   const input = (u: User, t: Task, model: MediaModelId, over: Partial<StartInput> = {}): StartInput => ({
-    scope: u.email, email: u.email, lang: u.lang, accountSince: u.createdAt, plan: "pro", balance: u.credits, agent: "noor", taskId: t.id, model,
+    scope: acct(u), email: acct(u), lang: u.lang, accountSince: u.createdAt, plan: "pro", balance: u.credits, agent: "noor", taskId: t.id, model, by: { kind: "owner", email: u.email },
     aspect: "square", deadline: Date.now() + 100_000, prompt: async () => "a test prompt", ...over,
   });
   const started = (r: StartResult): MediaJob => { if (!r.ok) throw new Error(`refused ${r.error}`); return r.job; };
@@ -374,7 +374,7 @@ describe("a render is recorded at its start and its end, under the job's own sco
     const t = await taskFor(u);
     const member = { kind: "member" as const, email: "sara@team.example", role: "admin" as const };
     started(await startMedia(input(u, t, "img-fast", { by: member, from: "chat" }), fakeDeps({ fal: fakeAdapter("fal") })));
-    const got = await rows(u.email);
+    const got = await rows(acct(u));
     expect(got.find((r) => r.kind === "image_started")).toMatchObject({ agent: "noor", by: member, via: "chat", tasks: [t.id], credits: 1, media: "image" });
     expect(got.find((r) => r.kind === "render_done")).toMatchObject({ agent: "noor", by: { kind: "system" }, via: "media", type: "social", tasks: [t.id], credits: 1, media: "image" });
 
@@ -384,8 +384,8 @@ describe("a render is recorded at its start and its end, under the job's own sco
     const deps = fakeDeps({ kie });
     const job = started(await startMedia(input(v, t2, "img-balanced"), deps));
     expect((await advance(job, deps, sweep())).state).toBe("failed");
-    expect((await rows(v.email)).find((r) => r.kind === "render_failed")).toMatchObject({ agent: "noor", by: { kind: "system" }, via: "cron", outcome: "provider_failed", refunded: true, media: "image", tasks: [t2.id] });
-    expect((await rows(v.email)).find((r) => r.kind === "image_started")).toMatchObject({ by: { kind: "owner", email: v.email }, via: "app" });
+    expect((await rows(acct(v))).find((r) => r.kind === "render_failed")).toMatchObject({ agent: "noor", by: { kind: "system" }, via: "cron", outcome: "provider_failed", refunded: true, media: "image", tasks: [t2.id] });
+    expect((await rows(acct(v))).find((r) => r.kind === "image_started")).toMatchObject({ by: { kind: "owner", email: v.email }, via: "app" });
   });
 
   it("the row uses the job's stored scope and agent, and a job that ends after its account was wiped writes nothing", async () => {
@@ -393,7 +393,7 @@ describe("a render is recorded at its start and its end, under the job's own sco
     const u = await newUser("as-media-own");
     // A second brand's scope, and an agent the job was charged to that is not the item's type owner: the end row must
     // take both from the job the server stored, not from the account or the item.
-    const scope = `${u.email}#b2`;
+    const scope = `${acct(u)}#b2`;
     const t: Task = { id: `t${randomBytes(4).toString("hex")}`, type: "social", channel: "instagram", title: "عرض", body: "نص", status: "pending", createdAt: new Date().toISOString(), lang: "ar" };
     await saveTask(scope, t, true);
     const kie = fakeAdapter("kie", { status: () => ({ state: "done", urls: ["https://tempfile.kie.example/r.png"] }) });
@@ -402,16 +402,16 @@ describe("a render is recorded at its start and its end, under the job's own sco
     expect(job.spend).toMatchObject({ scope, agent: "dana" });
     expect((await advance(job, deps, { deadline: Date.now() + 100_000, via: "poll" })).state).toBe("done");
     expect((await rows(scope)).find((r) => r.kind === "render_done")).toMatchObject({ agent: "dana", via: "media", type: "social", tasks: [t.id] });
-    expect(await rows(u.email)).toEqual([]);
+    expect(await rows(acct(u))).toEqual([]);
 
     const w = await newUser("as-media-gone");
     const tw = await taskFor(w);
     const pending = fakeAdapter("kie", { status: () => ({ state: "failed", reason: "provider_failed" }) });
     const d2 = fakeDeps({ kie: pending });
     const j2 = started(await startMedia(input(w, tw, "img-balanced"), d2));
-    await wipeAccount(w.email);
+    await wipeAccount(acct(w));
     expect((await advance(j2, d2, sweep())).state).toBe("failed");
-    expect(await db.lrange(`activity:${w.email}`, 0, -1)).toEqual([]);
+    expect(await db.lrange(`activity:${acct(w)}`, 0, -1)).toEqual([]);
   });
 
   it("a refusal at the agent's cap or the balance is one row, nothing charged", async () => {
@@ -420,9 +420,9 @@ describe("a render is recorded at its start and its end, under the job's own sco
     const t = await taskFor(u);
     expect(await startMedia(input(u, t, "vid-quick", { cap: 12, spent: 1 }), fakeDeps({ kie: fakeAdapter("kie") }))).toMatchObject({ ok: false, error: "agent_cap" });
     expect(await startMedia(input(u, t, "img-fast", { balance: 0 }), fakeDeps({ fal: fakeAdapter("fal") }))).toMatchObject({ ok: false, error: "no_credits" });
-    const got = await rows(u.email);
+    const got = await rows(acct(u));
     expect(got.find((r) => r.kind === "cap_reached")).toMatchObject({ agent: "noor", media: "video", credits: 12, outcome: "1/12", tasks: [t.id] });
     expect(got.find((r) => r.kind === "no_credits")).toMatchObject({ agent: "noor", media: "image", credits: 1 });
-    expect((await getUser(u.email))!.credits).toBe(50);
+    expect((await getUser(acct(u)))!.credits).toBe(50);
   });
 });

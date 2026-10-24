@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { TASK_COST, TASK_TYPES, isTaskType } from "@/lib/tasks";
-import { PLAN_CREDITS, PLANS, isPlan, seatLimit, type Plan } from "@/lib/auth";
+import { PLAN_CREDITS, PLANS, isPlan, seatLimit, type Plan, acct } from "@/lib/auth";
 import { allowanceOf, priceOf } from "@/lib/pricing";
 import { charge, adjust } from "@/lib/credits";
 import { newUser } from "./helpers/session";
@@ -65,23 +65,23 @@ describe("the ledger refuses a cost that is not a number", () => {
   it("charge throws rather than writing NaN into the balance", async () => {
     const u = await newUser("ledger");
     for (const bad of [NaN, Infinity, -1, undefined as unknown as number, "5" as unknown as number, (() => 1) as unknown as number]) {
-      await expect(charge(u.email, bad)).rejects.toThrow(/invalid_cost/);
+      await expect(charge(acct(u), bad)).rejects.toThrow(/invalid_cost/);
     }
-    expect((await getUser(u.email))!.credits, "no failed charge may move the balance").toBe(50);
+    expect((await getUser(acct(u)))!.credits, "no failed charge may move the balance").toBe(50);
   });
 
   it("adjust throws on a non-finite delta", async () => {
     const u = await newUser("ledger");
-    await expect(adjust(u.email, NaN)).rejects.toThrow(/invalid_delta/);
-    expect((await getUser(u.email))!.credits).toBe(50);
+    await expect(adjust(acct(u), NaN)).rejects.toThrow(/invalid_delta/);
+    expect((await getUser(acct(u)))!.credits).toBe(50);
   });
 
   it("a balance already damaged by the old defect is repaired on the next charge", async () => {
     const u = await newUser("ledger");
     const { saveUser } = await import("@/lib/auth");
     await saveUser({ ...u, credits: NaN });
-    const r = await charge(u.email, 5);
+    const r = await charge(acct(u), 5);
     expect(r.ok, "a NaN balance must read as zero, not as infinite credit").toBe(false);
-    expect((await getUser(u.email))!.credits).toBe(0);
+    expect((await getUser(acct(u)))!.credits).toBe(0);
   });
 });

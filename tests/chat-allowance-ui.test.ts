@@ -22,7 +22,7 @@ vi.mock("next/navigation", async (orig) => ({
 }));
 
 import { db } from "@/lib/db";
-import { getUser, saveUser, type User } from "@/lib/auth";
+import { acct, getUser, saveUser, type User } from "@/lib/auth";
 import { appDict, type AppDict } from "@/lib/app-i18n";
 import { CHAT_ALLOWANCE, chatOverflowHold, formatCount } from "@/lib/pricing";
 import { chatMsgKey, chatTrialKey } from "@/lib/usage";
@@ -48,10 +48,11 @@ const BRAND = { name: "Roastery", website: "", industry: "coffee", dialect: "sau
 /** An owner with a brand (so the chat page renders the workspace thread), on `plan`, with `used` messages counted. */
 async function account(plan: User["plan"], used: number, extra: Partial<User> = {}): Promise<User> {
   const u = await newUser("caui");
-  await db.set(`brand:${u.email}`, BRAND);
-  await saveUser({ ...(await getUser(u.email))!, plan, ...extra });
-  if (used) await db.set(plan === "trial" ? chatTrialKey(u.email) : chatMsgKey(u.email), used);
-  return (await getUser(u.email))!;
+  const id = acct(u);
+  await db.set(`brand:${id}`, BRAND);
+  await saveUser({ ...(await getUser(id))!, plan, ...extra });
+  if (used) await db.set(plan === "trial" ? chatTrialKey(id) : chatMsgKey(id), used);
+  return (await getUser(id))!;
 }
 const chatPage = async (lang: "ar" | "en") => renderToStaticMarkup((await ChatPage({ params: Promise.resolve({ lang }), searchParams: Promise.resolve({}) } as never)) as ReactElement);
 

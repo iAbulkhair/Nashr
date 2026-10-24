@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { newUser } from "./helpers/session";
+import { acct } from "@/lib/auth";
+import { handleOf } from "@/lib/ws-handle";
 import { saveConnection, type Connection } from "@/lib/connectors/store";
 import { followUps, type Notif } from "@/lib/notifications";
 
@@ -17,31 +19,31 @@ describe("the daily follow-ups tell the owner to reconnect a refused platform (r
     const u = await newUser("reconnect");
     const user = { ...u, lang: "en" as const };
     await Promise.all([
-      saveConnection(u.email, conn("salla", { needsReconnect: "2026-10-18T02:00:00Z" })),
-      saveConnection(u.email, conn("x", { needsReconnect: "2026-10-17T14:00:00Z", meta: { via: "composio" } })),
-      saveConnection(u.email, conn("shopify")),
+      saveConnection(acct(u), conn("salla", { needsReconnect: "2026-10-18T02:00:00Z" })),
+      saveConnection(acct(u), conn("x", { needsReconnect: "2026-10-17T14:00:00Z", meta: { via: "composio" } })),
+      saveConnection(acct(u), conn("shopify")),
     ]);
-    const first = reconnects(await followUps(user, u.email));
+    const first = reconnects(await followUps(user, acct(u)));
     expect(first).toHaveLength(1);
-    expect(first[0]).toMatchObject({ kind: "info", href: "/en/app/b/default/settings/connections" });
+    expect(first[0]).toMatchObject({ kind: "info", href: `/en/app/w/${handleOf(u)}/b/default/settings/connections` });
     expect(first[0].title).toBe("Reconnect Salla (سلة), X");
     expect(first[0].title).not.toContain("Shopify");
     expect(JSON.stringify(first[0])).not.toContain("test-token");
-    expect(reconnects(await followUps(user, u.email)), "same refusal, same week").toHaveLength(0);
+    expect(reconnects(await followUps(user, acct(u))), "same refusal, same week").toHaveLength(0);
   });
 
   it("a new refusal of the same platform is a new entry; a healthy workspace gets none", async () => {
     const u = await newUser("reconnect-again");
     const user = { ...u, lang: "ar" as const };
-    await saveConnection(u.email, conn("salla", { needsReconnect: "2026-10-10T02:00:00Z" }));
-    const first = reconnects(await followUps(user, u.email));
+    await saveConnection(acct(u), conn("salla", { needsReconnect: "2026-10-10T02:00:00Z" }));
+    const first = reconnects(await followUps(user, acct(u)));
     expect(first).toHaveLength(1);
     expect(first[0].title).toBe("أعد ربط Salla (سلة)");
-    await saveConnection(u.email, conn("salla", { needsReconnect: "2026-10-18T02:00:00Z" }));
-    expect(reconnects(await followUps(user, u.email))).toHaveLength(1);
+    await saveConnection(acct(u), conn("salla", { needsReconnect: "2026-10-18T02:00:00Z" }));
+    expect(reconnects(await followUps(user, acct(u)))).toHaveLength(1);
 
     const ok = await newUser("reconnect-none");
-    await saveConnection(ok.email, conn("shopify"));
-    expect(reconnects(await followUps({ ...ok, lang: "en" }, ok.email))).toHaveLength(0);
+    await saveConnection(acct(ok), conn("shopify"));
+    expect(reconnects(await followUps({ ...ok, lang: "en" }, acct(ok)))).toHaveLength(0);
   });
 });

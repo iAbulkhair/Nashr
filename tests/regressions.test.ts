@@ -8,7 +8,9 @@ import { deleteConnection, listConnections, OAUTH_COOKIE, saveConnection, saveSt
 import { getBrand, saveBrand, type Brand } from "@/lib/brand";
 import { EDITABLE_BRAND_FIELDS, runTool } from "@/lib/chat";
 import { chatCaps, chatRefusal } from "@/lib/rate";
-import { currentUser, isAdminCookie } from "@/lib/auth";
+import { currentUser, isAdminCookie, acct, sc } from "@/lib/auth";
+import { handleOf } from "@/lib/ws-handle";
+import { WS_HEADER } from "@/lib/ws-path";
 
 /** Each test here is a bug that was live in the code and is now fixed; the test is what keeps it fixed. */
 
@@ -27,12 +29,12 @@ beforeEach(() => signOut());
 describe("a deleted file leaves the index with its record", () => {
   it("drops the name from the workspace file set, not only the record", async () => {
     const u = await newUser("del");
-    await writeFile(u.email, "notes.md", "x", "user");
-    expect(await db.smembers(`files:${u.email}`)).toEqual(["notes.md"]);
-    await deleteFile(u.email, "notes.md");
+    await writeFile(acct(u), "notes.md", "x", "user");
+    expect(await db.smembers(`files:${acct(u)}`)).toEqual(["notes.md"]);
+    await deleteFile(acct(u), "notes.md");
     // The set used to keep the name for ever: listFiles then paid a read per deleted file, and the set grew unbounded.
-    expect(await db.smembers(`files:${u.email}`)).toEqual([]);
-    expect(await listFiles(u.email)).toEqual([]);
+    expect(await db.smembers(`files:${acct(u)}`)).toEqual([]);
+    expect(await listFiles(acct(u))).toEqual([]);
   });
   it("the route behaves the same, and writing the name again brings it back once", async () => {
     const u = await newUser("del");
@@ -40,26 +42,26 @@ describe("a deleted file leaves the index with its record", () => {
     await filesRoute.PUT(json("/api/files", "PUT", { name: "a.md", content: "1" }));
     await filesRoute.DELETE(json("/api/files?name=a.md", "DELETE"));
     await filesRoute.PUT(json("/api/files", "PUT", { name: "a.md", content: "2" }));
-    expect(await db.smembers(`files:${u.email}`)).toEqual(["a.md"]);
-    expect((await listFiles(u.email)).map((f) => f.content)).toEqual(["2"]);
+    expect(await db.smembers(`files:${acct(u)}`)).toEqual(["a.md"]);
+    expect((await listFiles(acct(u))).map((f) => f.content)).toEqual(["2"]);
   });
 });
 
 describe("a disconnected platform leaves the index with its credentials", () => {
   it("deletes the encrypted record and removes the provider from the set", async () => {
     const u = await newUser("conn");
-    await saveConnection(u.email, { provider: "telegram", data: { botToken: "secret" }, connectedAt: new Date().toISOString() });
-    await deleteConnection(u.email, "telegram");
-    expect(await db.get(`conn:${u.email}:telegram`)).toBeNull();
-    expect(await db.smembers(`conns:${u.email}`)).toEqual([]);
-    expect(await listConnections(u.email)).toEqual([]);
+    await saveConnection(acct(u), { provider: "telegram", data: { botToken: "secret" }, connectedAt: new Date().toISOString() });
+    await deleteConnection(acct(u), "telegram");
+    expect(await db.get(`conn:${acct(u)}:telegram`)).toBeNull();
+    expect(await db.smembers(`conns:${acct(u)}`)).toEqual([]);
+    expect(await listConnections(acct(u))).toEqual([]);
   });
 });
 
 describe("the brand file is not writable field by field from a tool call", () => {
   it("refuses a field that is not on the allowlist and leaves the brand untouched", async () => {
     const u = await newUser("brandtool");
-    await saveBrand(u.email, brand());
+    await saveBrand(acct(u), brand());
     // The owner, resolved the way a request is: update_brand is refused to a user with no actor (tests/role-gates.test.ts).
     await signIn(u.email);
     const me = (await currentUser())!;
@@ -68,19 +70,19 @@ describe("the brand file is not writable field by field from a tool call", () =>
     for (const field of ["channels", "languages", "social", "updatedAt", "__proto__"]) {
       expect(await runTool(me, "update_brand", { field, value: "instagram" }, actions)).toMatch(/Cannot change brand/);
     }
-    const after = (await getBrand(u.email))!;
+    const after = (await getBrand(acct(u)))!;
     expect(Array.isArray(after.channels)).toBe(true);
     expect(after.channels).toEqual(["instagram", "whatsapp"]);
     expect(Array.isArray(after.languages)).toBe(true);
   });
   it("still proposes the fields the tool is meant for, and saves nothing until the owner's Save (rule 568)", async () => {
     const u = await newUser("brandtool");
-    await saveBrand(u.email, brand());
+    await saveBrand(acct(u), brand());
     await signIn(u.email);
     const actions: string[] = [];
     expect(await runTool((await currentUser())!, "update_brand", { field: "tone", value: "رسمي" }, actions)).toMatch(/Not saved yet: brand\.tone/);
     expect(actions).toEqual(["brandprop:tone"]);
-    expect((await getBrand(u.email))!.tone).toBe(brand().tone);
+    expect((await getBrand(acct(u)))!.tone).toBe(brand().tone);
     expect(EDITABLE_BRAND_FIELDS).toContain("tone");
     expect(EDITABLE_BRAND_FIELDS).not.toContain("channels");
   });
@@ -122,7 +124,7 @@ describe("the Shopify callback only ever talks to a Shopify host", () => {
     const u = await newUser("shop");
     const exchange = vi.fn();
     vi.doMock("@/lib/connectors/oauth", () => ({ exchangeCode: exchange, REDIRECT: (id: string) => `https://nashr.test/api/connect/${id}/callback` }));
-    await saveState("st-evil", { email: u.email, provider: "shopify", lang: "ar", shop: "evil.example", verifier: "" });
+    await saveState("st-evil", { email: sc(u), provider: "shopify", lang: "ar", shop: "evil.example", verifier: "" });
     // Get past the session binding and the signature, so the host check is what refuses it.
     await signIn(u.email);
     jar().set(OAUTH_COOKIE, "st-evil");
@@ -134,7 +136,7 @@ describe("the Shopify callback only ever talks to a Shopify host", () => {
     if (before === undefined) delete process.env.SHOPIFY_CLIENT_SECRET; else process.env.SHOPIFY_CLIENT_SECRET = before;
     expect(res.headers.get("location")).toContain("error=bad_shop");
     expect(exchange).not.toHaveBeenCalled();
-    expect(await listConnections(u.email)).toEqual([]);
+    expect(await listConnections(acct(u))).toEqual([]);
   });
 });
 
@@ -176,8 +178,8 @@ describe("an ended trial cannot buy an image", () => {
     const u = await expired();
     const { saveTask, getBrand: gb } = await import("@/lib/brand");
     void gb;
-    await saveBrand(u.email, brand());
-    await saveTask(u.email, { id: "img1", type: "social", channel: "instagram", title: "t", body: "b", status: "approved", createdAt: new Date().toISOString(), lang: "ar" });
+    await saveBrand(acct(u), brand());
+    await saveTask(acct(u), { id: "img1", type: "social", channel: "instagram", title: "t", body: "b", status: "approved", createdAt: new Date().toISOString(), lang: "ar" });
 
     const imageRoute = await import("@/app/api/tasks/[id]/image/route");
     const res = await imageRoute.POST(json("/api/tasks/img1/image", "POST"), params({ id: "img1" }));
@@ -185,14 +187,14 @@ describe("an ended trial cannot buy an image", () => {
     expect((await res.json()).error).toBe("trial_over");
 
     const { getUser } = await import("@/lib/auth");
-    expect((await getUser(u.email))!.credits, "a refused request must not have charged").toBe(50);
+    expect((await getUser(acct(u)))!.credits, "a refused request must not have charged").toBe(50);
   });
 
   it("the video route refuses with the same 402, before the model, the plan or the provider are looked at", async () => {
     const u = await expired();
-    await saveBrand(u.email, brand());
+    await saveBrand(acct(u), brand());
     const { saveTask } = await import("@/lib/brand");
-    await saveTask(u.email, { id: "vid1", type: "social", channel: "instagram", title: "t", body: "b", status: "approved", createdAt: new Date().toISOString(), lang: "ar" });
+    await saveTask(acct(u), { id: "vid1", type: "social", channel: "instagram", title: "t", body: "b", status: "approved", createdAt: new Date().toISOString(), lang: "ar" });
 
     const videoRoute = await import("@/app/api/tasks/[id]/video/route");
     // A model the route would otherwise answer plan_required or bad_model for: the trial check is the first line.
@@ -203,22 +205,22 @@ describe("an ended trial cannot buy an image", () => {
     }
 
     const { getUser } = await import("@/lib/auth");
-    expect((await getUser(u.email))!.credits, "a refused request must not have charged").toBe(50);
+    expect((await getUser(acct(u)))!.credits, "a refused request must not have charged").toBe(50);
   });
 
   it("the chat's generate_image tool refuses too, and says why", async () => {
     const u = await expired();
-    await saveBrand(u.email, brand());
+    await saveBrand(acct(u), brand());
     const { saveTask } = await import("@/lib/brand");
-    await saveTask(u.email, { id: "img2", type: "social", channel: "instagram", title: "t", body: "b", status: "approved", createdAt: new Date().toISOString(), lang: "ar" });
+    await saveTask(acct(u), { id: "img2", type: "social", channel: "instagram", title: "t", body: "b", status: "approved", createdAt: new Date().toISOString(), lang: "ar" });
 
     const { getUser } = await import("@/lib/auth");
-    const fresh = (await getUser(u.email))!;
+    const fresh = (await getUser(acct(u)))!;
     const actions: string[] = [];
-    const out = await runTool(fresh, "generate_image", { task_id: "img2" }, actions);
+    const out = await runTool({ ...fresh, scope: sc(u) }, "generate_image", { task_id: "img2" }, actions);
     expect(out).toMatch(/Trial ended/);
     expect(actions).toContain("limit:trial");
-    expect((await getUser(u.email))!.credits).toBe(50);
+    expect((await getUser(acct(u)))!.credits).toBe(50);
   });
 });
 
@@ -233,16 +235,16 @@ describe("profile usage covers every brand the account owns", () => {
     const { saveUser } = await import("@/lib/auth");
     await saveUser({ ...u, plan: "agency" });
     const fresh = (await import("@/lib/auth")).getUser;
-    const acct = (await fresh(u.email))!;
+    const owned = (await fresh(acct(u)))!;
 
     const { addBrand, scopeFor } = await import("@/lib/brands");
-    const second = await addBrand(acct, "Second");
+    const second = await addBrand(owned, "Second");
     expect("id" in second, "the agency plan must allow a second brand").toBe(true);
-    const secondScope = scopeFor(u.email, (second as { id: string }).id);
+    const secondScope = scopeFor(acct(u), (second as { id: string }).id);
 
     const { saveTask } = await import("@/lib/brand");
     const task = (id: string) => ({ id, type: "social" as const, channel: "instagram", title: "t", body: "b", status: "approved" as const, createdAt: new Date().toISOString(), lang: "ar" as const });
-    await saveTask(u.email, task("d1"), true);
+    await saveTask(acct(u), task("d1"), true);
     await saveTask(secondScope, task("s1"), true);
     await saveTask(secondScope, task("s2"), true);
 
@@ -290,7 +292,7 @@ describe("the workspace file index is bounded", () => {
     await signIn(u.email);
     const req = new Request("https://nashr.test/api/files", {
       method: "PUT",
-      headers: { "content-type": "application/json", "content-length": "5000000" },
+      headers: { "content-type": "application/json", "content-length": "5000000", [WS_HEADER]: handleOf(u) },
       body: JSON.stringify({ name: "big.md", content: "x" }),
     });
     const res = await filesRoute.PUT(req);
@@ -307,9 +309,9 @@ describe("a placeholder image is recorded as one", () => {
   it("the route stores the provider alongside the url", async () => {
     const u = await newUser("img");
     await signIn(u.email);
-    await saveBrand(u.email, brand());
+    await saveBrand(acct(u), brand());
     const { saveTask, getTask } = await import("@/lib/brand");
-    await saveTask(u.email, { id: "ph1", type: "social", channel: "instagram", title: "t", body: "b", status: "approved", createdAt: new Date().toISOString(), lang: "ar" }, true);
+    await saveTask(acct(u), { id: "ph1", type: "social", channel: "instagram", title: "t", body: "b", status: "approved", createdAt: new Date().toISOString(), lang: "ar" }, true);
 
     // No media service configured at all is exactly the case that yields a placeholder, and it never reaches the network.
     mediaEnv({});
@@ -320,7 +322,7 @@ describe("a placeholder image is recorded as one", () => {
     expect((await res.json()).provider).toBe("placeholder");
     expect(net.hosts).toEqual([]);
 
-    const saved = (await getTask(u.email, "ph1"))!;
+    const saved = (await getTask(acct(u), "ph1"))!;
     expect(saved.imageUrl).toContain("placehold.co");
     expect(saved.imageProvider, "the card must be readable as a placeholder after a reload, not only in the response").toBe("placeholder");
   });
@@ -338,7 +340,7 @@ describe("the daily lifecycle read", () => {
     const { saveUser, getUser } = await import("@/lib/auth");
     // Five days in, paying: nothing in the plan is due.
     await saveUser({ ...u, plan: "pro", createdAt: new Date(Date.now() - 5 * 864e5).toISOString() });
-    const fresh = (await getUser(u.email))!;
+    const fresh = (await getUser(acct(u)))!;
 
     const { runLifecycle } = await import("@/lib/lifecycle");
     const spy = vi.spyOn(db, "get");
@@ -401,9 +403,9 @@ describe("a placeholder image is not charged", () => {
   it("the route charges nothing and reports the unchanged balance", async () => {
     const u = await newUser("refund");
     await signIn(u.email);
-    await saveBrand(u.email, brand());
+    await saveBrand(acct(u), brand());
     const { saveTask } = await import("@/lib/brand");
-    await saveTask(u.email, { id: "ph2", type: "social", channel: "instagram", title: "t", body: "b", status: "approved", createdAt: new Date().toISOString(), lang: "ar" }, true);
+    await saveTask(acct(u), { id: "ph2", type: "social", channel: "instagram", title: "t", body: "b", status: "approved", createdAt: new Date().toISOString(), lang: "ar" }, true);
 
     mediaEnv({});
     const imageRoute = await import("@/app/api/tasks/[id]/image/route");
@@ -415,7 +417,7 @@ describe("a placeholder image is not charged", () => {
     expect(body.provider).toBe("placeholder");
     expect(body.credits, "the response must report the balance, which nothing charged").toBe(50);
     const { getUser } = await import("@/lib/auth");
-    expect((await getUser(u.email))!.credits, "no credit may be kept for an outage").toBe(50);
+    expect((await getUser(acct(u)))!.credits, "no credit may be kept for an outage").toBe(50);
   });
 });
 

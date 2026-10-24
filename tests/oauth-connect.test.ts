@@ -1,6 +1,7 @@
 import { createHmac } from "crypto";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { jar, newUser, signIn, signOut } from "./helpers/session";
+import { acct } from "@/lib/auth";
 import { getConnection, OAUTH_COOKIE, saveConnection, saveState } from "@/lib/connectors/store";
 import { RefreshBusy, getFreshConnection } from "@/lib/connectors/fresh";
 import { db } from "@/lib/db";
@@ -54,25 +55,25 @@ describe("connector OAuth callback is bound to the browser and account that star
   it("refuses a signed-out browser, and a different account, without exchanging the code", async () => {
     fakeProviders();
     const victim = await newUser("oauthv");
-    await saveState("s-victim-1", { email: victim.email, provider: "x", lang: "en", shop: "", verifier: "v" });
+    await saveState("s-victim-1", { email: acct(victim), provider: "x", lang: "en", shop: "", verifier: "v" });
     signOut();
     jar().set(OAUTH_COOKIE, "s-victim-1");
     expect(errorOf(await callback.GET(new Request("https://app.test/api/connect/x/callback?state=s-victim-1&code=c"), ctx("x")))).toBe("session_mismatch");
 
     const attacker = await newUser("oautha");
-    await saveState("s-victim-2", { email: victim.email, provider: "x", lang: "en", shop: "", verifier: "v" });
+    await saveState("s-victim-2", { email: acct(victim), provider: "x", lang: "en", shop: "", verifier: "v" });
     await signIn(attacker.email);
     jar().set(OAUTH_COOKIE, "s-victim-2");
     expect(errorOf(await callback.GET(new Request("https://app.test/api/connect/x/callback?state=s-victim-2&code=c"), ctx("x")))).toBe("session_mismatch");
 
     expect(tokenCalls).toEqual([]);
-    expect(await getConnection(victim.email, "x")).toBeNull();
+    expect(await getConnection(acct(victim), "x")).toBeNull();
   });
 
   it("refuses the right account in a browser that did not start the flow", async () => {
     fakeProviders();
     const u = await newUser("oauthc");
-    await saveState("s-nocookie", { email: u.email, provider: "x", lang: "en", shop: "", verifier: "v" });
+    await saveState("s-nocookie", { email: acct(u), provider: "x", lang: "en", shop: "", verifier: "v" });
     await signIn(u.email);
     expect(errorOf(await callback.GET(new Request("https://app.test/api/connect/x/callback?state=s-nocookie&code=c"), ctx("x")))).toBe("session_mismatch");
     expect(tokenCalls).toEqual([]);
@@ -88,7 +89,7 @@ describe("connector OAuth callback is bound to the browser and account that star
     expect(jar().get(OAUTH_COOKIE)).toBe(state);
     const done = await callback.GET(new Request(`https://app.test/api/connect/x/callback?state=${state}&code=c`), ctx("x"));
     expect(new URL(done.headers.get("location")!).searchParams.get("connected")).toBe("x");
-    expect((await getConnection(u.email, "x"))?.data.access_token).toBe("first-access");
+    expect((await getConnection(acct(u), "x"))?.data.access_token).toBe("first-access");
     expect(jar().has(OAUTH_COOKIE)).toBe(false);
   });
 });
@@ -97,7 +98,7 @@ describe("a state completes only the provider it was issued for (rule 68, #38)",
   it("refuses an X state on the LinkedIn callback", async () => {
     fakeProviders();
     const u = await newUser("oauthp");
-    await saveState("s-cross", { email: u.email, provider: "x", lang: "en", shop: "", verifier: "v" });
+    await saveState("s-cross", { email: acct(u), provider: "x", lang: "en", shop: "", verifier: "v" });
     await signIn(u.email);
     jar().set(OAUTH_COOKIE, "s-cross");
     expect(errorOf(await callback.GET(new Request("https://app.test/api/connect/linkedin/callback?state=s-cross&code=c"), ctx("linkedin")))).toBe("invalid_state");
@@ -126,7 +127,7 @@ describe("Shopify: a real store host, and a signed callback (rule 69, #39 #113)"
     const u = await newUser("shophmac");
     await signIn(u.email);
     const run = async (state: string, q: URLSearchParams) => {
-      await saveState(state, { email: u.email, provider: "shopify", lang: "en", shop: "store.myshopify.com", verifier: "" });
+      await saveState(state, { email: acct(u), provider: "shopify", lang: "en", shop: "store.myshopify.com", verifier: "" });
       jar().set(OAUTH_COOKIE, state);
       return callback.GET(new Request(`https://app.test/api/connect/shopify/callback?${q}`), ctx("shopify"));
     };
@@ -151,11 +152,11 @@ describe("an expiring token is refreshed before use, or the owner is asked to re
   it("refreshes an expired X token, posts with the new one and stores the rotated refresh token", async () => {
     fakeProviders();
     const u = await newUser("refresh");
-    await saveConnection(u.email, expired());
-    const r = await publishTask(u.email, task, "x");
+    await saveConnection(acct(u), expired());
+    const r = await publishTask(acct(u), task, "x");
     expect(r.id).toBe("1");
     expect(tokenCalls.some((b) => b.includes("refresh_token=old-refresh"))).toBe(true);
-    const c = await getConnection(u.email, "x");
+    const c = await getConnection(acct(u), "x");
     expect(c?.data.refresh_token).toBe("rotated-refresh");
     expect(new Date(c!.expiresAt!).getTime()).toBeGreaterThan(Date.now());
   });
@@ -163,18 +164,18 @@ describe("an expiring token is refreshed before use, or the owner is asked to re
   it("marks the connection for reconnecting when the refresh is refused, and says so instead of the raw error", async () => {
     fakeProviders({ refreshStatus: 400 });
     const u = await newUser("refresh2");
-    await saveConnection(u.email, expired());
-    await expect(publishTask(u.email, task, "x")).rejects.toThrow("reconnect_required");
-    expect((await getConnection(u.email, "x"))?.needsReconnect).toBeTruthy();
-    await expect(getFreshConnection(u.email, "x")).rejects.toThrow("reconnect_required");
+    await saveConnection(acct(u), expired());
+    await expect(publishTask(acct(u), task, "x")).rejects.toThrow("reconnect_required");
+    expect((await getConnection(acct(u), "x"))?.needsReconnect).toBeTruthy();
+    await expect(getFreshConnection(acct(u), "x")).rejects.toThrow("reconnect_required");
   });
 
   it("marks the connection when the platform refuses a token that was not due", async () => {
     fakeProviders();
     const u = await newUser("refresh3");
-    await saveConnection(u.email, { ...expired(), expiresAt: new Date(Date.now() + 3600_000).toISOString() });
-    await expect(publishTask(u.email, task, "x")).rejects.toThrow("reconnect_required");
-    expect((await getConnection(u.email, "x"))?.needsReconnect).toBeTruthy();
+    await saveConnection(acct(u), { ...expired(), expiresAt: new Date(Date.now() + 3600_000).toISOString() });
+    await expect(publishTask(acct(u), task, "x")).rejects.toThrow("reconnect_required");
+    expect((await getConnection(acct(u), "x"))?.needsReconnect).toBeTruthy();
   });
 });
 
@@ -187,34 +188,34 @@ describe("a token is refreshed only under the connection's own lock (rule 2192)"
   it("never refreshes without the lock: another holder through every wait is RefreshBusy, and its lock stays", async () => {
     fakeProviders();
     const u = await newUser("lockbusy");
-    await saveConnection(u.email, expired());
-    const holder = await db.lockOwned(lockOf(u.email), 30);
+    await saveConnection(acct(u), expired());
+    const holder = await db.lockOwned(lockOf(acct(u)), 30);
     expect(holder).toBeTruthy();
     vi.useFakeTimers({ toFake: ["setTimeout"] });
-    const p = getFreshConnection(u.email, "x");
+    const p = getFreshConnection(acct(u), "x");
     const done = expect(p).rejects.toBeInstanceOf(RefreshBusy);
     await vi.advanceTimersByTimeAsync(10_000);
     await done;
     await expect(p).rejects.toThrow("busy");
     expect(refreshes()).toBe(0);
-    expect((await getConnection(u.email, "x"))?.data.refresh_token).toBe("old-refresh");
+    expect((await getConnection(acct(u), "x"))?.data.refresh_token).toBe("old-refresh");
     // The holder's lock was never freed by the request that gave up.
-    expect(await db.lockOwned(lockOf(u.email), 30)).toBeNull();
-    await db.unlockOwned(lockOf(u.email), holder!);
+    expect(await db.lockOwned(lockOf(acct(u)), 30)).toBeNull();
+    await db.unlockOwned(lockOf(acct(u)), holder!);
   });
 
   it("uses what the holder saved while it waited, without a refresh of its own", async () => {
     fakeProviders();
     const u = await newUser("lockwait");
-    await saveConnection(u.email, expired());
-    const holder = await db.lockOwned(lockOf(u.email), 30);
+    await saveConnection(acct(u), expired());
+    const holder = await db.lockOwned(lockOf(acct(u)), 30);
     vi.useFakeTimers({ toFake: ["setTimeout"] });
-    const p = getFreshConnection(u.email, "x");
-    await saveConnection(u.email, { ...expired(), data: { access_token: "held-access", refresh_token: "held-refresh" }, expiresAt: new Date(Date.now() + 3600_000).toISOString() });
+    const p = getFreshConnection(acct(u), "x");
+    await saveConnection(acct(u), { ...expired(), data: { access_token: "held-access", refresh_token: "held-refresh" }, expiresAt: new Date(Date.now() + 3600_000).toISOString() });
     await vi.advanceTimersByTimeAsync(300);
     expect((await p)?.data.access_token).toBe("held-access");
     expect(refreshes()).toBe(0);
-    await db.unlockOwned(lockOf(u.email), holder!);
+    await db.unlockOwned(lockOf(acct(u)), holder!);
   });
 
   it("does not free another holder's lock when its own lapsed during the refresh", async () => {
@@ -222,22 +223,22 @@ describe("a token is refreshed only under the connection's own lock (rule 2192)"
     const u = await newUser("locklapse");
     fakeProviders({
       // The refresh outlives this request's lock and the next request takes the lock.
-      onRefresh: async () => { await db.unlock(lockOf(u.email)); other = await db.lockOwned(lockOf(u.email), 30); },
+      onRefresh: async () => { await db.unlock(lockOf(acct(u))); other = await db.lockOwned(lockOf(acct(u)), 30); },
     });
-    await saveConnection(u.email, expired());
-    expect((await getFreshConnection(u.email, "x"))?.data.access_token).toBe("new-access");
+    await saveConnection(acct(u), expired());
+    expect((await getFreshConnection(acct(u), "x"))?.data.access_token).toBe("new-access");
     expect(other).toBeTruthy();
-    expect(await db.lockOwned(lockOf(u.email), 30)).toBeNull();
-    await db.unlockOwned(lockOf(u.email), other!);
-    expect(await db.lockOwned(lockOf(u.email), 30)).toBeTruthy();
+    expect(await db.lockOwned(lockOf(acct(u)), 30)).toBeNull();
+    await db.unlockOwned(lockOf(acct(u)), other!);
+    expect(await db.lockOwned(lockOf(acct(u)), 30)).toBeTruthy();
   });
 
   it("the connect route answers a busy refresh as 503 busy with a Retry-After, and spends nothing", async () => {
     fakeProviders();
     const u = await newUser("lockroute");
-    await saveConnection(u.email, expired());
+    await saveConnection(acct(u), expired());
     await signIn(u.email);
-    const holder = await db.lockOwned(lockOf(u.email), 30);
+    const holder = await db.lockOwned(lockOf(acct(u)), 30);
     vi.useFakeTimers({ toFake: ["setTimeout"] });
     const req = new Request("https://app.test/api/connect/x", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "import_products" }) });
     const p = connectRoute.POST(req, ctx("x"));
@@ -247,7 +248,7 @@ describe("a token is refreshed only under the connection's own lock (rule 2192)"
     expect(res.headers.get("retry-after")).toBe("5");
     expect(await res.json()).toEqual({ ok: false, error: "busy" });
     expect(refreshes()).toBe(0);
-    expect((await getConnection(u.email, "x"))?.needsReconnect).toBeFalsy();
-    await db.unlockOwned(lockOf(u.email), holder!);
+    expect((await getConnection(acct(u), "x"))?.needsReconnect).toBeFalsy();
+    await db.unlockOwned(lockOf(acct(u)), holder!);
   });
 });

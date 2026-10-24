@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { newMember, newUser, signIn } from "./helpers/session";
-import { currentUser } from "@/lib/auth";
+import { currentUser, sc } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { render } from "@/lib/md";
 import { splitTitle } from "@/lib/connectors/publish";
@@ -143,7 +143,7 @@ describe("rules 1479-1480: who approved what, per person on the team", () => {
     const owner = await newUser("appr");
     const admin = await newMember(owner, "admin");
     const plain = await newMember(owner, "member");
-    await recordDecisions(owner.email, [{ ...d("approve", { kind: "member", email: plain.email, role: "member" }), at: new Date().toISOString() }]);
+    await recordDecisions(sc(owner), [{ ...d("approve", { kind: "member", email: plain.email, role: "member" }), at: new Date().toISOString() }]);
     await signIn(owner.email);
     const mine = (await teamView((await currentUser())!))!;
     expect(mine.approvals?.[plain.email]).toMatchObject({ approved: 1, rate: 100 });

@@ -8,6 +8,7 @@ import { READS_METRICS } from "@/lib/connectors/working";
 import { SALES_PROVIDERS } from "@/lib/connectors/sales";
 import * as connectRoute from "@/app/api/connect/[provider]/route";
 
+import { acct } from "@/lib/auth";
 vi.mock("dns/promises", () => ({ lookup: async () => [{ address: "93.184.216.34", family: 4 }] }));
 
 /**
@@ -202,23 +203,23 @@ describe("rule 616: the connect route syncs WooCommerce for any member and Noor 
     const fresh = new Date().toISOString().slice(0, 19);
     fakeWoo({ pages: [[order("300.00", { date_created_gmt: fresh }, [{ name: "عود ملكي", quantity: 2 }]), order("90.00", { status: "pending", date_created_gmt: fresh })]] });
     const u = await newUser("woosales");
-    await saveConnection(u.email, conn());
+    await saveConnection(acct(u), conn());
     await signIn(u.email);
     const res = await connectRoute.POST(json("/api/connect/woocommerce", "POST", { action: "sync_sales" }), { params: Promise.resolve({ provider: "woocommerce" }) });
     const body = await res.json();
     expect(body.ok).toBe(true);
     expect(body.sales.provider).toBe("woocommerce");
-    const md = (await readFile(u.email, "store-sales.md"))!.content;
+    const md = (await readFile(acct(u), "store-sales.md"))!.content;
     expect(md).toContain("# Store sales (WooCommerce shop.example.com, last 30 days");
     expect(md).toContain("Revenue (excluding 0 canceled or refunded): 300 SAR");
     expect(md).toContain("1 orders are still awaiting payment");
     expect(md).toContain("WooCommerce does not record abandoned carts");
     for (const pii of ["salman@example.com", "سلمان", "0500000000", "الملقا"]) {
       expect(md).not.toContain(pii);
-      expect(JSON.stringify(await getSalesSnapshot(u.email))).not.toContain(pii);
+      expect(JSON.stringify(await getSalesSnapshot(acct(u)))).not.toContain(pii);
     }
-    expect(await memoryBlock(u.email)).toContain("--- store-sales.md ---");
-    const block = await salesDataBlock(u.email);
+    expect(await memoryBlock(acct(u))).toContain("--- store-sales.md ---");
+    const block = await salesDataBlock(acct(u));
     expect(block).toContain("awaiting_payment_in_count_not_in_revenue");
     expect(block).toContain("WooCommerce does not record abandoned carts");
   });
@@ -233,10 +234,10 @@ describe("rule 616: the connect route syncs WooCommerce for any member and Noor 
     await signIn(u.email);
     const call = () => connectRoute.POST(json("/api/connect/woocommerce", "POST", { action: "sync_sales" }), { params: Promise.resolve({ provider: "woocommerce" }) });
     expect((await (await call()).json()).error).toBe("not_connected");
-    await saveConnection(u.email, conn());
+    await saveConnection(acct(u), conn());
     fakeWoo({ status: 401 });
     expect((await (await call()).json()).error).toBe(WOO_ACCESS_DENIED);
-    expect((await getConnection(u.email, "woocommerce"))?.needsReconnect).toBeFalsy();
+    expect((await getConnection(acct(u), "woocommerce"))?.needsReconnect).toBeFalsy();
   });
 });
 

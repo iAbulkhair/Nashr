@@ -1,7 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { randomBytes } from "crypto";
-import { jar, json, newMember as helperNewMember, newUser as helperNewUser, signIn, signOut } from "./helpers/session";
-import { currentUserUnverified, getUser, saveUser, sessionRecord, type User } from "@/lib/auth";
+import { jar, json, newMember, newUser, signIn, signOut } from "./helpers/session";
+import { acct, claimLogin, createUser, currentUserUnverified, getLogin, getUser, saveUser, sessionRecord, type User } from "@/lib/auth";
+import { ownerOf as personOf } from "@/lib/membership";
+import { getPerson } from "@/lib/person";
 import { db } from "@/lib/db";
 import { applyReferral, codeFor, ownerOf, referralStats, registerCode } from "@/lib/referral";
 import { hasPendingCode } from "@/lib/verify-email";
@@ -17,10 +19,12 @@ vi.mock("@/lib/notify", async (orig) => ({
 import * as change from "@/app/api/auth/verify/email/route";
 import * as check from "@/app/api/auth/verify/check/route";
 
-// Pins the legacy shape (multi-org M1): the typo fix moves a legacy owner's records by address; an account a `p_` person
-// owns moves with the person in release M2 (`moveOwnerLogin` refuses it). Each person still holds a shadow membership.
-const newUser = (prefix?: string, o: Parameters<typeof helperNewUser>[1] = {}) => helperNewUser(prefix, { legacy: true, ...o });
-const newMember = (owner: Parameters<typeof helperNewMember>[0], role?: Parameters<typeof helperNewMember>[1], prefix?: string, o: Parameters<typeof helperNewMember>[3] = {}) => helperNewMember(owner, role, prefix, { legacy: true, ...o });
+// Account-id R2 (rule 2741): with `OPAQUE_IDS` on the typo fix moves the owner's login IN PLACE. The account id, the person
+// id, the referral and partner keys stay put; only the sign-in address (the login index, the record's `email`) follows.
+// The account is read by `acct(u)`, the new address resolves to it through `getLogin(to)`.
+/** When the owner's session window opened: a `p_` person keeps it on the person row, the account record carries it only after a move. */
+const windowOf = async (u: User) => Date.parse((await getPerson(personOf(u)))!.sessionsAfter!);
+const lookAlike = (to: string) => createUser({ email: to, name: "Test", phone: "", password: "abc12345", lang: "ar" });
 
 let ipN = 0;
 /** Never repeats within a run, and never meets the IPs of the other verify test files. */
@@ -40,7 +44,7 @@ afterEach(() => { vi.unstubAllEnvs(); signOut(); });
 describe("change a mistyped signup email", () => {
   it("refused without gatedSignup (rule 763)", async () => {
     const u = await newUser("ch", { verified: false });
-    const stored = (await getUser(u.email))!;
+    const stored = (await getUser(acct(u)))!;
     delete stored.gatedSignup;
     await saveUser(stored);
     await signIn(u.email);
@@ -48,8 +52,8 @@ describe("change a mistyped signup email", () => {
     const res = await move(to);
     expect(res.status).toBe(403);
     expect(await res.json()).toEqual({ ok: false, error: "not_allowed" });
-    expect(await getUser(to)).toBeNull();
-    expect(await getUser(u.email)).not.toBeNull();
+    expect(await getLogin(to)).toBeNull();
+    expect((await getUser(acct(u)))!.email).toBe(u.email);
     expect(mails).toHaveLength(0);
   });
 
@@ -58,8 +62,8 @@ describe("change a mistyped signup email", () => {
     await signIn(u.email);
     const to = addr("new");
     expect((await move(to)).status).toBe(403);
-    expect(await getUser(to)).toBeNull();
-    expect(await getUser(u.email)).not.toBeNull();
+    expect(await getLogin(to)).toBeNull();
+    expect((await getUser(acct(u)))!.email).toBe(u.email);
   });
 
   it("refused without a session, to a member login, and for a member session", async () => {
@@ -83,7 +87,7 @@ describe("change a mistyped signup email", () => {
       expect(res.status).toBe(400);
       expect(await res.json()).toEqual({ ok: false, error: "bad_email" });
     }
-    expect(await getUser(u.email)).not.toBeNull();
+    expect((await getUser(acct(u)))!.email).toBe(u.email);
   });
 
   it("refused to a taken owner address and to a member login address (409)", async () => {
@@ -97,7 +101,7 @@ describe("change a mistyped signup email", () => {
       expect(res.status).toBe(409);
       expect(await res.json()).toEqual({ ok: false, error: "exists" });
     }
-    expect((await getUser(u.email))!.emailMoves).toBeUndefined();
+    expect((await getUser(acct(u)))!.emailMoves).toBeUndefined();
     expect(mails).toHaveLength(0);
   });
 
@@ -107,22 +111,24 @@ describe("change a mistyped signup email", () => {
     const res = await move(u.email.toUpperCase());
     expect(res.status).toBe(400);
     expect(await res.json()).toEqual({ ok: false, error: "same_email" });
-    expect(await getUser(u.email)).not.toBeNull();
+    expect((await getUser(acct(u)))!.email).toBe(u.email);
   });
 
   it("moves the account (rule 764)", async () => {
     const referrer = await newUser("rf");
-    await registerCode(referrer.email);
+    await registerCode(acct(referrer));
     const old = await newUser("ch", { verified: false });
-    await registerCode(old.email);
-    expect(await applyReferral(old.email, codeFor(referrer.email))).toBe(true);
+    const id = acct(old);
+    await registerCode(id);
+    expect(await applyReferral(id, codeFor(acct(referrer)))).toBe(true);
     const partner = addr("partner");
-    const stored = (await getUser(old.email))!;
+    const stored = (await getUser(id))!;
     stored.referredBy = { partner, code: "PCODE1", at: new Date().toISOString(), via: "code", ref: "abc123def456" };
     stored.firstMonthOffer = { kind: "partner", pct: 15, at: new Date().toISOString() };
     await saveUser(stored);
-    await db.sadd(`partner:refs:${partner}`, old.email);
-    const before = (await getUser(old.email))!;
+    await db.sadd(`partner:refs:${partner}`, id);
+    const before = (await getUser(id))!;
+    const opened = await windowOf(old);
     expect(before.credits).toBeGreaterThan(0);
     const token = await signIn(old.email);
 
@@ -131,35 +137,38 @@ describe("change a mistyped signup email", () => {
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ ok: true, email: to });
 
-    const after = (await getUser(to))!;
-    expect(after).not.toBeNull();
+    // In place: the same record under the same id, with the new sign-in address.
+    const after = (await getUser(id))!;
+    expect(after.id).toBe(id);
     expect(after.email).toBe(to);
     for (const k of ["name", "phone", "passHash", "lang", "plan", "credits", "trialEnds", "createdAt", "gatedSignup", "referredBy", "firstMonthOffer"] as const) {
       expect(after[k], k).toEqual(before[k]);
     }
     // A fresh session window, not the old one (as createUser stamps): see the session test below.
-    expect(Date.parse(after.sessionsAfter!)).toBeGreaterThan(Date.parse(before.sessionsAfter!));
+    expect(Date.parse(after.sessionsAfter!)).toBeGreaterThan(opened);
+    expect((await getPerson(personOf(old)))!.sessionsAfter).toBe(after.sessionsAfter);
     expect(after.emailVerifiedAt).toBeUndefined();
     expect(after.emailMoves).toEqual({ day: new Date().toISOString().slice(0, 10), n: 1 });
-    expect(await getUser(old.email)).toBeNull();
-    expect(await db.get(`user:${old.email}`)).toBeNull();
-    expect(await db.sismember("users:all", to)).toBe(true);
-    expect(await db.sismember("users:all", old.email)).toBe(false);
+    // The login index follows the address; the old address names nobody and nothing is copied or wiped.
+    const login = (await getLogin(to))!;
+    expect(login.acct).toBe(id);
+    expect(login.pid).toBe(personOf(old));
+    expect(await getLogin(old.email)).toBeNull();
+    expect(await getUser(to)).toBeNull();
+    expect(await db.get(`user:${to}`)).toBeNull();
+    expect(await db.sismember("users:all", id)).toBe(true);
+    expect(await db.sismember("users:all", to)).toBe(false);
 
-    // The account's own referral code now names the new address.
-    expect(await ownerOf(codeFor(to))).toBe(to);
-    expect(await ownerOf(codeFor(old.email))).toBeNull();
-    // The referral it came in with: the referrer sees the new address, once, and the pending bonus follows.
-    expect(await db.get(`referredBy:${to}`)).toBe(referrer.email);
-    expect(await db.get(`referredBy:${old.email}`)).toBeNull();
-    const stats = await referralStats(referrer.email);
-    expect(stats.rows.map((r) => r.email)).toEqual([to]);
+    // The account's own referral code and the referral it came in with are keyed by the account id, which did not move.
+    expect(await ownerOf(codeFor(id))).toBe(id);
+    expect(await db.get(`referredBy:${id}`)).toBe(acct(referrer));
+    const stats = await referralStats(acct(referrer));
+    expect(stats.rows.map((r) => r.email)).toEqual([id]);
     expect(stats.pending).toBe(1);
     expect(stats.count).toBe(1);
-    // The partner attribution.
+    // The partner attribution stays on the account id.
     const refs = await db.smembers(`partner:refs:${partner}`);
-    expect(refs).toContain(to);
-    expect(refs).not.toContain(old.email);
+    expect(refs).toEqual([id]);
 
     // The cookie resolves to the new address; the old session token is dead; a code went to the new address only.
     expect((await currentUserUnverified())!.email).toBe(to);
@@ -188,8 +197,10 @@ describe("change a mistyped signup email", () => {
     await signIn(old.email);
     const to = addr("plain");
     expect((await move(to)).status).toBe(200);
-    expect((await getUser(to))!.referredBy).toBeUndefined();
-    expect(await getUser(old.email)).toBeNull();
+    const moved = (await getUser(acct(old)))!;
+    expect(moved.email).toBe(to);
+    expect(moved.referredBy).toBeUndefined();
+    expect(await getLogin(old.email)).toBeNull();
   });
 
   it("three moves a day, the fourth is 429 and the counter carries (rule 765)", async () => {
@@ -201,25 +212,25 @@ describe("change a mistyped signup email", () => {
       const res = await move(to);
       expect(res.status, `move ${i}`).toBe(200);
       at = to;
-      expect((await getUser(at))!.emailMoves!.n).toBe(i);
+      expect((await getUser(acct(old)))!.emailMoves!.n).toBe(i);
     }
     const res = await move(addr("m4"));
     expect(res.status).toBe(429);
     expect(await res.json()).toEqual({ ok: false, error: "slow_down" });
     expect(Number(res.headers.get("Retry-After"))).toBeGreaterThan(0);
     expect(Number(res.headers.get("Retry-After"))).toBeLessThanOrEqual(86400);
-    expect(await getUser(at)).not.toBeNull();
+    expect((await getUser(acct(old)))!.email).toBe(at);
   });
 
   it("a counter from an earlier day starts over", async () => {
     const old = await newUser("ch", { verified: false });
-    const stored = (await getUser(old.email))!;
+    const stored = (await getUser(acct(old)))!;
     stored.emailMoves = { day: "2020-01-01", n: 3 };
     await saveUser(stored);
     await signIn(old.email);
     const to = addr("fixed");
     expect((await move(to)).status).toBe(200);
-    expect((await getUser(to))!.emailMoves).toEqual({ day: new Date().toISOString().slice(0, 10), n: 1 });
+    expect((await getUser(acct(old)))!.emailMoves).toEqual({ day: new Date().toISOString().slice(0, 10), n: 1 });
   });
 
   it("a move whose mail cannot go out still moves the account (mail: false)", async () => {
@@ -230,7 +241,8 @@ describe("change a mistyped signup email", () => {
     const res = await move(to);
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ ok: true, email: to, mail: false });
-    expect(await getUser(to)).not.toBeNull();
+    expect((await getLogin(to))!.acct).toBe(acct(old));
+    expect((await getUser(acct(old)))!.email).toBe(to);
     expect((await currentUserUnverified())!.email).toBe(to);
     expect(await hasPendingCode(to)).toBe(false);
   });
@@ -247,7 +259,7 @@ describe("change a mistyped signup email", () => {
     expect(body.devCode).toBe(mails.find((m) => m.to === to)!.text.match(/\d{6}/)![0]);
     const res = await check.POST(json("/api/auth/verify/check", "POST", { code: body.devCode }, { "x-forwarded-for": freshIp() }));
     expect(res.status).toBe(200);
-    expect((await getUser(to))!.emailVerifiedAt).toBeTruthy();
+    expect((await getUser(acct(old)))!.emailVerifiedAt).toBeTruthy();
 
     vi.stubEnv("VERCEL_ENV", "production");
     const old2 = await newUser("ch", { verified: false });
@@ -269,41 +281,46 @@ describe("change a mistyped signup email", () => {
     expect(mails).toHaveLength(0);
   });
 
-  it("two moves at once from one account leave exactly one account", async () => {
+  it("two moves at once from one account leave exactly one address", async () => {
     const referrer = await newUser("rf");
-    await registerCode(referrer.email);
+    await registerCode(acct(referrer));
     const old = await newUser("ch", { verified: false });
-    await registerCode(old.email);
-    await applyReferral(old.email, codeFor(referrer.email));
+    await registerCode(acct(old));
+    await applyReferral(acct(old), codeFor(acct(referrer)));
     await signIn(old.email);
     const a = addr("a");
     const b = addr("b");
     const res = await Promise.all([move(a), move(b)]);
     const ok = res.filter((r) => r.status === 200);
     expect(ok).toHaveLength(1);
-    const live = (await Promise.all([getUser(a), getUser(b), getUser(old.email)])).filter(Boolean) as User[];
+    // One login resolves to the account (the winner's), and the record names it.
+    const live = (await Promise.all([getLogin(a), getLogin(b), getLogin(old.email)])).filter(Boolean);
     expect(live).toHaveLength(1);
-    expect((await referralStats(referrer.email)).rows).toHaveLength(1);
+    expect(live[0]!.acct).toBe(acct(old));
+    expect([a, b]).toContain((await getUser(acct(old)))!.email);
+    expect((await referralStats(acct(referrer))).rows).toHaveLength(1);
   });
 
-  it("finishes a move that stopped before the old account was wiped", async () => {
+  it("finishes a move that stopped before the old address was released", async () => {
     const old = await newUser("ch", { verified: false });
     await signIn(old.email);
     const to = addr("fixed");
-    // What a crash after the new record was written leaves behind: the copy exists, the old account too.
-    await saveUser({ ...(await getUser(old.email))!, id: to, email: to, emailMoves: { day: new Date().toISOString().slice(0, 10), n: 1 } });
+    // What a crash right after the first write leaves behind: the new login already names this person, the old one too.
+    await claimLogin(to, personOf(old));
     const res = await move(to);
     expect(res.status).toBe(200);
-    expect(await getUser(old.email)).toBeNull();
-    expect((await getUser(to))!.emailMoves!.n).toBe(1);
+    expect(await getLogin(old.email)).toBeNull();
+    expect((await getLogin(to))!.acct).toBe(acct(old));
+    expect((await getUser(acct(old)))!.emailMoves!.n).toBe(1);
   });
+
   it("a session issued earlier for the target address never resolves to the moved account", async () => {
     const old = await newUser("ch", { verified: false });
     const to = addr("fixed");
     // What a former owner of the address, a removed member or this owner's own old device left behind.
     const stale = randomBytes(32).toString("hex");
-    // Issued after the source account's own window opened, so only the fresh stamp on the moved record can refuse it.
-    await db.set(`session:${stale}`, { email: to, at: Date.parse(old.sessionsAfter!) + 1 }, 3600);
+    // Issued after the person's own window opened, so only the fresh stamp from the move can refuse it.
+    await db.set(`session:${stale}`, { email: to, at: (await windowOf(old)) + 1 }, 3600);
     await new Promise((r) => setTimeout(r, 5));
     await signIn(old.email);
     expect((await move(to)).status).toBe(200);
@@ -316,35 +333,37 @@ describe("change a mistyped signup email", () => {
     const old = await newUser("ch", { verified: false });
     await signIn(old.email);
     const to = addr("fixed");
-    await saveUser({ ...(await getUser(old.email))!, id: to, email: to, emailMoves: { day: new Date().toISOString().slice(0, 10), n: 1 } });
+    const opened = await windowOf(old);
+    await claimLogin(to, personOf(old));
     const stale = randomBytes(32).toString("hex");
-    // Issued after the source account's own window opened, so only the fresh stamp on the moved record can refuse it.
-    await db.set(`session:${stale}`, { email: to, at: Date.parse(old.sessionsAfter!) + 1 }, 3600);
+    // Issued after the person's own window opened, so only the fresh stamp from the move can refuse it.
+    await db.set(`session:${stale}`, { email: to, at: opened + 1 }, 3600);
     await new Promise((r) => setTimeout(r, 5));
     expect((await move(to)).status).toBe(200);
-    expect(Date.parse((await getUser(to))!.sessionsAfter!)).toBeGreaterThan(Date.parse(old.sessionsAfter!));
+    expect(Date.parse((await getUser(acct(old)))!.sessionsAfter!)).toBeGreaterThan(opened);
     expect((await currentUserUnverified())!.email).toBe(to);
     jar().set("thakeen_session", stale);
     expect(await currentUserUnverified()).toBeNull();
   });
 
-  it("no repair for a look-alike: same password hash but another createdAt is 409", async () => {
+  it("no repair for a look-alike: another login at the target with the same password is 409", async () => {
     const old = await newUser("ch", { verified: false });
     await signIn(old.email);
     const to = addr("taken");
-    await saveUser({ ...(await getUser(old.email))!, id: to, email: to, createdAt: new Date(Date.now() - 86400000).toISOString() });
+    await lookAlike(to);
     const res = await move(to);
     expect(res.status).toBe(409);
-    expect(await getUser(old.email)).not.toBeNull();
+    expect((await getUser(acct(old)))!.email).toBe(old.email);
+    expect((await getLogin(to))!.acct).not.toBe(acct(old));
   });
 
-  it("no repair for a verified copy at the target: 409", async () => {
+  it("no repair for a verified login at the target: 409", async () => {
     const old = await newUser("ch", { verified: false });
     await signIn(old.email);
     const to = addr("taken");
-    await saveUser({ ...(await getUser(old.email))!, id: to, email: to, emailVerifiedAt: new Date().toISOString() });
+    await createUser({ email: to, name: "Test", phone: "", password: "abc12345", lang: "ar", emailVerifiedAt: new Date().toISOString() });
     expect((await move(to)).status).toBe(409);
-    expect(await getUser(old.email)).not.toBeNull();
+    expect((await getUser(acct(old)))!.email).toBe(old.email);
   });
 
   it("the 11th move attempt of an account in a day is 429, taken addresses included", async () => {
@@ -356,7 +375,7 @@ describe("change a mistyped signup email", () => {
     expect(res.status).toBe(429);
     expect(await res.json()).toEqual({ ok: false, error: "slow_down" });
     expect(res.headers.get("Retry-After")).toBe("86400");
-    expect(await getUser(old.email)).not.toBeNull();
+    expect((await getUser(acct(old)))!.email).toBe(old.email);
   });
 
   it("the 21st request from one IP in an hour is 429", async () => {
@@ -375,7 +394,7 @@ describe("change a mistyped signup email", () => {
     const to = addr("fixed");
     const res = await move(to);
     expect(res.status).toBe(403);
-    expect(await getUser(to)).toBeNull();
-    expect(await getUser(old.email)).not.toBeNull();
+    expect(await getLogin(to)).toBeNull();
+    expect((await getUser(acct(old)))!.email).toBe(old.email);
   });
 });

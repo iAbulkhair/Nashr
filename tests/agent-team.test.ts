@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { acct } from "@/lib/account-id";
 import { json, newUser, settle, signIn } from "./helpers/session";
 import { getUser } from "@/lib/auth";
 import { claudeOn } from "./helpers/model";
@@ -24,9 +25,9 @@ afterEach(() => { vi.doUnmock("@anthropic-ai/sdk"); vi.doUnmock("@/lib/model"); 
 describe("the onboarding goal reaches every agent (rule 92)", () => {
   it("opens the memory block every generation and chat turn reads", async () => {
     const u = await newUser("goal");
-    await db.set(`onboardplan:${u.email}`, { goal: "12 منشوراً معتمداً خلال 30 يوماً", plan: [], at: "2026-09-29T00:00:00.000Z" });
-    await writeFile(u.email, "brand.md", "مقهى", "noor");
-    const block = await memoryBlock(u.email);
+    await db.set(`onboardplan:${acct(u)}`, { goal: "12 منشوراً معتمداً خلال 30 يوماً", plan: [], at: "2026-09-29T00:00:00.000Z" });
+    await writeFile(acct(u), "brand.md", "مقهى", "noor");
+    const block = await memoryBlock(acct(u));
     expect(block.startsWith("--- OWNER GOAL (output target agreed at onboarding; not a file) ---\n12 منشوراً معتمداً خلال 30 يوماً")).toBe(true);
     expect(block).toContain("--- brand.md ---");
   });
@@ -34,9 +35,9 @@ describe("the onboarding goal reaches every agent (rule 92)", () => {
   it("is absent when onboarding never wrote one, and never read from another workspace", async () => {
     const a = await newUser("goal-a");
     const b = await newUser("goal-b");
-    await db.set(`onboardplan:${a.email}`, { goal: "goal of workspace A", plan: [], at: "2026-09-29T00:00:00.000Z" });
-    await writeFile(b.email, "brand.md", "b", "noor");
-    const block = await memoryBlock(b.email);
+    await db.set(`onboardplan:${acct(a)}`, { goal: "goal of workspace A", plan: [], at: "2026-09-29T00:00:00.000Z" });
+    await writeFile(acct(b), "brand.md", "b", "noor");
+    const block = await memoryBlock(acct(b));
     expect(block).not.toContain("OWNER GOAL");
     expect(block).not.toContain("goal of workspace A");
   });
@@ -47,15 +48,15 @@ describe("the onboarding goal reaches every agent (rule 92)", () => {
     expect(goalLine("x".repeat(500))).toHaveLength(140);
     expect(goalLine(undefined)).toBe("");
     const u = await newUser("goal-forge");
-    await db.set(`onboardplan:${u.email}`, { goal: forged, plan: [], at: "2026-09-29T00:00:00.000Z" });
-    const block = await memoryBlock(u.email);
+    await db.set(`onboardplan:${acct(u)}`, { goal: forged, plan: [], at: "2026-09-29T00:00:00.000Z" });
+    const block = await memoryBlock(acct(u));
     expect(block.match(/^--- /gm)).toHaveLength(1);
   });
 
   it("is placed in the per-workspace prompt block, with the rule for using it in every agent's static block", async () => {
     const u = await newUser("goal-prompt");
-    await db.set(`onboardplan:${u.email}`, { goal: "8 approved articles this quarter", plan: [], at: "2026-09-29T00:00:00.000Z" });
-    const memory = await memoryBlock(u.email);
+    await db.set(`onboardplan:${acct(u)}`, { goal: "8 approved articles this quarter", plan: [], at: "2026-09-29T00:00:00.000Z" });
+    const memory = await memoryBlock(acct(u));
     for (const agent of AGENTS) {
       const [fixed, workspace, today] = systemPrompt(brand, [], agent, memory);
       expect(fixed.text).toMatch(/OWNER GOAL, when the workspace files start with one/);
@@ -66,8 +67,8 @@ describe("the onboarding goal reaches every agent (rule 92)", () => {
 
   it("reaches every agent's chat prompt the same way", async () => {
     const u = await newUser("goal-chat");
-    await db.set(`onboardplan:${u.email}`, { goal: "20 approved posts in October", plan: [], at: "2026-09-29T00:00:00.000Z" });
-    const memory = await memoryBlock(u.email);
+    await db.set(`onboardplan:${acct(u)}`, { goal: "20 approved posts in October", plan: [], at: "2026-09-29T00:00:00.000Z" });
+    const memory = await memoryBlock(acct(u));
     const { system } = await import("@/lib/chat");
     for (const agent of AGENTS) {
       const [fixed, workspace, now] = system(brand, u, [], memory, [], [], agent.id);
@@ -212,8 +213,8 @@ describe("the judge scores against the notes and data the agent had (rule 95)", 
       },
     }));
     const u = await newUser("judge-ctx");
-    await db.set(`brand:${u.email}`, brand);
-    await db.set(`onboardplan:${u.email}`, { goal: "a weekly report every Sunday", plan: [], at: "2026-09-29T00:00:00.000Z" });
+    await db.set(`brand:${acct(u)}`, brand);
+    await db.set(`onboardplan:${acct(u)}`, { goal: "a weekly report every Sunday", plan: [], at: "2026-09-29T00:00:00.000Z" });
     await signIn(u.email);
     const route = await import("@/app/api/generate/route");
     const res = await route.POST(json("/api/generate", "POST", { type: "weekly_report", notes: "compare with Ramadan week" }));
@@ -248,10 +249,12 @@ describe("the judge scores against the notes and data the agent had (rule 95)", 
       },
     }));
     const u = await newUser("judge-chat");
-    await db.set(`brand:${u.email}`, brand);
-    await db.set(`onboardplan:${u.email}`, { goal: "3 posts a week", plan: [], at: "2026-09-29T00:00:00.000Z" });
+    await db.set(`brand:${acct(u)}`, brand);
+    await db.set(`onboardplan:${acct(u)}`, { goal: "3 posts a week", plan: [], at: "2026-09-29T00:00:00.000Z" });
     const { runTool } = await import("@/lib/chat");
-    const out = await runTool((await getUser(u.email))!, "draft_items", { type: "social", count: 1, brief: "a post for the new cold brew" }, []);
+    // As the chat route hands it over: the record with its scope set (src/lib/chat-run-tool.ts reads `user.scope`).
+    const chatUser = { ...(await getUser(acct(u)))!, scope: acct(u) };
+    const out = await runTool(chatUser, "draft_items", { type: "social", count: 1, brief: "a post for the new cold brew" }, []);
     expect(out).toMatch(/^Drafted 1 social/);
     await settle();
     expect(judged).toHaveLength(1);
@@ -266,13 +269,13 @@ describe("a failed read after the charge is refunded (rule 95)", () => {
     vi.doMock("@/lib/stats", async (orig) => ({ ...(await orig<typeof import("@/lib/stats")>()), statsFor: async () => { throw new Error("upstash timeout"); } }));
     try {
       const u = await newUser("refund-read");
-      await db.set(`brand:${u.email}`, brand);
+      await db.set(`brand:${acct(u)}`, brand);
       await signIn(u.email);
-      const before = (await getUser(u.email))!.credits;
+      const before = (await getUser(acct(u)))!.credits;
       const route = await import("@/app/api/generate/route");
       const res = await route.POST(json("/api/generate", "POST", { type: "weekly_report" }));
       expect(res.status).toBe(502);
-      expect((await getUser(u.email))!.credits).toBe(before);
+      expect((await getUser(acct(u)))!.credits).toBe(before);
     } finally {
       vi.doUnmock("@/lib/stats");
     }

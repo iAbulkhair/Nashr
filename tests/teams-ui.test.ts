@@ -2,7 +2,7 @@ import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { createElement, type ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { PLAN_SEATS, type User } from "@/lib/auth";
+import { acct, PLAN_SEATS, type User } from "@/lib/auth";
 import { storedPersonId } from "@/lib/keys";
 import { PLAN_PRICE_SAR } from "@/lib/pricing";
 import { appDict } from "@/lib/app-i18n";
@@ -14,6 +14,7 @@ import TrialBanner from "@/components/app/TrialBanner";
 import Sidebar from "@/components/app/Sidebar";
 import TeamPage from "@/app/[lang]/app/settings/members/page";
 import JoinPage from "@/app/[lang]/app/join/page";
+import JoinForm from "@/components/app/JoinForm";
 import BillingPage from "@/app/[lang]/app/settings/billing/page";
 import GovernancePage from "@/app/[lang]/app/b/[brand]/settings/governance/page";
 import TasksPage from "@/app/[lang]/app/b/[brand]/tasks/page";
@@ -121,11 +122,11 @@ describe("invite links keep the token in the URL fragment", () => {
 describe("Members page permissions come from can()", () => {
   const as = (actor: User["actor"]) => ({ ...owner, actor }) as User;
   const base = { pid: storedPersonId("x@test.example"), home: true, name: "X", lang: "ar" as const };
-  it("owner: everything but leaving", () => {
-    expect(teamPerms(as({ ...base, kind: "owner", email: owner.email, role: "owner" }))).toEqual({ inviteMember: true, inviteAdmin: true, changeRole: true, removeMember: true, removeAdmin: true, viewInvites: true, cancelInvite: true, leave: false, viewLog: false, transfer: false, access: true, cap: true, policy: true, buySeats: true, impersonating: false });
+  it("owner: everything but leaving (with several workspaces on, the team log and the transfer too)", () => {
+    expect(teamPerms(as({ ...base, kind: "owner", email: owner.email, role: "owner" }))).toEqual({ inviteMember: true, inviteAdmin: true, changeRole: true, removeMember: true, removeAdmin: true, viewInvites: true, cancelInvite: true, leave: false, viewLog: true, transfer: true, access: true, cap: true, policy: true, buySeats: true, impersonating: false });
   });
-  it("admin: plain members only, no role changes", () => {
-    expect(teamPerms(as({ ...base, kind: "member", email: admin.email, role: "admin" }))).toEqual({ inviteMember: true, inviteAdmin: false, changeRole: false, removeMember: true, removeAdmin: false, viewInvites: true, cancelInvite: true, leave: true, viewLog: false, transfer: false, access: true, cap: false, policy: false, buySeats: false, impersonating: false });
+  it("admin: plain members only, no role changes; the team log is theirs, the transfer is not", () => {
+    expect(teamPerms(as({ ...base, kind: "member", email: admin.email, role: "admin" }))).toEqual({ inviteMember: true, inviteAdmin: false, changeRole: false, removeMember: true, removeAdmin: false, viewInvites: true, cancelInvite: true, leave: true, viewLog: true, transfer: false, access: true, cap: false, policy: false, buySeats: false, impersonating: false });
   });
   it("member: view and leave only", () => {
     expect(teamPerms(as({ ...base, kind: "member", email: member.email, role: "member" }))).toEqual({ inviteMember: false, inviteAdmin: false, changeRole: false, removeMember: false, removeAdmin: false, viewInvites: false, cancelInvite: false, leave: true, viewLog: false, transfer: false, access: false, cap: false, policy: false, buySeats: false, impersonating: false });
@@ -205,13 +206,22 @@ describe("the join page", () => {
     expect(h).toContain(en.join.checking);
   });
 
-  it("signed in: never joins into the current session, asks to log out first", async () => {
-    await signIn(member.email);
-    const h = await html(JoinPage);
+  it("signed in (several workspaces off): never joins into the current session, asks to log out first", () => {
+    // The page passes no `person` when `MULTI_ORG` is off; the form then shows the signed-in-as card (JoinForm's legacy phase).
+    const h = renderToStaticMarkup(createElement(JoinForm, { t: en, lang: "en", signedInAs: member.email, person: null }));
     expect(h).toContain("You are signed in as");
     expect(h).toContain(member.email);
     expect(h).toContain(en.join.logout);
     expect(h).not.toContain(en.join.submit + "<");
+  });
+
+  it("signed in (several workspaces on): the page hands the person to the form, which joins nothing by itself", async () => {
+    await signIn(member.email);
+    const h = await html(JoinPage);
+    // Static render: the form checks the invite on the client; nothing is joined, and no plain submit is offered.
+    expect(h).toContain(en.join.checking);
+    expect(h).not.toContain(en.join.submit + "<");
+    expect(readFileSync("src/app/[lang]/app/join/page.tsx", "utf8")).toContain("MULTI_ORG ? currentPerson() : null");
   });
 });
 
@@ -341,14 +351,14 @@ describe("working screens offer a plain member only what the server lets a membe
     expect(o).toContain('href="/en/app/settings/brand"');
     await signIn(shopMember.email);
     expect(await page(StartPage)).not.toContain(esc(DICT_COPY.title.en));
-    await saveBrand(shop.email, BRAND);
+    await saveBrand(acct(shop), BRAND);
     await signIn(shop.email);
     await expect(page(StartPage)).rejects.toThrow(/NEXT_REDIRECT/);
   });
 
   it("inbox: a member edits and rejects but is offered no Approve or Publish, and is told who approves", async () => {
-    await saveBrand(shop.email, BRAND);
-    await saveTask(shop.email, { id: "uiq1", type: "social", channel: "instagram", title: "Roast day", body: "Fresh beans", status: "pending", createdAt: new Date().toISOString(), lang: "en" }, true);
+    await saveBrand(acct(shop), BRAND);
+    await saveTask(acct(shop), { id: "uiq1", type: "social", channel: "instagram", title: "Roast day", body: "Fresh beans", status: "pending", createdAt: new Date().toISOString(), lang: "en" }, true);
     await signIn(shopMember.email);
     const m = await html(InboxPage);
     expect(m).toContain(en.inbox.edit);
@@ -365,8 +375,8 @@ describe("working screens offer a plain member only what the server lets a membe
   });
 
   it("files: a member gets no catalog import and no edit or delete on core memory; an admin gets both", async () => {
-    await saveBrand(shop.email, BRAND);
-    await writeFile(shop.email, "brand.md", "# brand", "noor");
+    await saveBrand(acct(shop), BRAND);
+    await writeFile(acct(shop), "brand.md", "# brand", "noor");
     await signIn(shopMember.email);
     const m = await html(FilesPage);
     expect(m).not.toContain(en.files.importCatalog);
@@ -380,7 +390,7 @@ describe("working screens offer a plain member only what the server lets a membe
   });
 
   it("reports: campaign results import is offered to an admin, and a member reads a note instead", async () => {
-    await saveBrand(shop.email, BRAND);
+    await saveBrand(acct(shop), BRAND);
     await signIn(shopMember.email);
     const m = await page(ReportsPage);
     expect(m).not.toContain("Drop a CSV here");

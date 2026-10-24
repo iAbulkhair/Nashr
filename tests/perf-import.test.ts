@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { sc } from "@/lib/auth";
 import { json, newUser, signIn, signOut } from "./helpers/session";
 import { analyze, clean, defaultMetric, learningsMarkdown, num, parseCsv, readRows, ImportError } from "@/lib/perf-import";
 import { getPerf } from "@/lib/perf-store";
@@ -101,9 +102,9 @@ describe("the import route (rule 84)", () => {
     await signIn(u.email);
     const res = await post({ csv: META, file: "meta.csv" });
     expect(res.status).toBe(200);
-    expect((await getPerf(u.email))!.rows).toBe(10);
-    expect((await readFile(u.email, "performance-learnings.md"))!.content).toContain("Campaign learnings");
-    expect(await memoryBlock(u.email)).toContain("performance-learnings.md");
+    expect((await getPerf(sc(u)))!.rows).toBe(10);
+    expect((await readFile(sc(u), "performance-learnings.md"))!.content).toContain("Campaign learnings");
+    expect(await memoryBlock(sc(u))).toContain("performance-learnings.md");
 
     const other = await newUser("perf");
     await signIn(other.email);
@@ -111,8 +112,8 @@ describe("the import route (rule 84)", () => {
 
     await signIn(u.email);
     expect((await route.DELETE()).status).toBe(200);
-    expect(await getPerf(u.email)).toBeNull();
-    expect(await readFile(u.email, "performance-learnings.md")).toBeNull();
+    expect(await getPerf(sc(u))).toBeNull();
+    expect(await readFile(sc(u), "performance-learnings.md")).toBeNull();
   });
 
   it("refuses unusable, oversized and too frequent uploads", async () => {

@@ -69,7 +69,7 @@ vi.mock("@/lib/generate-batch", async (orig) => {
   };
 });
 
-import { getUser, saveUser, sc, type User } from "@/lib/auth";
+import { acct, getUser, saveUser, sc, type User } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { listTasks, type Brand } from "@/lib/brand";
 import { saveBrands } from "@/lib/brands";
@@ -96,24 +96,24 @@ const logOf = async (email: string) => (await db.lrange(AGENT_SCOPE_KEYS.log(day
 const counter = async (key: string) => Number((await db.get<number | string>(key)) ?? 0);
 const credits = async (email: string) => (await getUser(email))!.credits;
 /** What a free refusal needs: an owner whose trial ended, one with no brand file, one with no credits. */
-const endTrial = async (u: User) => saveUser({ ...(await getUser(u.email))!, trialEnds: new Date(Date.now() - 864e5).toISOString() });
-const drain = async (u: User) => saveUser({ ...(await getUser(u.email))!, credits: 0 });
+const endTrial = async (u: User) => saveUser({ ...(await getUser(acct(u)))!, trialEnds: new Date(Date.now() - 864e5).toISOString() });
+const drain = async (u: User) => saveUser({ ...(await getUser(acct(u)))!, credits: 0 });
 async function noBrand(prefix: string): Promise<User> {
   const u = await newUser(prefix);
   await signIn(u.email);
-  const back = (await getUser(u.email))!;
-  back.scope = back.email;
+  const back = (await getUser(acct(u)))!;
+  back.scope = acct(back);
   return back;
 }
 
 /** An owner with a brand file, signed in, re-read so the object carries the stored balance and the scope the routes read. */
 async function owner(prefix: string, lang: "ar" | "en" = "ar"): Promise<User> {
   const u = await newUser(prefix);
-  await db.set(`brand:${u.email}`, BRAND);
+  await db.set(`brand:${acct(u)}`, BRAND);
   if (lang !== u.lang) await saveUser({ ...u, lang });
   await signIn(u.email);
-  const back = (await getUser(u.email))!;
-  back.scope = back.email;
+  const back = (await getUser(acct(u)))!;
+  back.scope = acct(back);
   return back;
 }
 const post = (body: Record<string, unknown>, headers: Record<string, string> = {}) => generateRoute.POST(json("/api/generate", "POST", body, headers));
@@ -153,7 +153,7 @@ describe("rule 796: POST /api/generate", () => {
     }
     expect(cls.calls).toHaveLength(0);
     expect(sdk.gens, "the three batches ran").toBe(3);
-    expect(await credits(u.email)).toBe(50 - 3 * TASK_COST.social);
+    expect(await credits(acct(u))).toBe(50 - 3 * TASK_COST.social);
     expect(await logOf(u.email)).toEqual([]);
   });
 
@@ -169,11 +169,11 @@ describe("rule 796: POST /api/generate", () => {
     const u = await owner("asg-enforce");
     await setModes("enforce");
     cls.verdict = "off_topic";
-    const before = await credits(u.email);
+    const before = await credits(acct(u));
     const res = await post({ type: "social", notes: "write me a poem about my cat" });
     expect(res.status).toBe(422);
     expect((await res.json()) as WebBody).toEqual({ ok: false, error: "agent_scope", message: agentScopeRefusalText("off_topic", "ar", { brand: BRAND.name, otherBrands: [] }) });
-    expect(await credits(u.email), "nothing charged").toBe(before);
+    expect(await credits(acct(u)), "nothing charged").toBe(before);
     expect(await listTasks(sc(u)), "nothing saved").toEqual([]);
     expect(sdk.gens, "no generation call").toBe(0);
     expect(batches.opts, "the route hands the gate to generateBatch, which stops before the charge").toHaveLength(1);
@@ -197,8 +197,8 @@ describe("rule 796: POST /api/generate", () => {
     expect(((await own.json()) as WebBody).message).toBe(agentScopeRefusalText("personal", "ar", { brand: BRAND.name, otherBrands: [] }));
     expect(cls.calls[1].input.lang).toBe("ar");
     const u = await owner("asg-lang-en", "en");
-    const acct = await post({ type: "social", notes: "remind me of my dentist" });
-    expect(((await acct.json()) as WebBody).message).toBe(agentScopeRefusalText("personal", "en", { brand: BRAND.name, otherBrands: [] }));
+    const enAcct = await post({ type: "social", notes: "remind me of my dentist" });
+    expect(((await enAcct.json()) as WebBody).message).toBe(agentScopeRefusalText("personal", "en", { brand: BRAND.name, otherBrands: [] }));
     expect(ar.email).not.toBe(u.email);
   });
 
@@ -210,7 +210,7 @@ describe("rule 796: POST /api/generate", () => {
     expect(res.status).toBe(200);
     expect(((await res.json()) as WebBody).created).toBe(10);
     expect(sdk.gens).toBe(1);
-    expect(await credits(u.email), "charged like any batch").toBe(50 - TASK_COST.social);
+    expect(await credits(acct(u)), "charged like any batch").toBe(50 - TASK_COST.social);
     expect(await listTasks(sc(u))).toHaveLength(10);
     expect(await logOf(u.email)).toEqual([expect.objectContaining({ layer: "input", where: "generate", verdict: "personal", mode: "shadow" })]);
     expect(await counter(hourKey(sc(u))), "shadow never counts").toBe(0);
@@ -218,7 +218,7 @@ describe("rule 796: POST /api/generate", () => {
 
   it("generate: an `in` verdict runs the batch; the classifier is given the owning agent, the brands, the language and the notes", async () => {
     const u = await owner("asg-in");
-    await saveBrands(u.email, [
+    await saveBrands(acct(u), [
       { id: "default", name: "", createdAt: new Date().toISOString(), status: "active" },
       { id: "b2", name: "Bakery Two", createdAt: new Date().toISOString(), status: "active" },
     ]);
@@ -255,7 +255,7 @@ describe("rule 796: POST /api/generate", () => {
     }
     expect(cls.calls, "nothing to classify").toHaveLength(0);
     expect(batches.opts.map((o) => o.notes), "the batch got no notes either").toEqual([undefined, undefined, undefined, undefined]);
-    expect(await credits(u.email)).toBe(50 - 4 * TASK_COST.social);
+    expect(await credits(acct(u))).toBe(50 - 4 * TASK_COST.social);
   });
 
   it("generate: the classifier reads the first characters of the notes, the ones the generator reads", async () => {
@@ -284,7 +284,7 @@ describe("rule 796: POST /api/generate", () => {
     const u = await owner("asg-brands-err");
     await setModes("enforce");
     const real = db.get.bind(db);
-    vi.spyOn(db, "get").mockImplementation(((k: string) => (k === `brands:${u.email}` ? Promise.reject(new Error("down")) : real(k))) as typeof db.get);
+    vi.spyOn(db, "get").mockImplementation(((k: string) => (k === `brands:${acct(u)}` ? Promise.reject(new Error("down")) : real(k))) as typeof db.get);
     const err = vi.spyOn(console, "error").mockImplementation(() => {});
     const res = await post({ type: "social", notes: "قهوة" });
     expect(res.status).toBe(200);
@@ -296,14 +296,14 @@ describe("rule 796: POST /api/generate", () => {
     const u = await owner("asg-ceil");
     await setModes("enforce");
     await db.set(hourKey(sc(u)), 20);
-    const before = await credits(u.email);
+    const before = await credits(acct(u));
     const res = await post({ type: "social", notes: "اكتب لي برنامج" });
     expect(res.status).toBe(429);
     expect(res.headers.get("Retry-After")).toBe("3600");
     expect((await res.json()) as WebBody).toEqual({ ok: false, error: "slow_down", retry: "hour", message: agentScopeSlowText("ar") });
     expect(cls.calls, "no classifier call").toHaveLength(0);
     expect(sdk.gens).toBe(0);
-    expect(await credits(u.email)).toBe(before);
+    expect(await credits(acct(u))).toBe(before);
     expect(await listTasks(sc(u))).toEqual([]);
     // The day's wait is the longer one.
     await db.set(dayKey(sc(u)), 60);
@@ -323,7 +323,7 @@ describe("rule 796: POST /api/generate", () => {
     }
     expect(cls.calls).toHaveLength(0);
     expect(sdk.gens).toBe(3);
-    expect(await credits(u.email)).toBe(50 - 3 * TASK_COST.social);
+    expect(await credits(acct(u))).toBe(50 - 3 * TASK_COST.social);
   });
 
   it("generate: the ceiling holds only in enforce", async () => {
@@ -351,11 +351,11 @@ describe("rule 796: MCP generate_content", () => {
     const u = await owner("asg-mcp-enforce");
     await setModes("enforce");
     cls.verdict = "pro_advice";
-    const before = await credits(u.email);
-    const r = await tool(u.email, { type: "social", notes: "is this contract legal?" });
+    const before = await credits(acct(u));
+    const r = await tool(acct(u), { type: "social", notes: "is this contract legal?" });
     expect(r.isError).toBe(true);
     expect(r.content).toEqual([{ type: "text", text: agentScopeRefusalText("pro_advice", "ar", { brand: BRAND.name, otherBrands: [] }) }]);
-    expect(await credits(u.email), "nothing charged").toBe(before);
+    expect(await credits(acct(u)), "nothing charged").toBe(before);
     expect(await listTasks(sc(u)), "nothing saved").toEqual([]);
     expect(sdk.gens).toBe(0);
     expect(batches.opts, "generateBatch stops at the gate, before the charge").toHaveLength(1);
@@ -368,7 +368,7 @@ describe("rule 796: MCP generate_content", () => {
     const u = await owner("asg-mcp-en", "en");
     await setModes("enforce");
     cls.verdict = "other_business";
-    const r = await tool(u.email, { type: "social", notes: "ads for my cousin's shop" });
+    const r = await tool(acct(u), { type: "social", notes: "ads for my cousin's shop" });
     expect(r.isError).toBe(true);
     expect(r.content[0].text).toBe(agentScopeRefusalText("other_business", "en", { brand: BRAND.name, otherBrands: [] }));
     expect(cls.calls[0].input.lang).toBe("en");
@@ -378,15 +378,15 @@ describe("rule 796: MCP generate_content", () => {
     const u = await owner("asg-mcp-shadow");
     await setModes("shadow");
     cls.verdict = "personal";
-    const r = await tool(u.email, { type: "social", notes: "remind me of my dentist" });
+    const r = await tool(acct(u), { type: "social", notes: "remind me of my dentist" });
     expect(r.isError).toBeUndefined();
     expect(r.content[0].text).toMatch(/^Created 10 social item\(s\)/);
-    expect(await credits(u.email)).toBe(50 - TASK_COST.social);
+    expect(await credits(acct(u))).toBe(50 - TASK_COST.social);
     expect(await logOf(u.email)).toEqual([expect.objectContaining({ where: "mcp_generate", verdict: "personal", mode: "shadow" })]);
     expect(batches.opts[0].agentScope).toEqual({ prompt: "on", input: "shadow", role: "off", output: "off" });
     cls.verdict = "in";
     await setModes("enforce");
-    expect((await tool(u.email, { type: "social", notes: "قهوة" })).isError).toBeUndefined();
+    expect((await tool(acct(u), { type: "social", notes: "قهوة" })).isError).toBeUndefined();
     expect(sdk.gens).toBe(2);
   });
 
@@ -394,7 +394,7 @@ describe("rule 796: MCP generate_content", () => {
     const u = await owner("asg-mcp-empty");
     await setModes("enforce");
     for (const args of [{ type: "social" }, { type: "social", notes: "" }, { type: "social", notes: "   " }]) {
-      expect((await tool(u.email, args)).isError, JSON.stringify(args)).toBeUndefined();
+      expect((await tool(acct(u), args)).isError, JSON.stringify(args)).toBeUndefined();
     }
     expect(cls.calls).toHaveLength(0);
     expect(sdk.gens).toBe(3);
@@ -405,7 +405,7 @@ describe("rule 796: MCP generate_content", () => {
     await setModes("enforce");
     cls.verdict = "off_topic";
     // `String(["x"])` is "x": what the generator would read is what the gate reads.
-    const r = await tool(u.email, { type: "social", notes: ["write me a poem"] });
+    const r = await tool(acct(u), { type: "social", notes: ["write me a poem"] });
     expect(r.isError).toBe(true);
     expect(cls.calls[0].input.text).toBe("write me a poem");
     expect(sdk.gens).toBe(0);
@@ -415,7 +415,7 @@ describe("rule 796: MCP generate_content", () => {
     const u = await owner("asg-mcp-long");
     await setModes("shadow");
     const long = "ا".repeat(GENERATE_NOTES_READ) + "x".repeat(50_000);
-    await tool(u.email, { type: "social", notes: long });
+    await tool(acct(u), { type: "social", notes: long });
     expect(cls.calls[0].input.text).toBe(long.slice(0, GENERATE_NOTES_READ));
     expect(batches.opts[0].notes).toBe(long);
   });
@@ -424,16 +424,16 @@ describe("rule 796: MCP generate_content", () => {
     const u = await owner("asg-mcp-ceil");
     await setModes("enforce");
     await db.set(hourKey(sc(u)), 20);
-    const before = await credits(u.email);
-    const r = await tool(u.email, { type: "social", notes: "اكتب لي برنامج" });
+    const before = await credits(acct(u));
+    const r = await tool(acct(u), { type: "social", notes: "اكتب لي برنامج" });
     expect(r.isError).toBe(true);
     expect(r.content).toEqual([{ type: "text", text: agentScopeSlowText("ar") }]);
     expect(cls.calls).toHaveLength(0);
     expect(sdk.gens).toBe(0);
-    expect(await credits(u.email)).toBe(before);
+    expect(await credits(acct(u))).toBe(before);
     // No notes: never held by the ceiling.
-    expect((await tool(u.email, { type: "social" })).isError).toBeUndefined();
-    expect((await tool(u.email, { type: "social", notes: "  " })).isError).toBeUndefined();
+    expect((await tool(acct(u), { type: "social" })).isError).toBeUndefined();
+    expect((await tool(acct(u), { type: "social", notes: "  " })).isError).toBeUndefined();
     expect(cls.calls).toHaveLength(0);
   });
 
@@ -441,7 +441,7 @@ describe("rule 796: MCP generate_content", () => {
     const u = await owner("asg-mcp-badtype");
     await setModes("enforce");
     await db.set(hourKey(sc(u)), 20);
-    const r = await tool(u.email, { type: "nonsense", notes: "اكتب لي برنامج" });
+    const r = await tool(acct(u), { type: "nonsense", notes: "اكتب لي برنامج" });
     expect(r).toEqual({ content: [{ type: "text", text: "Unknown type." }], isError: true });
     expect(cls.calls).toHaveLength(0);
   });
@@ -450,7 +450,7 @@ describe("rule 796: MCP generate_content", () => {
     const u = await owner("asg-mcp-fail-open");
     await setModes("enforce");
     cls.error = "timeout";
-    const r = await tool(u.email, { type: "social", notes: "قهوة" });
+    const r = await tool(acct(u), { type: "social", notes: "قهوة" });
     expect(r.isError).toBeUndefined();
     expect(await logOf(u.email)).toEqual([expect.objectContaining({ verdict: "error", error: "timeout", where: "mcp_generate" })]);
   });
@@ -499,21 +499,21 @@ describe("rule 796: the gate sits inside generateBatch, after the free refusals"
     cls.verdict = "off_topic";
     const t = await owner("asg-mcp-trial");
     await endTrial(t);
-    expect(await tool(t.email, { type: "social", notes: NOTES })).toEqual({ content: [{ type: "text", text: "The trial has ended. Subscribe in the app to keep generating." }], isError: true });
+    expect(await tool(acct(t), { type: "social", notes: NOTES })).toEqual({ content: [{ type: "text", text: "The trial has ended. Subscribe in the app to keep generating." }], isError: true });
     await quiet(t);
     const bare = await noBrand("asg-mcp-nobrand");
-    expect(await tool(bare.email, { type: "social", notes: NOTES })).toEqual({ content: [{ type: "text", text: "No brand file yet. Run onboarding in the app first." }], isError: true });
+    expect(await tool(acct(bare), { type: "social", notes: NOTES })).toEqual({ content: [{ type: "text", text: "No brand file yet. Run onboarding in the app first." }], isError: true });
     await quiet(bare);
     const p = await owner("asg-mcp-paused");
     modelSwitch.state = "paused";
-    expect(await tool(p.email, { type: "social", notes: NOTES })).toEqual({ content: [{ type: "text", text: "Content generation is paused for now. No credits were used." }], isError: true });
+    expect(await tool(acct(p), { type: "social", notes: NOTES })).toEqual({ content: [{ type: "text", text: "Content generation is paused for now. No credits were used." }], isError: true });
     await quiet(p);
   });
 
   it("mcp generate_content: a missing cart store reads its own text, with no classifier call", async () => {
     await setModes("enforce");
     const u = await owner("asg-mcp-nocart");
-    const r = await tool(u.email, { type: "cart_recovery", notes: NOTES });
+    const r = await tool(acct(u), { type: "cart_recovery", notes: NOTES });
     expect(r.isError).toBe(true);
     expect(r.content[0].text).toMatch(/^No abandoned-cart data yet/);
     await quiet(u);
@@ -523,10 +523,10 @@ describe("rule 796: the gate sits inside generateBatch, after the free refusals"
     const u = await owner("asg-before-charge");
     await setModes("enforce");
     let seen = -1;
-    cls.onCall = async () => { seen = await credits(u.email); };
+    cls.onCall = async () => { seen = await credits(acct(u)); };
     expect((await post({ type: "social", notes: NOTES })).status).toBe(200);
     expect(seen, "nothing was charged when the classifier was asked").toBe(50);
-    expect(await credits(u.email)).toBe(50 - TASK_COST.social);
+    expect(await credits(acct(u))).toBe(50 - TASK_COST.social);
   });
 
   it("shadow: the check is awaited before the answer, on a batch that runs and on one refused at the charge", async () => {
@@ -543,7 +543,7 @@ describe("rule 796: the gate sits inside generateBatch, after the free refusals"
     expect(Date.now() - t0, "the refusal waited for the check").toBeGreaterThanOrEqual(250);
     expect(await logOf(broke.email)).toHaveLength(1);
     const m = await owner("asg-await-mcp");
-    expect((await tool(m.email, { type: "social", notes: NOTES })).isError).toBeUndefined();
+    expect((await tool(acct(m), { type: "social", notes: NOTES })).isError).toBeUndefined();
     expect(await logOf(m.email)).toHaveLength(1);
   });
 });
@@ -578,7 +578,7 @@ describe("rule 796: the classifier calls of the gate are bounded per scope", () 
 
   it("shadow, an agent at its cap: the gate is asked while the bound allows, then the cap still answers without a call", async () => {
     const u = await owner("asg-bound-cap");
-    await saveGov(u.email, { agentCaps: { noor: 0 } });
+    await saveGov(sc(u), { agentCaps: { noor: 0 } });
     await setModes("shadow");
     const first = await post({ type: "social", notes: NOTES });
     expect(first.status).toBe(402);
@@ -594,7 +594,7 @@ describe("rule 796: the classifier calls of the gate are bounded per scope", () 
     const u = await owner("asg-bound-enforce");
     await setModes("enforce");
     await db.set(genHourKey(sc(u)), AGENT_SCOPE_GEN_CHECKS_PER_HOUR);
-    const before = await credits(u.email);
+    const before = await credits(acct(u));
     const hour = await post({ type: "social", notes: NOTES });
     expect(hour.status).toBe(429);
     expect(hour.headers.get("Retry-After")).toBe("3600");
@@ -607,7 +607,7 @@ describe("rule 796: the classifier calls of the gate are bounded per scope", () 
     expect(day.headers.get("Retry-After")).toBe("86400");
     expect((await day.json()) as WebBody).toEqual({ ok: false, error: "slow_down", retry: "day", message: agentScopeSlowText("en") });
     expect(cls.calls).toHaveLength(0);
-    expect(await credits(u.email)).toBe(before);
+    expect(await credits(acct(u))).toBe(before);
     expect(sdk.gens).toBe(0);
   });
 
@@ -663,15 +663,15 @@ describe("rule 796: the classifier calls of the gate are bounded per scope", () 
     await db.set(genHourKey(sc(u)), AGENT_SCOPE_GEN_CHECKS_PER_HOUR);
     await setModes("shadow");
     cls.verdict = "off_topic";
-    const ran = await tool(u.email, { type: "social", notes: NOTES });
+    const ran = await tool(acct(u), { type: "social", notes: NOTES });
     expect(ran.isError).toBeUndefined();
     expect(cls.calls).toHaveLength(0);
     expect(await logOf(u.email)).toEqual([]);
     await setModes("enforce");
-    const held = await tool(u.email, { type: "social", notes: NOTES });
+    const held = await tool(acct(u), { type: "social", notes: NOTES });
     expect(held).toEqual({ content: [{ type: "text", text: agentScopeSlowText("ar") }], isError: true });
     expect(cls.calls).toHaveLength(0);
-    expect(await credits(u.email)).toBe(50 - TASK_COST.social);
+    expect(await credits(acct(u))).toBe(50 - TASK_COST.social);
   });
 });
 

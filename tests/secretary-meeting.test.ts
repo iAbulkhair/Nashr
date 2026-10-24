@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { json, newMember, newUser, params, signIn, signOut } from "./helpers/session";
-import { getUser, saveUser, sc, type User } from "@/lib/auth";
+import { getUser, saveUser, sc, type User, acct } from "@/lib/auth";
 import { storedPersonId } from "@/lib/keys";
 import { adjust, chargeOnce } from "@/lib/credits";
 import { asData } from "@/lib/json";
@@ -184,7 +184,7 @@ describe("meeting proposals and approve (rules 600-603)", () => {
     await db.srem(SEC_KEYS.all(sc(w)), wj.id);
     const named = await secretaryKeys(sc(w));
     expect(named).toEqual(expect.arrayContaining([`sec:mprop:${sc(w)}:${wi.id}`, `sec:mprop:${sc(w)}:${wj.id}`]));
-    await wipeAccount(w.email);
+    await wipeAccount(acct(w));
     expect(memKeys().filter((k) => k.startsWith("sec:mprop") && k.includes(w.email))).toEqual([]);
     expect(await getPending(sc(keep), keepItem.id)).toEqual(ps);
   });
@@ -195,7 +195,7 @@ describe("meeting proposals and approve (rules 600-603)", () => {
     const who = { ...OWNER, login: u.email };
     const meeting = await booking(u, "Meeting with Omar Example");
     const before = await openCount(u);
-    const userBefore = JSON.stringify(await getUser(u.email));
+    const userBefore = JSON.stringify(await getUser(acct(u)));
 
     // Only the kept refs, as proposed: an agent task and an owner task, each naming the meeting.
     let ps = await pend(u, meeting, [prop("Send the pricing deck", "dana", day(3)), prop("Call Omar back", "owner"), prop("Draft the contract", "majed"), prop("Book the venue", "owner", day(10))]);
@@ -316,7 +316,7 @@ describe("meeting proposals and approve (rules 600-603)", () => {
     expect(await openCount(lim)).toBe(1 + 2);
 
     // Nothing is charged: the account's record, credits included, is exactly what it was before the first approve.
-    const userAfter = JSON.stringify(await getUser(u.email));
+    const userAfter = JSON.stringify(await getUser(acct(u)));
     expect(userAfter).toBe(userBefore);
   });
 
@@ -619,8 +619,8 @@ describe("meeting proposals and approve (rules 600-603)", () => {
 
 /** What the forced tool call returns: a tool_use block with `tasks`, and the usage the meter reads. */
 const reply = (tasks: unknown, usage = { input_tokens: 20_000, output_tokens: 300 }) => ({ model: "claude-sonnet-5-5", stop_reason: "tool_use", usage, content: [{ type: "tool_use", id: "tu_1", name: "propose_tasks", input: { tasks } }] });
-const credits = async (u: User) => (await getUser(u.email))!.credits;
-const holds = async (u: User) => Object.keys((await getUser(u.email))!.paidOnce ?? {});
+const credits = async (u: User) => (await getUser(acct(u)))!.credits;
+const holds = async (u: User) => Object.keys((await getUser(acct(u)))!.paidOnce ?? {});
 const TXT = (n: number) => "ا".repeat(n);
 
 describe("proposing from text (rules 604-606)", () => {
@@ -705,7 +705,7 @@ describe("proposing from text (rules 604-606)", () => {
     // A retry of the same claim (a run that died after its charge) reuses the hold: no second charge.
     const m2 = await booking(u, "Meeting with Retry Example");
     const bal = await credits(u);
-    expect((await chargeOnce(u.email, 1, { scope, agent: "reem" }, `meeting:${scope}:${m2.id}:0`)).ok).toBe(true);
+    expect((await chargeOnce(acct(u), 1, { scope, agent: "reem" }, `meeting:${scope}:${m2.id}:0`)).ok).toBe(true);
     expect(await credits(u)).toBe(bal - 1);
     model.create.mockResolvedValueOnce(reply([prop("Retry task", "owner")]));
     expect((await proposeFromText(u, m2.id, "transcript", TXT(500), "ar")).ok).toBe(true);
@@ -795,7 +795,7 @@ describe("proposing from text (rules 604-606)", () => {
     // No credits: refused before the model, nothing charged, no hold.
     const poor = await newUser("mt605b");
     const pm = await booking(poor);
-    await adjust(poor.email, -(await credits(poor)));
+    await adjust(acct(poor), -(await credits(poor)));
     const calls2 = model.create.mock.calls.length;
     expect(await proposeFromText(poor, pm.id, "transcript", TXT(500), "ar")).toEqual({ ok: false, error: "no_credits" });
     expect(model.create).toHaveBeenCalledTimes(calls2);
@@ -812,8 +812,8 @@ describe("proposing from text (rules 604-606)", () => {
     // An ended trial is its own refusal, before any charge or call.
     const ended = await newUser("mt605e");
     const em = await booking(ended);
-    await saveUser({ ...(await getUser(ended.email))!, trialEnds: new Date(Date.now() - 864e5).toISOString() });
-    const endedUser = (await getUser(ended.email))!;
+    await saveUser({ ...(await getUser(acct(ended)))!, trialEnds: new Date(Date.now() - 864e5).toISOString() });
+    const endedUser = (await getUser(acct(ended)))!;
     expect(await proposeFromText(endedUser, em.id, "transcript", TXT(500), "ar")).toEqual({ ok: false, error: "trial_over" });
     expect(model.create).toHaveBeenCalledTimes(calls2);
     expect(await holds(ended)).toEqual([]);
@@ -821,8 +821,8 @@ describe("proposing from text (rules 604-606)", () => {
     // The counter has no TTL: chargeOnce reuses a hold whatever its age, so a counter that lapsed after idle days would make
     // the next run free. Idle 15 days (the clock moved), a second transcript is a new claim and is charged again.
     const idle = await newUser("mt605f");
-    await saveUser({ ...(await getUser(idle.email))!, trialEnds: new Date(Date.now() + 60 * 864e5).toISOString() });
-    const idleUser = (await getUser(idle.email))!;
+    await saveUser({ ...(await getUser(acct(idle)))!, trialEnds: new Date(Date.now() + 60 * 864e5).toISOString() });
+    const idleUser = (await getUser(acct(idle)))!;
     const im = await booking(idle);
     const ib = await credits(idle);
     model.create.mockResolvedValueOnce(reply([prop("Idle one", "owner")]));
@@ -834,7 +834,7 @@ describe("proposing from text (rules 604-606)", () => {
       vi.setSystemTime(Date.now() + 15 * 864e5);
       expect(await db.get(SEC_KEYS.mrun(sc(idle), im.id))).toBe(1);
       model.create.mockResolvedValueOnce(reply([prop("Idle two", "owner")]));
-      expect((await proposeFromText((await getUser(idle.email))!, im.id, "transcript", TXT(500), "ar", { now: Date.now() })).ok).toBe(true);
+      expect((await proposeFromText((await getUser(acct(idle)))!, im.id, "transcript", TXT(500), "ar", { now: Date.now() })).ok).toBe(true);
     } finally {
       vi.useRealTimers();
     }
@@ -890,7 +890,7 @@ describe("proposing from text (rules 604-606)", () => {
     expect(bad.status).toBe(502);
     expect(await bad.json()).toEqual({ ok: false, error: "model_failed" });
     expect(await credits(u)).toBe(b8 - 1);
-    await adjust(u.email, -(await credits(u)));
+    await adjust(acct(u), -(await credits(u)));
     const broke = await call(m.id, { kind: "transcript", text: "Omar sends the deck" });
     expect(broke.status).toBe(402);
     expect(await broke.json()).toEqual({ ok: false, error: "no_credits" });
@@ -907,7 +907,7 @@ describe("proposing from text (rules 604-606)", () => {
     // Claude paused: 503 model_paused before a credit moves or a call is made.
     await signIn(u.email);
     const callsP = model.create.mock.calls.length;
-    await adjust(u.email, 5);
+    await adjust(acct(u), 5);
     const bp = await credits(u);
     model.state = "paused";
     try {
@@ -1015,7 +1015,7 @@ describe("propose_meeting_tasks (rule 607)", () => {
 
     // Stores the schema-valid proposals: an unknown agent is dropped, a title is cut, the day goes through the same range check,
     // the input's own ref and item id are ignored. No item is made and nothing is charged.
-    const credits0 = (await getUser(u.email))!.credits;
+    const credits0 = (await getUser(acct(u)))!.credits;
     const ok = await call(u, { item_id: item.id, tasks: [
       { title: "Send the deck", agent: "owner", due: day(2) },
       { title: "Draft the follow-up email", agent: "noor" },
@@ -1030,7 +1030,7 @@ describe("propose_meeting_tasks (rule 607)", () => {
     for (const p of stored) { expect(p.ref).toMatch(/^m[a-f0-9]{8}$/); expect(p.itemId).toBeUndefined(); }
     expect(stored.map((p) => p.ref)).not.toContain("mfixed000");
     expect(await openCount(u)).toBe(open);
-    expect((await getUser(u.email))!.credits).toBe(credits0);
+    expect((await getUser(acct(u)))!.credits).toBe(credits0);
     expect(model.create).not.toHaveBeenCalled();
     // The answer: approval is still needed, on the item; nothing was created; no agent was told to run anything.
     expect(ok.text).toMatch(/await[^.]*approv/i);

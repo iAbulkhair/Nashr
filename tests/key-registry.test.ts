@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { newUser } from "./helpers/session";
-import { sc, type User } from "@/lib/auth";
+import { acct, sc, type User } from "@/lib/auth";
 import { scopeFor } from "@/lib/brands";
 import { accountKey, globalKey, scopeParam, storedAccountId, storedPersonId, storedScope, workspaceScope, wsKey, type Scope } from "@/lib/keys";
 
@@ -200,11 +200,11 @@ describe("rule 2030: each builder returns the bytes of its old template", () => 
 });
 
 describe("rule 2031: sc(u) is the only way a request reaches a workspace builder", () => {
-  it("sc(u) is the account email for the default brand and email#brand for an added one", async () => {
+  it("sc(u) is the account id for the default brand and id#brand for an added one", async () => {
     const u = await newUser("keys");
-    expect(sc(u)).toBe(u.email);
-    expect(sc({ ...u, scope: `${u.email}#b9` } as User)).toBe(`${u.email}#b9`);
-    expect(wsKey.brand(sc(u))).toBe(`brand:${u.email}`);
+    expect(sc(u)).toBe(acct(u));
+    expect(sc({ ...u, scope: `${acct(u)}#b9` } as User)).toBe(`${acct(u)}#b9`);
+    expect(wsKey.brand(sc(u))).toBe(`brand:${acct(u)}`);
   });
 
   it("a plain string from a request does not type-check as a scope", () => {

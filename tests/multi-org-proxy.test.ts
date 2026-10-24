@@ -1,14 +1,12 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { NextRequest } from "next/server";
 import { proxy } from "@/proxy";
 import { wsHandle } from "@/lib/ws-handle";
 import { WS_HEADER } from "@/lib/ws-path";
 
-vi.mock("@/lib/multi-org", async (orig) => ({ ...(await orig<typeof import("@/lib/multi-org")>()), MULTI_ORG: true }));
 
 /**
- * Rule 2113 (multi-workspace M2, docs/specs/2026-10-18-multi-org.md section 7), proxy half, with `MULTI_ORG` on for this
- * file: `/{lang}/app/w/{handle}/…` is served from the page folder at `/{lang}/app/…` with the handle in `x-thakeen-ws`
+ * Rule 2113 (multi-workspace M2, docs/specs/2026-10-18-multi-org.md section 7), proxy half, with `MULTI_ORG` on (the release switch since M2 enable): `/{lang}/app/w/{handle}/…` is served from the page folder at `/{lang}/app/…` with the handle in `x-thakeen-ws`
  * and the browser's address in `x-pathname`; a page path never keeps an `x-thakeen-ws` the browser sent; a state-changing
  * API request with the session cookie and no handle answers 409 `workspace_missing`. tests/multi-org-flag-off.test.ts
  * proves the same requests are untouched while the switch is off.

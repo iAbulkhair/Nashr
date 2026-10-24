@@ -37,6 +37,10 @@ test.describe.configure({ mode: "serial" });
  * Answers every request to `ORIGIN` from this run's server. Redirects are not followed here: the browser follows them, so
  * a `Location` the server built from its own host is moved back onto `ORIGIN` first. Every request carries the spec's
  * own client address, so the sign-up and log-in limits count it apart from the other specs.
+ *
+ * A page load's redirect (the sign-in's full load into `/en/app`, whose 307 adds the workspace, rule 3828) is answered
+ * as a page that moves on by itself: Chromium does not route the request a fulfilled redirect starts, so the next hop
+ * would reach the real site; a fresh navigation is routed like any other. Its cookies are kept on that page.
  */
 async function serveAs(context: BrowserContext, baseURL: string) {
   const local = new URL(baseURL).origin;
@@ -50,6 +54,12 @@ async function serveAs(context: BrowserContext, baseURL: string) {
     if (out.location) {
       const to = new URL(out.location, local);
       out.location = `${ORIGIN}${to.pathname}${to.search}${to.hash}`;
+      if (req.isNavigationRequest() && res.status() >= 300 && res.status() < 400) {
+        const { location, ...rest } = out;
+        delete rest["content-length"];
+        // `Refresh`, not an inline script: the app's CSP (kept with the other headers) refuses an inline script.
+        return route.fulfill({ status: 200, headers: { ...rest, "content-type": "text/html; charset=utf-8", refresh: `0;url=${location}` }, body: "<!doctype html>" });
+      }
     }
     await route.fulfill({ response: res, headers: out });
   });
@@ -92,7 +102,14 @@ async function setSwitch(page: Page, baseURL: string, on: boolean) {
 
 const loginPage = (page: Page) => page.goto(`${ORIGIN}/en/app/login`, { waitUntil: "domcontentloaded" });
 const passkeyButton = (page: Page) => page.getByRole("button", { name: "Sign in with a passkey" });
-const signedIn = (page: Page) => page.waitForURL((u) => u.origin === ORIGIN && u.pathname.startsWith("/en/app") && !u.pathname.startsWith("/en/app/login"));
+/**
+ * Signed in: a page of the session's workspace (`MULTI_ORG` on), not merely a hop through `/en/app` on the way to login,
+ * and drawn (a hop `serveAs` replays has no `main`), so the next test does not start while the page still moves on.
+ */
+const signedIn = async (page: Page) => {
+  await page.waitForURL((u) => u.origin === ORIGIN && /^\/en\/app\/w\/w_[a-z2-7]{16}\//.test(u.pathname));
+  await expect(page.locator("main#main")).toBeVisible();
+};
 /** The Passkeys card (Settings > Security has other cards with a "Password to confirm" field of their own). */
 const card = (page: Page) => page.getByRole("region", { name: "Passkeys" });
 const hasSession = async (page: Page) => (await page.context().cookies(ORIGIN)).some((c) => c.name === "thakeen_session");
@@ -169,12 +186,13 @@ test.describe("customer passkeys in the browser (rules 2408, 2426, 2429)", () =>
       await loginPage(page);
       await armed;
       await expect(passkeyButton(page)).toBeVisible();
-      await presence(auth, true);
-      // The button's own ceremony asks for fresh options (the waiting autofill is cancelled), then verifies.
+      // The button's own ceremony asks for fresh options (the waiting autofill is cancelled), then verifies. Presence
+      // comes back only after that, so the cancelled autofill cannot answer first and sign in on its own.
       const options = page.waitForRequest((r) => new URL(r.url()).pathname === "/api/auth/passkey/options");
       const verify = page.waitForRequest((r) => new URL(r.url()).pathname === "/api/auth/passkey/verify");
       await passkeyButton(page).click();
       await options;
+      await presence(auth, true);
       expect((await (await verify).allHeaders()).cookie ?? "").toMatch(/(^|; )thakeen_pk=/);
     } finally {
       await presence(auth, true);
@@ -223,8 +241,14 @@ test.describe("customer passkeys in the browser (rules 2408, 2426, 2429)", () =>
     } finally {
       await setSwitch(page, baseURL!, true);
     }
-    // Back on: the button is drawn again.
-    await loginPage(page);
-    await expect(passkeyButton(page)).toBeVisible();
+    // Back on: the button is drawn again. Presence off, so the autofill armed on load waits instead of signing in and
+    // leaving the page first.
+    await presence(auth, false);
+    try {
+      await loginPage(page);
+      await expect(passkeyButton(page)).toBeVisible();
+    } finally {
+      await presence(auth, true);
+    }
   });
 });

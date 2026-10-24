@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import * as logRoute from "@/app/api/team/log/route";
 import { acct, currentUser, getUser, saveUser, type User } from "@/lib/auth";
 import { can } from "@/lib/roles";
@@ -6,11 +6,10 @@ import { createInvite } from "@/lib/team";
 import { teamPerms } from "@/components/app/teamPerms";
 import { newMember, newUser, signIn, signOut } from "./helpers/session";
 
-vi.mock("@/lib/multi-org", async (orig) => ({ ...(await orig<typeof import("@/lib/multi-org")>()), MULTI_ORG: true }));
 
 /**
  * Multi-workspace M3, the Team log tab (docs/specs/2026-10-18-multi-org.md section 13; rule 2129, read half), with
- * `MULTI_ORG` on for this file. GET /api/team/log is the account's own `teamlog:` for its owner and admins
+ * `MULTI_ORG` on (the release switch since M2 enable). GET /api/team/log is the account's own `teamlog:` for its owner and admins
  * (`team.log.view`), newest first, people named by address only: never a person id, a token or an invite id.
  */
 

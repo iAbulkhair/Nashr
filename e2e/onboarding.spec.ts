@@ -1,4 +1,4 @@
-import { test, expect, fillWhenReady, open } from "./fixtures/app";
+import { test, expect, appPath, fillWhenReady, open } from "./fixtures/app";
 import { signUpVerified } from "./fixtures/accounts";
 import { appDict } from "../src/lib/app-i18n";
 import { DICT_COPY, MAX_WORDS, SECTORS, START_COPY, WORDS } from "../src/lib/dictionary";
@@ -28,9 +28,9 @@ test("a new account is sent to the Dictionary, plays its seven steps and ends wi
 
   // Without a brand file every workspace page goes to the start page, never to a broken inbox.
   await open(page, "/en/app");
-  await page.waitForURL((u) => u.pathname === "/en/app/b/default/start");
+  await page.waitForURL((u) => appPath(u) === "/en/app/b/default/start");
   await open(page, "/en/app/b/default/reports");
-  await page.waitForURL((u) => u.pathname === "/en/app/b/default/start");
+  await page.waitForURL((u) => appPath(u) === "/en/app/b/default/start");
 
   const game = page.getByTestId("dictionary-start");
   await expect(page.getByRole("heading", { level: 1 })).toHaveText(en(D.title));
@@ -111,7 +111,7 @@ test("a new account is sent to the Dictionary, plays its seven steps and ends wi
   const res = await saved;
   expect(res.status()).toBe(200);
   expect(res.request().postDataJSON()).toMatchObject({ name: "Test Cafe Co", industry: en(coffee.name), products: "Roasted beans and brewing gear", audience: "Home brewers in the city", dialect: "english", languages: ["en"], create: true });
-  await page.waitForURL((u) => u.pathname === "/en/app/b/default");
+  await page.waitForURL((u) => appPath(u) === "/en/app/b/default");
 
   // The brand file holds the answers, in the words played; the start page now has nothing to ask and goes to the inbox.
   const stored = ((await (await page.request.get("/api/brand")).json()) as { brand: { name: string; industry: string; tone: string } }).brand;
@@ -119,7 +119,7 @@ test("a new account is sent to the Dictionary, plays its seven steps and ends wi
   expect(stored.industry).toBe(en(coffee.name));
   for (const w of picks.slice(0, MAX_WORDS)) expect(stored.tone, `tone of "${en(w.name)}"`).toContain(en(w.tone));
   await open(page, "/en/app/b/default/start");
-  await page.waitForURL((u) => u.pathname === "/en/app/b/default");
+  await page.waitForURL((u) => appPath(u) === "/en/app/b/default");
 
   // The game's save is create-only: a second save from another tab cannot replace the brand, and a confirm is refused too.
   const again = await page.request.put("/api/brand", { data: { name: "Other Name", industry: "Clinic", products: "x", audience: "y", create: true }, headers: BRAND });

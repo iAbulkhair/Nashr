@@ -13,9 +13,16 @@ import * as loginRoute from "@/app/api/auth/login/route";
 import * as signupRoute from "@/app/api/auth/signup/route";
 import * as forgotRoute from "@/app/api/auth/forgot/route";
 
+// Both switches are on (rule 3810); one test turns them off to pin the rollback floor's answer (rule 3814).
+const flag = vi.hoisted(() => ({ on: true }));
+vi.mock("@/lib/multi-org", async (orig) => ({ ...(await orig<typeof import("@/lib/multi-org")>()), get MULTI_ORG() { return flag.on; } }));
+vi.mock("@/lib/account-id", async (orig) => ({ ...(await orig<typeof import("@/lib/account-id")>()), get OPAQUE_IDS() { return flag.on; } }));
+afterEach(() => { flag.on = true; });
+
 // Pins the legacy shape (multi-org M1): this file reads and writes R1's records by address (`user:`/`member:`, address-shaped
 // person ids and actors), so its persons are legacy ones; each still holds a shadow membership unless it says `shadow: false`.
-const newUser = (prefix?: string, o: Parameters<typeof helperNewUser>[1] = {}) => helperNewUser(prefix, { legacy: true, ...o });
+// Since the enable release (rule 3815) a legacy owner here is also an address-id account, as every account made before it.
+const newUser = (prefix?: string, o: Parameters<typeof helperNewUser>[1] = {}) => helperNewUser(prefix, { legacy: true, addressId: true, ...o });
 const newMember = (owner: Parameters<typeof helperNewMember>[0], role?: Parameters<typeof helperNewMember>[1], prefix?: string, o: Parameters<typeof helperNewMember>[3] = {}) => helperNewMember(owner, role, prefix, { legacy: true, ...o });
 const newOpaqueUser = (prefix?: string, o: Parameters<typeof helperNewOpaqueUser>[1] = {}) => helperNewOpaqueUser(prefix, { legacy: true, ...o });
 
@@ -227,6 +234,9 @@ describe("rule 2136: a p_ person signs in to the account the pick order names", 
     const pid = await putPerson(e);
     const forged = await putAccount({ ownerPid: storedPersonId(newPersonId()) } as Partial<User>);
     await db.sadd(personKey.orgs(pid), forged);
+    // With the switch on a person with no workspace still signs in, to pick or make one (rule 2126): never into `forged`.
+    expect(await getLogin(e)).toMatchObject({ kind: "member", pid, acct: null, owner: null });
+    flag.on = false;
     expect(await getLogin(e)).toBeNull();
   });
 
@@ -258,7 +268,21 @@ describe("forgot password: a person no legacy record backs gets its link like a 
 });
 
 describe("reconciliation 7: a person whose only membership is gone is nobody", () => {
-  it("login answers as for an unknown address, and signup at the address succeeds", async () => {
+  it("with the switches on (rule 2126) it still signs in, with no workspace, and the address stays taken", async () => {
+    const e = address("pn");
+    const pid = await putPerson(e, "abc12345");
+    const aid = await putAccount();
+    await join(aid, pid);
+    await Promise.all([db.del(accountKey.membership(aid, pid)), db.srem(accountKey.members(aid), pid)]);
+    expect(await getLogin(e)).toMatchObject({ kind: "member", pid, acct: null, owner: null });
+    expect((await login(e)).status).toBe(200);
+    signOut();
+    expect(await answer(await signup(e))).toEqual({ status: 409, body: { ok: false, error: "exists" } });
+    expect(await getLogin(e)).toMatchObject({ pid, acct: null });
+  });
+
+  it("with the switches off (the rollback floor, rule 3814) login answers as for an unknown address, and signup at the address succeeds", async () => {
+    flag.on = false;
     const e = address("pg");
     const pid = await putPerson(e, "abc12345");
     const aid = await putAccount();

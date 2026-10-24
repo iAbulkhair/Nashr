@@ -268,7 +268,7 @@ describe("rule 3033: lifecycle notes are marked per ACCOUNT and still go to the 
 
   it("a legacy account (id = address) keeps its one key and makes no extra read", async () => {
     mailOn();
-    const u0 = await newUser("r3033e", { legacy: true });
+    const u0 = await newUser("r3033e", { legacy: true, addressId: true });
     await saveBrand(acct(u0), brandFile("Roastery"));
     const u = { ...u0, scope: acct(u0), createdAt: new Date(Date.now() - 1.5 * 864e5).toISOString(), trialEnds: new Date(Date.now() + 5 * 864e5).toISOString() } as User;
     expect(acct(u)).toBe(u.email);
