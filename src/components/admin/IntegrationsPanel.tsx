@@ -10,6 +10,7 @@ import type { IntegrationView } from "@/lib/integration-status";
 import type { ComplianceSummary } from "@/lib/connectors/shopify-compliance";
 // Rules 2002 empty state, 2003 skeleton while the panel loads.
 import { PanelSkeleton } from "@/components/ui/Skeleton";
+import ConversionsCard from "./ConversionsCard";
 import { Time } from "@/components/ui/Time";
 
 const S = {
@@ -277,6 +278,7 @@ export default function IntegrationsPanel({ lang }: { lang: "ar" | "en" }) {
         ))}
       </ul>
       <PasskeysSwitch lang={lang} />
+      <ConversionsCard lang={lang} />
       <section className="card card-sm" data-testid="integrations-connections">
         <h2 className="font-semibold">{L.health}</h2>
         {!connections ? <p className="mt-1 text-xs text-foreground-muted">{L.healthNone}</p> : (
