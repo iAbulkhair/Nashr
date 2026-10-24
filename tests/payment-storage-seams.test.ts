@@ -133,7 +133,8 @@ describe("payments", () => {
         .filter((f) => /from "(?:@\/lib\/|\.\.?\/)(?:\.\.\/)*paymob"|paymobConfig\(/.test(read(f)));
       expect(offenders).toEqual([]);
       expect(read("src/lib/billing.ts")).toMatch(/from "\.\/payments";/);
-      expect(read("src/lib/payments/index.ts")).toMatch(/export function paymentProvider\(\): PaymentProvider \| null \{\n {2}return paymobProvider\(\);\n\}/);
+      // Rule 3900: Geidea when its gate is open, else Paymob exactly as before.
+      expect(read("src/lib/payments/index.ts")).toMatch(/export function paymentProvider\(\): PaymentProvider \| null \{\n {2}const geidea = geideaProvider\(\);\n {2}if \(!geidea\) return paymobProvider\(\);/);
     });
     it("the provider object carries no key: nothing that logs or returns it can leak a secret", () => {
       const p = provider();
@@ -405,6 +406,8 @@ describe("rule 2063: stored keys and shapes are unchanged by both seams", () => 
     expect([MEDIA_KEYS.entry("s", "n"), MEDIA_KEYS.names("s"), MEDIA_KEYS.bytes(), MEDIA_KEYS.count()]).toEqual(["mfile:s:n", "mfiles:s", "mfiles:bytes", "mfiles:count"]);
     const billing = read("src/lib/billing.ts");
     for (const k of ["paymob:intent:${ref}", "paymob:order:${orderId}", "paymob:txn:${txnId}", "paymob:done:${txnId}", "paymob:txlock:${txnId}", "paymob:refunded:${txnId}", "paymob:refundlock:${txnId}", "paymob:attempt:${email}:${day}", "paymob:card:${email}", "paymob:last:${email}"]) expect(billing, k).toContain("`" + k + "`");
-    expect(billing).toMatch(/provider: "paymob", plan, status: "active"/);
+    expect(billing).toMatch(/provider, plan, status: "active"/);
+    // Rule 3915: the provider written is the one that was paid, Paymob unless a Geidea transaction says otherwise.
+    expect(billing).toMatch(/async function applyPaid\(intent: PayIntent, txnId: TxnId, paymentId: string, provider: ProviderName = "paymob"\)/);
   });
 });

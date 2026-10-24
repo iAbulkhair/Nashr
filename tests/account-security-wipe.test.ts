@@ -111,8 +111,8 @@ describe("rule 1956: a renewal that read the card before the deletion re-checks 
     const body = src.slice(src.indexOf("async function chargeSavedCard"));
     const check = body.indexOf("const still = await withUserLock(acct(u)");
     expect(check).toBeGreaterThan(0);
-    expect(body).toMatch(/if \(!x\.billing \|\| !x\.billing\.autoRenew \|\| !\(await db\.get\(cardKey\(acct\(u\)\)\)\)\) return false;/);
+    expect(body).toMatch(/if \(!x\.billing \|\| !x\.billing\.autoRenew \|\| !\(await db\.get\(cardKeyOf\(p\.name, acct\(u\)\)\)\)\) return false;/);
     expect(body).toContain('throw new PaymentError(p.name, "renewal_off")');
-    expect(check).toBeLessThan(body.indexOf("saved.charge(paymentKey, card.token)"));
+    expect(check).toBeLessThan(body.indexOf("saved.charge(paymentKey, card.token, card.agreementId ?? null)"));
   });
 });

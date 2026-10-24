@@ -12,7 +12,7 @@ import { route } from "@/lib/models/route";
 import { chatUsdPerMessage } from "@/lib/admin-stats";
 import { pmap } from "@/lib/parallel";
 import { enforceSeats, isTeamLockTimeout, withAccountTeamLock } from "@/lib/team";
-import { MAX_SEAT_OVERRIDE, allowanceOf, brandCapFor, chatAllowanceOf, isChatOverride, parseDeal, priceOf, type AgencyDeal, type DealInput } from "@/lib/pricing";
+import { MAX_SEAT_OVERRIDE, allowanceOf, brandCapFor, chatAllowanceOf, extraSeatsSold, isChatOverride, parseDeal, priceOf, type AgencyDeal, type DealInput } from "@/lib/pricing";
 import { addMonthly, setMonthly, topupCredits } from "@/lib/topups";
 import { parseVideoGrant } from "@/lib/entitlements";
 import { adminAudit, reasonRefused } from "@/lib/admin-audit";
@@ -223,6 +223,9 @@ export async function POST(req: Request) {
     // A deal lives only on Agency: leaving Agency clears it, so a later return to Agency starts from Business.
     if (u.plan !== "agency" || clearDeal) delete u.deal;
     if (contractEnds && !seatsGiven && u.seats !== undefined) { delete u.seats; seatsReset = true; }
+    // Paid extra seats (rule 3373) end on a plan that sells none (trial, Agency): a later paid plan starts at 0 extra,
+    // never at a stale count. Staff never raise them: only the owner's confirmed invite does (rule 3368).
+    if (planGiven && !extraSeatsSold(u.plan) && u.extraSeats !== undefined) delete u.extraSeats;
     // A deal's chat messages live in the chat override, the same way: they end with the contract unless this request sets them.
     if (contractEnds && !chatGiven && u.chatAllowance !== undefined) { delete u.chatAllowance; chatReset = true; }
     if (deal) u.deal = { credits: deal.credits, priceSar: deal.priceSar, setAt: new Date().toISOString(), setBy: who };

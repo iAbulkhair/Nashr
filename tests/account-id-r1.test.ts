@@ -331,7 +331,7 @@ describe("rule 1994: the conversion script is idempotent, dry by default, never 
     expect(await index(a.owner)).toEqual({ kind: "person", pid: "a_hhhhhhhhhhhhhhhhhhhhhhhh" });
   });
   it("the script awaits no db call inside a loop and prints counts only", () => {
-    const src = read("scripts/account-ids.ts");
+    const src = read("scripts/account-ids.ts") + read("src/lib/conversions/account-ids.ts"); // rule 4100: the work moved
     for (const m of src.matchAll(/\bfor \([^)]*\) \{([^}]*)\}/g)) expect(m[1]).not.toContain("await");
     expect(src).not.toMatch(/\bwhile \(/);
     const logs = [...src.matchAll(/console\.(?:log|error)\((.*)\);/g)].map((m) => m[1]);

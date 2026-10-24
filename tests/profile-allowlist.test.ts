@@ -61,6 +61,8 @@ async function fullAccount(): Promise<Required<Omit<User, "scope" | "brandId" | 
     sessionsAfter: u.sessionsAfter!,
     agentSpend: { month, by: { [acct(u)]: { noor: 12 } } },
     seats: 7,
+    // Paid extra seats (rule 3362): billing state the billing page shows, never a profile field.
+    extraSeats: 2,
     brandCap: 12,
     deal: { credits: 5000, priceSar: 3330, setAt: iso(-3), setBy: "founder-deal@test.example" },
     grants: { video: { value: "all", until: iso(10).slice(0, 10), by: "founder-grant@test.example", at: iso(-1), note: "SECRET-GRANT-NOTE" } },

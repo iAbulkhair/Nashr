@@ -5,7 +5,7 @@
  */
 
 /** Where a row came from, for the Log page's filter. */
-export const AUDIT_SECTIONS = ["users", "billing", "partners", "quality", "wishlist", "system"] as const;
+export const AUDIT_SECTIONS = ["users", "billing", "partners", "quality", "wishlist", "system", "data"] as const;
 export type AuditSection = (typeof AUDIT_SECTIONS)[number];
 
 /** One changed value: its key (empty for a value that is not an object), and the value before and after as text. */

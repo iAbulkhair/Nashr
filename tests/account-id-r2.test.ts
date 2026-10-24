@@ -621,7 +621,7 @@ describe("rule 2747: the account-ids script after moves in place (L2)", () => {
     await convertAccountIds(true);
     expect(await db.get(accountKey.login(old))).toBeNull();
     expect((await getLogin(to))!.acct).toBe(old);
-    const src = read("scripts/account-ids.ts");
+    const src = read("scripts/account-ids.ts") + read("src/lib/conversions/account-ids.ts"); // rule 4100: the work moved
     expect(src).toContain("const [raw, still] = await Promise.all([db.get(accountKey.login(login)), holds()]);");
     expect(src).toContain("if (!still) return \"conflict\" as const;");
   });

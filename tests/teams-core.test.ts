@@ -290,7 +290,7 @@ describe("invites", () => {
     const r1 = await createInvite(owner, ownerActor(owner), freshEmail(), "member", "ar");
     expect(r1.ok).toBe(true);
     expect(await seatsUsed(acct(owner))).toBe(3);
-    expect(await createInvite(owner, ownerActor(owner), freshEmail(), "member", "ar")).toEqual({ ok: false, error: "seats", used: 3, limit: 3 });
+    expect(await createInvite(owner, ownerActor(owner), freshEmail(), "member", "ar")).toEqual({ ok: false, error: "seats", used: 3, limit: 3, included: 3, extra: 0, unitSar: 25, canBuy: false });
     // The founder override lifts the plan's number.
     const more = await withPlan(owner, "trial", 5);
     expect((await createInvite(more, ownerActor(more), freshEmail(), "member", "ar")).ok).toBe(true);
@@ -468,7 +468,7 @@ describe("roster changes", () => {
     if (!inv.ok) throw new Error(inv.error);
     const mine = (await teamView((await resolveAs(owner.email))!))!;
     expect(mine.you).toEqual({ email: owner.email, name: owner.name, role: "owner" });
-    expect(mine.seats).toEqual({ used: 3, limit: 3, freeViewers: 3, freeViewersLeft: 3 }); // no viewer yet (rule 3753)
+    expect(mine.seats).toEqual({ used: 3, limit: 3, freeViewers: 3, freeViewersLeft: 3, included: 3, extra: 0, unitSar: 25, canBuy: false }); // no viewer yet (rule 3753)
     expect(mine.members[0]).toEqual({ email: owner.email, name: owner.name, role: "owner" });
     expect(mine.invites).toEqual([{ id: inv.id, email: inv.invite.email, role: "member", expiresAt: inv.invite.expiresAt, invitedBy: owner.email }]);
     expect(JSON.stringify(mine)).not.toContain("passHash");

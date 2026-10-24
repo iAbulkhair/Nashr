@@ -127,6 +127,9 @@ describe("rule 2030: each builder returns the bytes of its old template", () => 
     [accountKey.seenBucket(E), `tabbeat:${E}`],
     // Account-id R2 (rule 2743): the 30-day hold on a moved-from address; new family, no old template.
     [accountKey.emailHold(E), `emailhold:${E}`],
+    [accountKey.payCard(E), `pay:card:${E}`],
+    [accountKey.payLast(E), `pay:last:${E}`],
+    [accountKey.payAttempt(E, "2026-10-24"), `pay:attempt:${E}:2026-10-24`],
   ];
   const global: [string, string][] = [
     [globalKey.usersAll(), "users:all"],
@@ -148,6 +151,15 @@ describe("rule 2030: each builder returns the bytes of its old template", () => 
     [globalKey.rate("files:x"), "rate:files:x"],
     [globalKey.usageAll("2026-10"), "usage:_all:2026-10"],
     [globalKey.paymobRefundEnded(123456), "paymob:refund_ended:123456"],
+    // Geidea (rules 3900-3917): new families, no old template.
+    [globalKey.payIntent("r1"), "pay:intent:r1"],
+    [globalKey.payOpen(), "pay:open"],
+    [globalKey.payTxn("geidea", "o1"), "pay:txn:geidea:o1"],
+    [globalKey.payDone("geidea", "o1"), "pay:done:geidea:o1"],
+    [globalKey.payTxLock("geidea", "o1"), "pay:txlock:geidea:o1"],
+    [globalKey.payRefunded("geidea", "o1"), "pay:refunded:geidea:o1"],
+    [globalKey.payRefundLock("geidea", "o1"), "pay:refundlock:geidea:o1"],
+    [globalKey.payRefundEnded("geidea", "o1"), "pay:refund_ended:geidea:o1"],
     [globalKey.shopifyCompliance(), "shopify:compliance"],
     [globalKey.shopifyRedact(), "shopify:redact"],
     [globalKey.connectionHealth(), "connections:health"],
@@ -155,6 +167,9 @@ describe("rule 2030: each builder returns the bytes of its old template", () => 
     [globalKey.passkeyCred("h1"), "pkcred:h1"],
     [globalKey.passkeyAuth("h1"), "pkauth:h1"],
     [globalKey.passkeysOff(), "passkeys:off"],
+    [globalKey.conversionLock(), "lock:conversion"],
+    [globalKey.conversionClean("account-ids"), "conversion:clean:account-ids"],
+    [globalKey.conversionBucket("key"), "adminconv:key"],
     [globalKey.passkeyIpBucket("1.2.3.4"), "pk:ip:1.2.3.4"],
     [globalKey.passkeyVerifyIpBucket("1.2.3.4"), "pkv:ip:1.2.3.4"],
     [globalKey.passkeyCredBucket("h1"), "pkv:cred:h1"],

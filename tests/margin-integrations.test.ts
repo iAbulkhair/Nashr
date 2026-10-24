@@ -165,7 +165,7 @@ describe("the daily run (rules 1534-1539)", () => {
     const hop = s.slice(s.indexOf('searchParams.get("chain")'), s.indexOf("const roster = await dailyRoster()"));
     expect(hop).toMatch(/margin = await runMarginAlert\(\)/);
     expect(s.indexOf("sameSecret(bearer, process.env.CRON_SECRET)")).toBeLessThan(s.indexOf("runMarginAlert()"));
-    expect(s).toMatch(/emailConfigured: mailReady\(\), reminders, margin \}/);
+    expect(s).toMatch(/emailConfigured: mailReady\(\), reminders, margin, checkouts \}/);
     vi.stubEnv("CRON_SECRET", "cron-secret-margin");
     const before = await db.get(MARGIN_LAST_KEY);
     const res = await daily.GET(new Request("https://nashr.test/api/cron/daily", { headers: { authorization: "Bearer wrong" } }));

@@ -162,13 +162,13 @@ describe("rule 692: same-origin requests, requests with neither header, GET, HEA
   });
 
   it("the exempt paths pass a cross-site post", () => {
-    for (const path of ["/api/mcp", "/api/mcp/", "/api/oauth/token", "/api/oauth/register", "/api/media/hook/kie", "/api/media/hook/higgsfield", "/api/secretary/booking/0123abcd", "/api/billing/paymob/webhook", "/api/cron/secretary"]) {
+    for (const path of ["/api/mcp", "/api/mcp/", "/api/oauth/token", "/api/oauth/register", "/api/media/hook/kie", "/api/media/hook/higgsfield", "/api/secretary/booking/0123abcd", "/api/billing/paymob/webhook", "/api/billing/geidea/webhook", "/api/cron/secretary"]) {
       expect(crossSiteRefusal(req(path, { headers: CROSS })), path).toBeNull();
     }
   });
 
   it("an exemption is one exact path or a prefix ending in /, so the cookie routes beside it stay checked", async () => {
-    for (const path of ["/api/mcp/token", "/api/mcp/grants", "/api/oauth/approve", "/api/secretary/booking", "/api/secretary/booking/", "/api/media/hookx", "/api/billing/paymobx", "/api/cron", "/api/cron/", "/api/cronx"]) {
+    for (const path of ["/api/mcp/token", "/api/mcp/grants", "/api/oauth/approve", "/api/secretary/booking", "/api/secretary/booking/", "/api/media/hookx", "/api/billing/paymobx", "/api/billing/geideax", "/api/cron", "/api/cron/", "/api/cronx"]) {
       await expectRefused(crossSiteRefusal(req(path, { method: path === "/api/mcp/grants" ? "DELETE" : "POST", headers: CROSS })));
     }
   });
@@ -270,6 +270,7 @@ describe("rule 692: same-origin requests, requests with neither header, GET, HEA
       join("src/app/api/media/hook/[provider]/route.ts"),
       join("src/app/api/secretary/booking/[token]/route.ts"),
       join("src/app/api/billing/paymob/webhook/route.ts"),
+      join("src/app/api/billing/geidea/webhook/route.ts"),
       join("src/app/api/shopify/compliance/route.ts"),
       join("src/app/api/cron/secretary/route.ts"),
     ]));
