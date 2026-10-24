@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
-import { json, newMember, newOpaqueUser, newUser, signIn, signOut, useWorkspace } from "./helpers/session";
+import { json, newMember, newOpaqueUser, newUser, PERSONS, signIn, signOut, useWorkspace } from "./helpers/session";
 import { enrolPasskeys, PASSKEY_ORIGIN } from "./helpers/passkeys";
 import { acct, getLogin, getUser } from "@/lib/auth";
 import { ownerOf } from "@/lib/membership";
@@ -157,7 +157,8 @@ describe("rule 3818: with the switches on a passkey set stays with its p_ person
     try {
       const o = await newUser("pkon", { verified: false });
       const pid = (await getLogin(o.email))!.pid;
-      expect(pid).toMatch(/^p_/);
+      // A p_ person, or with TEST_PERSONS=legacy the production shape: the owner's person id is its account id.
+      expect(pid).toMatch(PERSONS === "p" ? /^p_/ : /^a_/);
       const e = await enrolPasskeys(o.email);
       expect(e.pid).toBe(pid);
       const to = `pkon-to-${Date.now()}@test.example`;

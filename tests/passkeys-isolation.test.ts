@@ -348,8 +348,15 @@ describe("rule 2428: one person's passkey never signs in another person", () => 
           check(`${at}: ${b.label}'s credential with ${a.label}'s address forged beside it`, r, b.pid, b.pid, cred.soft.credId);
         }
       } else {
-        // A deleted, maybe planted back by a rollback build, then a new person at A's address.
-        const a = pick(holders);
+        // A deleted, maybe planted back by a rollback build, then a new person at A's address. With MULTI_ORG on a
+        // legacy-shaped member (its id is its address) keeps its person on removal and cannot delete it until M4
+        // (rules 2124, 2754): its address is never given again, so only owners and `p_` persons are deleted here.
+        const gone = holders.filter((p) => p.kind === "owner" || p.pid !== p.email.toLowerCase());
+        if (!gone.length) {
+          kinds.set(kind, (kinds.get(kind) ?? 1) - 1); // not a case: the count below asserts real ones
+          continue;
+        }
+        const a = pick(gone);
         const oldSet = await db.get<PasskeySetValue>(personKey.passkeys(a.pid));
         const entries = a.creds.map((c) => globalKey.passkeyCred(credHash(c.soft.credId)));
         await deletePerson(a, persons);
@@ -360,8 +367,8 @@ describe("rule 2428: one person's passkey never signs in another person", () => 
         }
         const b = await rebornAt(a, persons);
         persons.push(b);
-        if (PERSONS === "legacy") expect(b.pid, `${at}: the legacy pid is the address's`).toBe(a.pid);
-        else expect(b.pid).not.toBe(a.pid);
+        // With OPAQUE_IDS on a new owner at the address gets a fresh account id, in either person shape.
+        expect(b.pid, `${at}: the new person's id is not the deleted one's`).not.toBe(a.pid);
         for (let n = between(0, 2); n > 0; n--) await storeCredential(b);
         const cred = pick(a.creds);
         check(`${at}: deleted ${a.label}'s credential (rollback ${rollback}) after ${b.label} registered at the address`, await signInWith(assertFrom(cred, a.uid)), null, a.pid, cred.soft.credId);
