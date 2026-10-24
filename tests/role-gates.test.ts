@@ -239,6 +239,10 @@ const ROUTE_ROLES: Record<string, Gate> = {
   "POST /api/account/avatar": "member",
   "DELETE /api/account/avatar": "member",
   "POST /api/account/avatar/upload": "member",
+  // The workspace's logo (rules 3610-3611, 3621): owner or an unscoped admin; a token, a brand-scoped admin and a founder impersonating are refused by `can`.
+  "POST /api/account/logo": g("admin", "workspace.logo"),
+  "DELETE /api/account/logo": g("admin", "workspace.logo"),
+  "POST /api/account/logo/upload": g("admin", "workspace.logo"),
   // Notification preferences per type and channel (rule 1145): the account's settings, owner only.
   "PUT /api/notifications/prefs": g("owner", "profile.account"),
   "PUT /api/notifications/digest": g("owner", "profile.account"),
@@ -403,6 +407,8 @@ const READS: Record<string, Gate> = {
   "GET /api/notifications": "member",
   // A person's picture to any signed-in user, behind an HMAC signature and a per-IP limit; every refusal is one 404 (rule 3503).
   "GET /api/avatar/[name]": "member",
+  // A workspace's logo the same way, under a signature key of its own (rule 3612).
+  "GET /api/logo/[name]": "member",
   // The text a woken phone worker shows (rule 2567), read with the device's own session.
   "GET /api/push/latest": "member",
   "GET /api/onboard/plan": "member",
@@ -453,7 +459,7 @@ const PUBLIC_WITHOUT_LIMIT: Record<string, string> = {
  * Signed-in writes that must carry a rate limit of their own (allow() from src/lib/rate.ts), on top of their gate: each
  * writes a log or record a script could churn. The list may only grow.
  */
-const SESSION_RATE_LIMITED = ["POST /api/chat/feedback", "POST /api/team/transfer", "POST /api/workspaces/transfer", "DELETE /api/workspaces/person", "POST /api/governance/rollback", "POST /api/handoffs/[id]/decline", "PUT /api/models",
+const SESSION_RATE_LIMITED = ["POST /api/account/logo", "DELETE /api/account/logo", "POST /api/account/logo/upload", "POST /api/chat/feedback", "POST /api/team/transfer", "POST /api/workspaces/transfer", "DELETE /api/workspaces/person", "POST /api/governance/rollback", "POST /api/handoffs/[id]/decline", "PUT /api/models",
   // Agent instructions (rules 930-959).
   "PUT /api/instructions", "POST /api/instructions/activate", "POST /api/instructions/refs/search", "POST /api/instructions/refs/import", "POST /api/instructions/discard", "POST /api/instructions/restore", "POST /api/instructions/proposals/[id]", "POST /api/instructions/test",
   // Core-file rewrite cards (rule 2306).

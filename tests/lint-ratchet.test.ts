@@ -128,7 +128,8 @@ describe("measured performance (rules 2098-2101)", () => {
   });
 
   // Since rule 3502 a third: PersonAvatar, a signed-in person's picture from our own `/api/avatar/` route (a fixed
-  // 256 px square, so next/image would add nothing), falling back to the initial when it does not load.
+  // 256 px square, so next/image would add nothing), falling back to the initial when it does not load. Since rule 3610 a
+  // fourth: WorkspaceLogo, the workspace's logo from our own `/api/logo/` route, on the same terms.
   it("2101: the public site ships no raster image tags; the <img> in the signed-in app are for user media", () => {
     const raw: string[] = [];
     const walk = (dir: string) => {
@@ -139,6 +140,6 @@ describe("measured performance (rules 2098-2101)", () => {
       }
     };
     walk("src");
-    expect(raw.sort()).toEqual(["src/components/app/Inbox.tsx", "src/components/app/LibraryPanel.tsx", "src/components/app/PersonAvatar.tsx"]);
+    expect(raw.sort()).toEqual(["src/components/app/Inbox.tsx", "src/components/app/LibraryPanel.tsx", "src/components/app/PersonAvatar.tsx", "src/components/app/WorkspaceLogo.tsx"]);
   });
 });

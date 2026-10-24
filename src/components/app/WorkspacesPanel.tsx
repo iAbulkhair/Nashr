@@ -13,6 +13,7 @@ import EmptyState from "@/components/ui/EmptyState";
 import { Field, Input } from "@/components/ui/Field";
 import PageHeader from "@/components/ui/PageHeader";
 import { useConfirm } from "./ConfirmDialog";
+import WorkspaceLogo from "./WorkspaceLogo";
 
 type T = AppDict["workspaces"];
 
@@ -105,11 +106,14 @@ export default function WorkspacesPanel({ t, lang, initial, invites = [], canCre
         <ul className="grid gap-2">
           {initial.map((w) => (
             <li key={w.handle} className="flex min-h-[var(--hit-min)] items-center justify-between gap-3 rounded-lg border border-border p-3">
-              <span className="min-w-0">
-                <span className="block truncate font-semibold text-foreground">{w.name}</span>
-                <span className="text-sm text-foreground-muted">
-                  {t.roles[w.role]}
-                  {w.slug ? <span dir="ltr" className="ms-2 font-mono text-xs">{w.slug}</span> : null}
+              <span className="flex min-w-0 items-center gap-3">
+                <WorkspaceLogo src={w.logo} name={w.name} size={36} />
+                <span className="min-w-0">
+                  <span className="block truncate font-semibold text-foreground">{w.name}</span>
+                  <span className="text-sm text-foreground-muted">
+                    {t.roles[w.role]}
+                    {w.slug ? <span dir="ltr" className="ms-2 font-mono text-xs">{w.slug}</span> : null}
+                  </span>
                 </span>
               </span>
               {w.current ? (

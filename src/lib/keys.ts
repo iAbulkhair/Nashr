@@ -343,6 +343,23 @@ export const accountKey = {
    * that person exists; 30 days (account-id R2, D1, rule 2743). Read and written only while `OPAQUE_IDS` is on.
    */
   emailHold: (login: string) => `emailhold:${login}`,
+  /**
+   * json `LogoRecord` `{ name, at }`: the workspace's logo in the media store (src/lib/workspace-logo.ts, rule 3610), one per
+   * ACCOUNT (every brand of the workspace shows it); the account is the session's (`aidOf(u)`), never one from a request.
+   * No TTL, deleted with the account.
+   */
+  logo: (a: AccountId) => `wslogo:${a}`,
+  /** lock: one workspace's logo change (a leaf lock: nothing else is taken while it is held, rule 3610). */
+  logoLock: (a: AccountId) => `lock:wslogo:${a}`,
+  /** rate bucket (`allow` adds `rate:`): logo changes of one workspace, 20 an hour (POST /api/account/logo, rule 3611). */
+  logoSetBucket: (a: AccountId) => `wslogoset:${a}`,
+  /** rate bucket: logo upload plans of one workspace, 30 an hour (POST /api/account/logo/upload, rule 3611). */
+  logoPlanBucket: (a: AccountId) => `wslogoplan:${a}`,
+  /**
+   * The owner part of a workspace logo's upload ticket (`globalKey.uploadTicket`, rule 3611): `w:{aid}` from the session's
+   * account only, a space of its own beside a person's `p:{pid}`, so a ticket of one kind or owner never redeems as another.
+   */
+  logoUploadOwner: (a: AccountId) => `w:${a}`,
 } as const;
 
 export const globalKey = {
@@ -429,6 +446,8 @@ export const globalKey = {
   wsSlug: (slug: string) => `wsslug:${slug}`,
   /** rate bucket: profile pictures served to one client address, 1200 an hour (GET /api/avatar/{name}, rule 3503). */
   avatarGetBucket: (ip: string) => `avatarget:${ip}`,
+  /** rate bucket: workspace logos served to one client address, 1200 an hour (GET /api/logo/{name}, rule 3612). */
+  logoGetBucket: (ip: string) => `wslogoget:${ip}`,
 } as const;
 
 /**

@@ -14,6 +14,7 @@ import { OWNER_SYNC_KEY, autoHoldKey, routineFingerprints, routineKeys, routineS
 import { activityKey } from "./activity";
 import { agentCapFingerprint, seenKey } from "./notifications";
 import { forgetAvatar } from "./avatar";
+import { forgetLogo } from "./workspace-logo";
 import { WELCOME_FP } from "./welcome";
 import { holdsElsewhere, membersKey, rosterLinks, wipeMemberships, withLoginLock } from "./team";
 import { revokeBook } from "./booking-token";
@@ -330,6 +331,8 @@ export async function wipeAccount(id: string, opts: { userLocked?: boolean; logi
   if (alone) await revokeAllDevices(login);
   // The owner person's picture (rule 3502) goes with the person: only when it holds nothing else, as its sign-in.
   if (alone) await forgetAvatar(self);
+  // The workspace's logo (rule 3610) belongs to the account, so it goes with the account whoever else the owner is.
+  await forgetLogo(aid);
   // The owner's links once more (a create that ran between the first revoke and the deletion of `user:{owner}`); the
   // owner's login index went in `finish` above (members' in `wipeMemberships`); the deletion row names the id and the
   // address (rule 1999).

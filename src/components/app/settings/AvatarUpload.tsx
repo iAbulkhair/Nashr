@@ -2,7 +2,9 @@
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Lang } from "@/lib/i18n";
+import { sendImage } from "@/lib/upload-client";
 import Button from "@/components/ui/Button";
+import CropDialog from "@/components/ui/CropDialog";
 import PersonAvatar from "@/components/app/PersonAvatar";
 import SettingsCard, { type CardStatus } from "./SettingsCard";
 
@@ -14,25 +16,23 @@ const COPY = {
   ar: {
     title: "صورتك",
     sub: "تظهر لك ولفريقك في القائمة الجانبية وقائمة الفريق، في كل مساحة عمل تنتمي إليها. JPEG أو PNG أو WebP حتى 5 ميجابايت.",
-    pick: "اختر صورة", change: "غيّر الصورة", remove: "احذف الصورة", working: "يرفع…",
+    pick: "اختر صورة", change: "غيّر الصورة", remove: "احذف الصورة", working: "يرفع…", crop: "اقتصاص صورتك",
     saved: "تم حفظ صورتك.", removed: "حُذفت صورتك.",
     errors: { bad_type: "الصيغة غير مدعومة. اختر JPEG أو PNG أو WebP.", too_large: "الصورة أكبر من 5 ميجابايت.", slow_down: "محاولات كثيرة. حاول بعد قليل.", forbidden: "لا يمكن تغيير الصورة من هذه الجلسة.", generic: "تعذر حفظ الصورة. حاول مرة أخرى." },
   },
   en: {
     title: "Your picture",
     sub: "Shown to you and your team in the sidebar and the team list, in every workspace you belong to. JPEG, PNG or WebP up to 5 MB.",
-    pick: "Choose a picture", change: "Change picture", remove: "Remove picture", working: "Uploading…",
+    pick: "Choose a picture", change: "Change picture", remove: "Remove picture", working: "Uploading…", crop: "Crop your picture",
     saved: "Your picture is saved.", removed: "Your picture is removed.",
     errors: { bad_type: "That format is not supported. Choose JPEG, PNG or WebP.", too_large: "The picture is larger than 5 MB.", slow_down: "Too many tries. Try again shortly.", forbidden: "The picture cannot be changed from this session.", generic: "The picture could not be saved. Try again." },
   },
 } as const;
 
-type Plan = { ok?: boolean; error?: string; mode?: "signed" | "server"; name?: string; url?: string; method?: "PUT" | "POST"; headers?: Record<string, string>; fields?: Record<string, string> };
-
 /**
- * Rule 3502: the person's picture. The upload is planned first (`/api/account/avatar/upload`): with a backend that signs,
- * the bytes go straight there and the name is posted back; otherwise (the disk, today) the image is posted to
- * `/api/account/avatar`. The server checks, resizes and stores it either way.
+ * Rule 3502: the person's picture. A chosen file opens the square crop (`CropDialog`, rule 3618); the cropped JPEG is
+ * then uploaded by `sendImage` (planned at `/api/account/avatar/upload`: straight to a signing backend, else posted to
+ * `/api/account/avatar`). The server checks, resizes and stores it either way.
  */
 export default function AvatarUpload({ lang, name, email, initial, canEdit }: { lang: Lang; name: string; email: string; initial: string | null; canEdit: boolean }) {
   const T = COPY[lang];
@@ -40,38 +40,27 @@ export default function AvatarUpload({ lang, name, email, initial, canEdit }: { 
   const input = useRef<HTMLInputElement>(null);
   const [url, setUrl] = useState<string | null>(initial);
   const [busy, setBusy] = useState(false);
+  const [picked, setPicked] = useState<File | null>(null);
   const [status, setStatus] = useState<CardStatus>(null);
   const errorText = (e: unknown) => (typeof e === "string" && e in T.errors ? T.errors[e as keyof typeof T.errors] : T.errors.generic);
 
-  async function upload(file: File) {
+  function choose(file: File) {
+    if (input.current) input.current.value = "";
     if (!AVATAR_TYPES.includes(file.type as (typeof AVATAR_TYPES)[number])) return setStatus({ tone: "error", text: T.errors.bad_type });
     if (file.size > AVATAR_MAX_BYTES) return setStatus({ tone: "error", text: T.errors.too_large });
+    setStatus(null);
+    setPicked(file);
+  }
+
+  async function upload(blob: Blob) {
     setBusy(true);
     setStatus(null);
-    try {
-      const plan = (await fetch("/api/account/avatar/upload", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ contentType: file.type, size: file.size }) }).then((r) => r.json())) as Plan;
-      if (!plan.ok) return setStatus({ tone: "error", text: errorText(plan.error) });
-      let res: Response;
-      if (plan.mode === "signed" && plan.url && plan.name) {
-        const body = plan.fields ? Object.entries(plan.fields).reduce((f, [k, v]) => (f.append(k, v), f), new FormData()) : file;
-        if (body instanceof FormData) body.append("file", file);
-        const sent = await fetch(plan.url, { method: plan.method ?? "PUT", headers: plan.headers, body });
-        if (!sent.ok) return setStatus({ tone: "error", text: T.errors.generic });
-        res = await fetch("/api/account/avatar", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: plan.name }) });
-      } else {
-        res = await fetch("/api/account/avatar", { method: "POST", headers: { "Content-Type": file.type }, body: file });
-      }
-      const j = (await res.json().catch(() => ({}))) as { ok?: boolean; url?: string; error?: string };
-      if (!j.ok || !j.url) return setStatus({ tone: "error", text: errorText(j.error) });
-      setUrl(j.url);
-      setStatus({ tone: "ok", text: T.saved });
-      router.refresh();
-    } catch {
-      setStatus({ tone: "error", text: T.errors.generic });
-    } finally {
-      setBusy(false);
-      if (input.current) input.current.value = "";
-    }
+    const r = await sendImage("/api/account/avatar", blob);
+    setBusy(false);
+    if (!r.ok) return setStatus({ tone: "error", text: errorText(r.error) });
+    setUrl(r.url);
+    setStatus({ tone: "ok", text: T.saved });
+    router.refresh();
   }
 
   async function remove() {
@@ -91,12 +80,13 @@ export default function AvatarUpload({ lang, name, email, initial, canEdit }: { 
         <PersonAvatar src={url} name={name} email={email} size={64} className="text-xl" />
         {canEdit && (
           <div className="flex flex-wrap gap-2">
-            <input ref={input} type="file" accept={AVATAR_TYPES.join(",")} className="sr-only" tabIndex={-1} aria-hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) void upload(f); }} />
+            <input ref={input} type="file" accept={AVATAR_TYPES.join(",")} className="sr-only" tabIndex={-1} aria-hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) choose(f); }} />
             <Button variant="secondary" size="sm" loading={busy} loadingText={T.working} onClick={() => input.current?.click()}>{url ? T.change : T.pick}</Button>
             {url && <Button variant="ghost" size="sm" disabled={busy} onClick={() => void remove()}>{T.remove}</Button>}
           </div>
         )}
       </div>
+      {picked && <CropDialog lang={lang} file={picked} fit="cover" title={T.crop} onCropped={(b) => { void upload(b); }} onClose={() => setPicked(null)} />}
     </SettingsCard>
   );
 }

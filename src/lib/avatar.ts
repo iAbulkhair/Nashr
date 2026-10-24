@@ -67,13 +67,13 @@ export async function avatarUrls(pids: readonly PersonId[]): Promise<Map<PersonI
   return out;
 }
 
-/** Drop one stored file and give its size back to the store counters. Never throws. */
-async function dropFile(name: string): Promise<void> {
+/** Drop one stored file and give its size back to the store counters. Never throws. Shared with the workspace logo (rule 3610). */
+export async function dropFile(name: string, what: "avatar" | "logo" = "avatar"): Promise<void> {
   const st = storage();
   const head = await st.head(name).catch(() => null);
   const gone = await st.delete(name).catch(() => null);
   if (gone === "deleted" && head) await Promise.all([db.incrby(MEDIA_KEYS.bytes(), -head.size), db.incrby(MEDIA_KEYS.count(), -1)]).catch(() => {});
-  if (gone === null) log.error("avatar: old file not deleted", { err: "delete_failed" });
+  if (gone === null) log.error(`${what}: old file not deleted`, { err: "delete_failed" });
 }
 
 /**

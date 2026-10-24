@@ -307,9 +307,10 @@ describe("storage", () => {
       expect(storage().configured()).toBe(false);
     });
     it("only the disk adapter touches the filesystem: the store and the /m/ route import no node:fs", () => {
-      for (const f of ["src/lib/media/store.ts", "src/app/m/[name]/route.ts"]) expect(read(f), f).not.toMatch(/from "node:fs"|from "fs"/);
+      for (const f of ["src/lib/media/store.ts", "src/app/m/[name]/route.ts", "src/lib/media/s3.ts", "src/lib/media/sigv4.ts"]) expect(read(f), f).not.toMatch(/from "node:fs"|from "fs"/);
       expect(read("src/lib/media/disk.ts")).toMatch(/from "node:fs"/);
-      expect(read("src/lib/media/storage.ts")).toMatch(/export function storage\(\): StorageAdapter \{\n {2}return diskStorage;\n\}/);
+      // Rule 3613 added the S3 backend behind `MEDIA_STORAGE=s3`; still chosen in this one place, the disk otherwise.
+      expect(read("src/lib/media/storage.ts")).toMatch(/export function storage\(\): StorageAdapter \{\n {2}return storageBackend\(\) === "s3" \? s3Storage : diskStorage;\n\}/);
     });
   });
 

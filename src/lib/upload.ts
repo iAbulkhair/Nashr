@@ -1,17 +1,17 @@
 /**
- * Uploads from the browser (rules 3500-3501): one generic planner for every upload kind (a person's picture today; a
- * workspace logo on the follow-up branch). Ideas from Supastarter's signed upload URL (packages/storage), built the
+ * Uploads from the browser (rules 3500-3501): one generic planner for every upload kind (a person's picture, and since
+ * rule 3611 a workspace logo). Ideas from Supastarter's signed upload URL (packages/storage), built the
  * Thakeen way:
  *
  *  - the caller is authenticated before anything here runs; `owner` is built by the route from the session
- *    (`p:{pid}`, or `s:{scope}` from `sc(u)` for a workspace upload), never from the request;
+ *    (`p:{pid}` for a person, `w:{aid}` from the session's account for a workspace logo), never from the request;
  *  - the object name is generated here (`newUploadName`, 128 random bits, MEDIA_NAME shape): a name, path or scope
  *    from the request never reaches the storage backend;
  *  - the content type and the size are checked against the kind's policy BEFORE a grant is made, and again on the bytes
  *    (magic numbers, not the declared type) when the upload is taken;
  *  - a backend that can sign (`StorageAdapter.signedUpload`, e.g. a bucket) gets the policy's limits as parameters and the
  *    browser sends the bytes straight to it; the server records a ticket (`upload:{owner}:{name}`, 15 minutes) and the
- *    completion finds it only under the caller's own owner. A backend that cannot sign (the disk, today's only one) or a
+ *    completion finds it only under the caller's own owner. A backend that cannot sign (the disk, the default) or a
  *    signing that fails answers `server`: the browser sends the bytes to our own route, under the same limits.
  */
 import { randomBytes } from "node:crypto";
@@ -34,6 +34,11 @@ export type UploadPolicy = {
 
 /** Rule 3502: a profile picture. Image only (JPEG, PNG, WebP), 5 MB before it is resized. */
 export const AVATAR_UPLOAD: UploadPolicy = { kind: "avatar", contentTypes: ["image/jpeg", "image/png", "image/webp"], formats: ["jpeg", "png", "webp"], maxBytes: 5 * 1024 * 1024, ttlS: 900 };
+/**
+ * Rule 3611: a workspace logo. The same image types and cap as a picture, but a kind of its own ("logo"): a ticket is
+ * taken only by the policy of its kind (`takeUpload`), and under the account's own owner `w:{aid}`, never a person's.
+ */
+export const LOGO_UPLOAD: UploadPolicy = { kind: "logo", contentTypes: ["image/jpeg", "image/png", "image/webp"], formats: ["jpeg", "png", "webp"], maxBytes: 5 * 1024 * 1024, ttlS: 900 };
 
 export type UploadTicket = { kind: string; contentTypes: readonly string[]; maxBytes: number; at: string };
 export type UploadPlan =
@@ -71,7 +76,9 @@ export async function planUpload(owner: string, policy: UploadPolicy, input: { c
   if (!st.signedUpload || !st.configured()) return server;
   const name = newUploadName();
   try {
-    const grant = await st.signedUpload({ name, contentTypes: [String(input.contentType).toLowerCase()], maxBytes: policy.maxBytes, expiresInS: policy.ttlS });
+    // `size` (rule 3615): the declared size, already checked against the cap, for a backend that can only pin an exact
+    // length (a presigned PUT); a POST policy enforces `maxBytes` itself. The bytes are checked again when taken.
+    const grant = await st.signedUpload({ name, contentTypes: [String(input.contentType).toLowerCase()], maxBytes: policy.maxBytes, expiresInS: policy.ttlS, size: input.size as number });
     const ticket: UploadTicket = { kind: policy.kind, contentTypes: policy.contentTypes, maxBytes: policy.maxBytes, at: new Date().toISOString() };
     await db.set(globalKey.uploadTicket(owner, name), ticket, policy.ttlS);
     return { ok: true, plan: { mode: "signed", name, ...grant, maxBytes: policy.maxBytes } };

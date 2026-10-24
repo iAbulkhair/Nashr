@@ -57,7 +57,8 @@ describe("rule 3500: the storage seam is provider-neutral", () => {
     if (!r.ok || r.plan.mode !== "signed") throw new Error("expected a signed plan");
     expect(r.plan.name).toMatch(MEDIA_NAME);
     expect(r.plan.name).not.toContain("evil");
-    expect(st.specs).toEqual([{ name: r.plan.name, contentTypes: ["image/png"], maxBytes: 1234, expiresInS: 60 }]);
+    // Since rule 3615 the declared size (already checked against the cap) rides along for a backend that can only pin it.
+    expect(st.specs).toEqual([{ name: r.plan.name, contentTypes: ["image/png"], maxBytes: 1234, expiresInS: 60, size: 1000 }]);
     expect(r.plan.maxBytes).toBe(1234);
     expect(await db.get(globalKey.uploadTicket("s:owner@x.example", r.plan.name))).toMatchObject({ kind: "logo", maxBytes: 1234 });
   });

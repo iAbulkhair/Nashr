@@ -108,6 +108,11 @@ export const MIN_ROLE = {
    * Requests only, never money; an admin sees it because they run the work it counts.
    */
   "usage.view": "admin",
+  /**
+   * Set or remove the workspace's logo (rules 3610-3611): an owner or an admin, from their own session. Never an AI
+   * client's token (see `can`) and never a founder impersonating (IMPERSONATION_BLOCKED). Members only see it.
+   */
+  "workspace.logo": "admin",
   /** Cancel a pending invite (an admin only one for role "member"; see team.ts `cancelInvite`). */
   "team.invite.cancel": "admin",
   /**
@@ -216,15 +221,18 @@ export const IMPERSONATION_BLOCKED: ReadonlySet<Action> = new Set<Action>([
   "billing.pay",
   // The declaration is the owner's own statement and the link outlives a support session (Reem B3, ruling R10).
   "calendar.link",
+  // The workspace's face for every member; a support session does not change it (rule 3611).
+  "workspace.logo",
 ]);
 
 const RANK: Record<Role, number> = { viewer: 0, member: 1, admin: 2, owner: 3 };
 
 /**
  * Refused to a member scoped to some brands (rule 3759), whatever the role: adding, renaming or archiving brands reaches
- * the account's whole brand list, and inviting could hand out brands the inviter does not hold.
+ * the account's whole brand list, and inviting could hand out brands the inviter does not hold. The workspace logo
+ * (rule 3621) is the whole workspace's face, so only the owner and an unscoped admin change it.
  */
-export const SCOPED_BLOCKED: ReadonlySet<Action> = new Set<Action>(["brands.manage", "onboard", "team.invite.member", "team.invite.admin", "team.access"]);
+export const SCOPED_BLOCKED: ReadonlySet<Action> = new Set<Action>(["brands.manage", "onboard", "team.invite.member", "team.invite.admin", "team.access", "workspace.logo"]);
 const isAction = (a: unknown): a is Action => typeof a === "string" && Object.prototype.hasOwnProperty.call(MIN_ROLE, a);
 
 /** The acting person's role, or null when the request carries no actor. */
@@ -246,6 +254,8 @@ export function can(u: User | null | undefined, action: Action): boolean {
   if (a.kind === "member" && Array.isArray(a.brands) && SCOPED_BLOCKED.has(action)) return false;
   // Rule 3760: approving is the owner's and admins'; an editor or viewer only with the approve toggle on.
   if (action === "approve" && a.kind === "member" && a.approves === true) return true;
+  // Rule 3611: a person's own session sets the logo, never an AI client's token.
+  if (action === "workspace.logo" && a.kind === "token") return false;
   return RANK[a.role] >= RANK[MIN_ROLE[action]];
 }
 

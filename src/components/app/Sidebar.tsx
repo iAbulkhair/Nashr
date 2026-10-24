@@ -41,7 +41,7 @@ const avatar = (id: AgentId) => ({ style: { background: `var(--color-agent-${id}
  * the props are used and nothing is fetched. On a phone the rail opens in a `Sheet` (focus kept inside, Escape and the
  * backdrop close it, focus goes back to the menu button); the account menu is a `Menu` with arrow keys.
  */
-export default function Sidebar({ t, lang, user, show, brandName, admin, supportWa }: { t: AppDict; lang: Lang; user: { name: string; email: string; role: Role; credits: number; plan: string; avatar?: string | null }; show: { owner: boolean; refer: boolean; mcp: boolean; partner?: boolean }; brandName?: string; admin?: boolean; supportWa?: string }) {
+export default function Sidebar({ t, lang, user, show, brandName, workspaceLogo, admin, supportWa }: { t: AppDict; lang: Lang; user: { name: string; email: string; role: Role; credits: number; plan: string; avatar?: string | null }; show: { owner: boolean; refer: boolean; mcp: boolean; partner?: boolean }; brandName?: string; workspaceLogo?: string | null; admin?: boolean; supportWa?: string }) {
   const path = usePathname();
   const sp = useSearchParams();
   const r = useRouter();
@@ -130,7 +130,7 @@ export default function Sidebar({ t, lang, user, show, brandName, admin, support
     {/* Above the brand: the workspace switcher (multi-workspace M2), drawn only with two workspaces or more. */}
     <WorkspaceSwitcher t={t.workspaces} lang={lang} onNavigate={() => setOpen(false)} />
     <div className="flex items-center gap-1 border-b-[1.5px] border-border-strong p-4 pb-3">
-      <BrandSwitcher lang={lang} brands={brandList?.brands ?? null} current={{ id: brandFromPath(path) ?? sessionBrand ?? "default", name: brandName || (lang === "ar" ? "علامتك" : "Your brand") }} canAdd={brandList?.canAdd ?? false} sub={N.workspace} onOpen={loadBrands} onPicked={() => { setOpen(false); brandsAsked.current = false; }} />
+      <BrandSwitcher lang={lang} brands={brandList?.brands ?? null} current={{ id: brandFromPath(path) ?? sessionBrand ?? "default", name: brandName || (lang === "ar" ? "علامتك" : "Your brand") }} canAdd={brandList?.canAdd ?? false} sub={N.workspace} logo={workspaceLogo} onOpen={loadBrands} onPicked={() => { setOpen(false); brandsAsked.current = false; }} />
       {bell && <NotificationCenter t={t} lang={lang} align="start" />}
     </div>
     </>

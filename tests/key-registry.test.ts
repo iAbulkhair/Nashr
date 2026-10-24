@@ -127,6 +127,12 @@ describe("rule 2030: each builder returns the bytes of its old template", () => 
     [accountKey.seenBucket(E), `tabbeat:${E}`],
     // Account-id R2 (rule 2743): the 30-day hold on a moved-from address; new family, no old template.
     [accountKey.emailHold(E), `emailhold:${E}`],
+    // Workspace logo (rules 3610-3611): new families, no old template.
+    [accountKey.logo(storedAccountId(E)), `wslogo:${E}`],
+    [accountKey.logoLock(storedAccountId(E)), `lock:wslogo:${E}`],
+    [accountKey.logoSetBucket(storedAccountId(E)), `wslogoset:${E}`],
+    [accountKey.logoPlanBucket(storedAccountId(E)), `wslogoplan:${E}`],
+    [accountKey.logoUploadOwner(storedAccountId(E)), `w:${E}`],
   ];
   const global: [string, string][] = [
     [globalKey.usersAll(), "users:all"],
@@ -165,6 +171,7 @@ describe("rule 2030: each builder returns the bytes of its old template", () => 
     [globalKey.uploadTicket("p:p_x", "n1.jpg"), "upload:p:p_x:n1.jpg"],
     [globalKey.wsSlug("rose-shop"), "wsslug:rose-shop"],
     [globalKey.avatarGetBucket("1.2.3.4"), "avatarget:1.2.3.4"],
+    [globalKey.logoGetBucket("1.2.3.4"), "wslogoget:1.2.3.4"],
   ];
 
   it.each(ws)("workspace %s", (built, old) => expect(built).toBe(old));
