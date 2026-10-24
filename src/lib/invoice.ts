@@ -13,7 +13,7 @@ export type InvoiceEvent = {
   vatHalalas: number;
   totalHalalas: number;
   currency: "SAR";
-  provider: "paymob";
+  provider: "paymob" | "geidea";
   /** The provider's transaction id. */
   providerRef: string;
   /** Riyadh day of the payment, YYYY-MM-DD. */

@@ -1,0 +1,8 @@
+.next
+node_modules
+coverage
+public
+package-lock.json
+content
+docs
+*.md

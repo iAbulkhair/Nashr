@@ -166,6 +166,13 @@ export type User = {
    */
   seats?: number;
   /**
+   * Paid extra seats for the current period, above the included seats (`includedSeats`), at EXTRA_SEAT_MONTHLY_SAR each
+   * (rules 3360-3379). The one source of "seats paid for". Expand: absent reads as 0 (`paidExtraSeats`). Raised only by
+   * `createInvite` with the owner's confirmation; lowered only at renewal by `settleExtraSeats`; cleared when the plan
+   * ends on a refund. Written under lock:team:{aid} then lock:user, never from a request value.
+   */
+  extraSeats?: number;
+  /**
    * Founder-console override of the plan's active-brand count (`PLAN_BRANDS` in src/lib/pricing.ts, `brandCapFor`), a
    * whole number from 1 to 200. Written only by POST /api/admin/brand-cap under `withUserLock`. Optional and new
    * (rule 679 expand, rule 1393): older code ignores it, and a record without it reads as the plan's number.

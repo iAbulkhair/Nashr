@@ -250,7 +250,7 @@ describe("no site or product copy asserts an invented result or an unbuilt featu
  */
 describe("media processors are disclosed honestly", () => {
   const DPA_RECORDED: string[] = [];
-  const PROCESSORS = ["Anthropic", "Straitly", "Hostinger", "Vercel", "Upstash", "Resend", "fal.ai", "kie.ai", "Higgsfield", "Composio", "Cloudflare", "Paymob"];
+  const PROCESSORS = ["Anthropic", "Straitly", "Hostinger", "Vercel", "Upstash", "Resend", "fal.ai", "kie.ai", "Higgsfield", "Composio", "Cloudflare", "Geidea", "Paymob"];
   const DPA = /data[- ]processing agreement|اتفاقيات? معالجة/i;
   const LANGS = ["ar", "en"] as const;
   // A full stop followed by a space ends a sentence; the one inside "fal.ai" or "kie.ai" does not.

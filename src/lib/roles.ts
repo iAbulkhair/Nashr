@@ -12,6 +12,11 @@ export const MIN_ROLE = {
   billing: "owner",
   /** Paying online (Paymob checkout, renewal settings, src/lib/billing.ts). Owner only and never while the founder impersonates: the founder never spends a customer's card. */
   "billing.pay": "owner",
+  /**
+   * Add a paid extra seat (25 SAR/month + VAT, rules 3360-3379): POST /api/team/invite with `addSeat: true` over the
+   * limit. The owner's own session only: never an admin, never an impersonation, never an AI client's token (see `can`).
+   */
+  "billing.seats": "owner",
   /** DELETE /api/account. */
   "account.delete": "owner",
   /** GET /api/account/export: the owner's own copy of the account's data (rule 1320). Refused while impersonating. */
@@ -214,6 +219,8 @@ export const IMPERSONATION_BLOCKED: ReadonlySet<Action> = new Set<Action>([
   "feed.manage",
   "booking.manage",
   "billing.pay",
+  // Staff never add a paid seat to a customer's bill (rule 3368).
+  "billing.seats",
   // The declaration is the owner's own statement and the link outlives a support session (Reem B3, ruling R10).
   "calendar.link",
 ]);
@@ -246,6 +253,8 @@ export function can(u: User | null | undefined, action: Action): boolean {
   if (a.kind === "member" && Array.isArray(a.brands) && SCOPED_BLOCKED.has(action)) return false;
   // Rule 3760: approving is the owner's and admins'; an editor or viewer only with the approve toggle on.
   if (action === "approve" && a.kind === "member" && a.approves === true) return true;
+  // A paid seat is money: the owner's own session, never a token (the model) and never the founder (rule 3368).
+  if (action === "billing.seats") return a.kind === "owner";
   return RANK[a.role] >= RANK[MIN_ROLE[action]];
 }
 
@@ -264,6 +273,8 @@ export const STAFF_MAY = {
   "workspace.view": ["owner", "support"],
   /** Turn customer passkey sign-in and adding off or on (POST /api/admin/passkeys, rule 2426); stored passkeys are untouched. */
   "passkeys.switch": ["owner"],
+  /** Run a one-time data conversion from the console, dry or applied (POST /api/admin/conversions/{name}, rule 4101). */
+  "data.convert": ["owner"],
 } as const satisfies Record<string, readonly string[]>;
 
 export type StaffAction = keyof typeof STAFF_MAY;
