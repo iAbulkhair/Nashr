@@ -20,7 +20,7 @@ import { log } from "./log";
  */
 
 export type StaffRole = "owner" | "support";
-/** The roles phase 1 knows. Only `owner` can write, and only `owner` can be created (rule 1637). */
+/** The roles phase 1 knows. Only `owner` can write (rule 1637); an invite can name either (rule 3706). */
 export const STAFF_ROLES: readonly StaffRole[] = ["owner", "support"];
 /** The sealed authenticator secret: AES-256-GCM blob, the `kid` of the key that sealed it, and when it was enrolled. */
 export type StaffTotp = { enc: string; kid: string; at: string };
@@ -34,7 +34,7 @@ export type Staff = {
   /** SHA-256 of the unused recovery codes (8 issued at enrolment). */
   rc?: string[];
   createdAt: string;
-  /** "key" (bootstrap) or the staff email that created the record. */
+  /** "key" (key-session bootstrap), or the email that created the record: a staff owner, or the founder (rule 3700). */
   createdBy: string;
   disabled?: boolean;
   /** ISO: sessions and step-ups issued before it are void (rule 1635). */
@@ -313,21 +313,30 @@ export async function countStaffFailure(email: string): Promise<boolean> {
 export const clearStaffFailures = (email: string) => db.del(staffFailKey(email));
 
 // ---------------------------------------------------------------------------------------------------------------------
-// Setup and reset codes (rules 1639, 1640, 1643)
+// Setup, reset and invite codes (rules 1639, 1640, 1643, 3706)
 
 /** A setup code works once, for 30 minutes, and only for the address it was issued for. */
 export const SETUP_TTL = 30 * 60;
-export type SetupKind = "setup" | "reset";
+/** An invite (rule 3706) works once, for 24 hours: it travels by mail, so it gets the time a person needs to open it. */
+export const INVITE_TTL = 24 * 60 * 60;
+/**
+ * `invite` is new (rule 3706, rule 679 expand): code from before this release reads it as an unknown kind and refuses
+ * the code (the same 401), so a rollback never redeems an invite as something else.
+ */
+export type SetupKind = "setup" | "reset" | "invite";
+const SETUP_KINDS: readonly SetupKind[] = ["setup", "reset", "invite"];
 export type SetupRec = { email: string; by: string; at: string; kind: SetupKind };
 export const setupKey = (code: string) => `staffsetup:${sha(`nashr-staff-setup:${cleanCode(code)}`)}`;
+const isSetupRec = (r: SetupRec | null): r is SetupRec => !!r && typeof r.email === "string" && SETUP_KINDS.includes(r.kind);
 
 /**
- * Issue a single-use setup (or reset) code for `email`: 20 base32 characters in groups of five, shown once on screen and
- * handed over in person. Only its hash is stored. Never mailed, never put in a URL (rule 1643).
+ * Issue a single-use setup, reset or invite code for `email`: 20 base32 characters (100 bits). Only its hash is stored.
+ * A setup or reset code is shown once on screen and never mailed; an invite travels in the fragment of a mailed link
+ * (`#invite=`), which browsers never send to the server, so it is never in a request URL or a log (rule 3706).
  */
 export async function issueSetupCode(email: string, by: string, kind: SetupKind): Promise<string> {
   const code = newRecoveryCode();
-  await db.set(setupKey(code), { email, by, at: new Date().toISOString(), kind } satisfies SetupRec, SETUP_TTL);
+  await db.set(setupKey(code), { email, by, at: new Date().toISOString(), kind } satisfies SetupRec, kind === "invite" ? INVITE_TTL : SETUP_TTL);
   return code;
 }
 
@@ -335,11 +344,11 @@ export async function issueSetupCode(email: string, by: string, kind: SetupKind)
 export async function peekSetupCode(code: unknown): Promise<SetupRec | null> {
   if (!looksLikeStaffCode(code)) return null;
   const r = await db.get<SetupRec>(setupKey(code));
-  return r && typeof r.email === "string" && (r.kind === "setup" || r.kind === "reset") ? r : null;
+  return isSetupRec(r) ? r : null;
 }
 
 /** Spend a setup code (atomic GETDEL): the record, or null when it is gone or was spent by a racing request. */
 export async function takeSetupCode(code: string): Promise<SetupRec | null> {
   const r = await db.getdel<SetupRec>(setupKey(code));
-  return r && typeof r.email === "string" && (r.kind === "setup" || r.kind === "reset") ? r : null;
+  return isSetupRec(r) ? r : null;
 }

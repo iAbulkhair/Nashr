@@ -393,6 +393,15 @@ export const globalKey = {
   passkeyVerifyIpBucket: (ip: string) => `pkv:ip:${ip}`,
   /** bucket name for `allow` (stored as `rate:pkv:cred:{hash}`): passkey sign-in verifies per credential hash, 10 per 15 min (rule 2418). */
   passkeyCredBucket: (credHash: string) => `pkv:cred:${credHash}`,
+  /**
+   * json `{ challenge, at }`: the founder's passkey step-up before creating the first staff login, under the SHA-256 hex
+   * of the customer session; taken with `getdel`; 300 s (rule 3700).
+   */
+  staffBootPasskey: (sessionHash: string) => `staffbootpk:${sessionHash}`,
+  /** bucket name for `allow` (stored as `rate:staffinvite:{sha256(email)}`): staff invites of one owner, 10 per hour (rule 3707). */
+  staffInviteBucket: (ownerHash: string) => `staffinvite:${ownerHash}`,
+  /** bucket name for `allow` (stored as `rate:staffinvite:ip:{ip}`): staff invites per IP, 20 per hour (rule 3707). */
+  staffInviteIpBucket: (ip: string) => `staffinvite:ip:${ip}`,
   /** counter: how many times `event` was tracked on UTC day `day` (src/lib/track.ts `track`); read by the ops summary (rule 2380). */
   eventDay: (day: string, event: string) => `ev:${day}:${event}`,
   /** json `OpsProposal`: one action the ops agent proposed, waiting for the founder's press on Telegram (rules 2386-2389). */
