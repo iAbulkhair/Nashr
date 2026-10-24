@@ -25,7 +25,7 @@ import { SWEEP_BUDGET_DAILY_MS, SWEEP_SCOPES, mergeReports, sweepReminders, type
 import { appOrigin } from "@/lib/origin";
 import { paragraphs } from "@/emails";
 import { paymentsEnabled } from "@/lib/payments";
-import { renewPaymob } from "@/lib/billing";
+import { reconcileOpenCheckouts, renewPaymob } from "@/lib/billing";
 import { endHandPlanIfDue } from "@/lib/hand-plan-end";
 import { handPlanEnded } from "@/lib/hand-plan";
 import { ksaDay } from "@/lib/partner-rules";
@@ -233,11 +233,15 @@ export async function GET(req: Request) {
   const routeStart = Date.now();
   let reminders: SweepReport | { error: string } | null = null;
   let margin: Awaited<ReturnType<typeof runMarginAlert>> | null = null;
+  let checkouts: Awaited<ReturnType<typeof reconcileOpenCheckouts>> | { error: string } | null = null;
   if (!Number(new URL(req.url).searchParams.get("chain") ?? 0)) {
     try { reminders = await sweepDaily(routeStart); } catch (e) { reminders = { error: e instanceof Error ? e.name : "error" }; }
     // Rule 1534: the founder's margin alert, once a day on the first hop (no cron schedule of its own). Read-only for
     // customers; it never throws, and its time comes out of the batch's start budget like the sweep's.
     margin = await runMarginAlert();
+    // Rule 3909: Geidea checkouts whose callback never came are asked of Geidea once a day on the first hop. Nothing
+    // unless Geidea is the chosen provider; never fatal.
+    try { checkouts = await reconcileOpenCheckouts(); } catch (e) { checkouts = { error: e instanceof Error ? e.name : "error" }; }
   }
   const roster = await dailyRoster();
   const items: DailyItem[] = [...roster.users.map((user) => ({ user, ref: jobRef(user) })), ...roster.idle.map((idle) => ({ idle }))];
@@ -254,5 +258,5 @@ export async function GET(req: Request) {
   }
   await recordCronRun("daily");
   const count = (word: string) => Object.values(report.results).filter((r) => r.split("+").some((x) => x.startsWith(word))).length;
-  return NextResponse.json({ ok: true, ...report, briefs: count("brief"), emails: count("email"), nudges: count("nudge"), renewed: count("renewed"), emailConfigured: mailReady(), reminders, margin });
+  return NextResponse.json({ ok: true, ...report, briefs: count("brief"), emails: count("email"), nudges: count("nudge"), renewed: count("renewed"), emailConfigured: mailReady(), reminders, margin, checkouts });
 }

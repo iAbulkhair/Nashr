@@ -1,17 +1,22 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { randomBytes } from "crypto";
+import { readFileSync } from "node:fs";
 import { json, newMember, newUser, params, signIn, signOut } from "./helpers/session";
 import { vjson } from "./helpers/version";
 import { currentUser, getAccount, getUser, saveUser, sc, type Actor, type User } from "@/lib/auth";
 import { acct } from "@/lib/account-id";
 import { getTask, saveTask, type Task } from "@/lib/brand";
-import { addBrand, listBrands } from "@/lib/brands";
+import { addBrand, listBrands, scopeFor } from "@/lib/brands";
 import { charge, monthKey, personOf, personSpendFor, refund } from "@/lib/credits";
 import { can, IMPERSONATION_BLOCKED } from "@/lib/roles";
 import { createInvite, FREE_VIEWERS, freeViewersLeft, seatCount, setAccess, setRole, teamRoleFrom, teamView } from "@/lib/team";
 import { approvalRefusal } from "@/lib/approval-policy";
 import { approversFor } from "@/lib/assign";
-import { listNotifs } from "@/lib/notifications";
+import { listNotifs, notifBrand, pushNotif } from "@/lib/notifications";
+import { feedHolds } from "@/lib/secretary-feed";
+import { monthUsage } from "@/lib/month-usage";
+import { teamApprovals } from "@/lib/approver-stats";
+import { decisionOf, recordDecisions } from "@/lib/decisions";
 import { saveConnection } from "@/lib/connectors/store";
 import { aidOf, getMembership } from "@/lib/membership";
 import { db } from "@/lib/db";
@@ -33,6 +38,7 @@ import * as scheduleRoute from "@/app/api/schedule/route";
 import * as brandsRoute from "@/app/api/brands/route";
 import * as teamRoute from "@/app/api/team/route";
 import * as memberRoute from "@/app/api/team/member/route";
+import * as notificationsRoute from "@/app/api/notifications/route";
 
 const task = (id: string, status: Task["status"], body = "قهوة طازجة"): Task => ({ id, type: "social", channel: "instagram", title: id, body, status, createdAt: new Date().toISOString(), lang: "ar" });
 const status = async (p: Promise<Response> | Response) => (await p).status;
@@ -350,5 +356,89 @@ describe("rule 3755: the contract script renames the stored Editor role, idempot
 
     const again = await editorRole({ apply: true });
     expect({ rows: again.rows, records: again.records, busy: again.busy }).toEqual({ rows: 0, records: 0, busy: 0 });
+  });
+});
+
+/** An account on the business plan with a second brand, and its Editor narrowed to that brand. */
+async function narrowed() {
+  const t = await team();
+  await saveUser({ ...(await getUser(t.owner.email))!, plan: "business" });
+  const o = await ownerSession(t.owner);
+  const b = await addBrand(o, "Second");
+  if ("error" in b) throw new Error(`addBrand: ${b.error}`);
+  expect(await setAccess(o, o.actor!, t.editor, { brands: [b.id] })).toEqual({ ok: true });
+  return { ...t, o, second: b.id, def: scopeFor(acct(o), "default"), sec: scopeFor(acct(o), b.id) };
+}
+
+describe("rule 3772: a calendar link honours the brand scope at read time", () => {
+  it("a narrowed member's link to a removed brand stops; its own brand keeps working, in both link shapes", async () => {
+    const { owner, o, editor, editorPid, def, sec, second } = await narrowed();
+    // A member from before M1 (a login record), narrowed the same way, for a link that names a login only.
+    const old = await newMember(owner, "member", "crl", { legacy: true });
+    expect(await setAccess(o, o.actor!, old.email, { brands: [second] })).toEqual({ ok: true });
+    const at = new Date().toISOString();
+    const person = (scope: string) => ({ login: editor, scope, lang: "ar" as const, createdAt: at, pid: editorPid, aid: aidOf(o) });
+    const legacy = (scope: string) => ({ login: old.email, scope, lang: "ar" as const, createdAt: at });
+    expect(await feedHolds(person(sec))).toBe(true);
+    expect(await feedHolds(person(def))).toBe(false);
+    expect(await feedHolds(legacy(sec))).toBe(true);
+    expect(await feedHolds(legacy(def))).toBe(false);
+  });
+
+  it("a Viewer's link that names a login only holds: a Viewer reads the calendar", async () => {
+    const owner = await newUser("crfv");
+    const viewer = await newMember(owner, "viewer", "crfv", { legacy: true });
+    const o = await ownerSession(owner);
+    expect(await feedHolds({ login: viewer.email, scope: scopeFor(acct(o), "default"), lang: "en", createdAt: new Date().toISOString() })).toBe(true);
+  });
+});
+
+describe("rule 3773: the bell, the month's usage and the approval stats keep to the brand scope", () => {
+  it("an entry carries its brand; older entries fall back to their about key or link; account kinds carry none", () => {
+    expect(notifBrand({ brand: "b2", href: "/ar/app" })).toBe("b2");
+    expect(notifBrand({ about: "pending:o@test.example#b3", href: "/ar/app" })).toBe("b3");
+    expect(notifBrand({ about: "due:o@test.example", href: "/ar/app" })).toBe("default");
+    expect(notifBrand({ href: "/ar/app/b/b4/calendar" })).toBe("b4");
+    expect(notifBrand({ about: "assign:p1", href: "/ar/app/calendar" })).toBeUndefined();
+  });
+
+  it("a narrowed member sees their brand's entries and the account's, and cannot mark another brand's entry read", async () => {
+    const { o, editor, def, sec } = await narrowed();
+    const base = { title: "t", body: "b", href: "/ar/app" };
+    const [onDef, onSec, credits] = await Promise.all([
+      pushNotif(acct(o), { kind: "pending", ...base }, undefined, 3, def),
+      pushNotif(acct(o), { kind: "pending", ...base }, undefined, 3, sec),
+      pushNotif(acct(o), { kind: "credits", ...base }, undefined, 3, def),
+    ]);
+    expect(credits?.brand).toBeUndefined();
+    const ids = async () => ((await (await notificationsRoute.GET(new Request("http://t/api/notifications"))).json()).notifications as { id: string }[]).map((n) => n.id).sort();
+    await as(o.email);
+    expect(await ids()).toEqual([onDef!.id, onSec!.id, credits!.id].sort());
+    await as(editor);
+    expect(await ids()).toEqual([onSec!.id, credits!.id].sort());
+    expect(await status(notificationsRoute.POST(json("/api/notifications", "POST", { id: onDef!.id })))).toBe(404);
+    const res = await (await notificationsRoute.POST(json("/api/notifications", "POST", { id: onSec!.id }))).json();
+    expect(res).toEqual({ ok: true, unread: 1 });
+    expect((await listNotifs(acct(o))).find((n) => n.id === onDef!.id)?.read).toBeUndefined();
+  });
+
+  it("the month's usage and the approval stats count the member's brands only", async () => {
+    const { o, editor, admin, def, sec, second } = await narrowed();
+    await Promise.all([saveTask(o.email, task("u-def", "pending"), true), saveTask(sec, task("u-sec", "pending"), true)]);
+    const at = new Date().toISOString();
+    await Promise.all([recordDecisions(def, [decisionOf(task("d-def", "approved"), "approve", at)]), recordDecisions(sec, [decisionOf(task("d-sec", "approved"), "approve", at)])]);
+    const count = (m: Awaited<ReturnType<typeof monthUsage>>) => Object.values(m.usage).reduce((n, x) => n + x.count, 0);
+    expect(count(await monthUsage(await as(o.email)))).toBe(2);
+    expect(count(await monthUsage(await as(editor)))).toBe(1);
+    expect((await teamApprovals(await as(o.email)))[o.email]?.approved).toBe(2);
+    // An admin narrowed to the second brand counts its records only.
+    expect(await setAccess(o, o.actor!, admin, { brands: [second] })).toEqual({ ok: true });
+    expect((await teamApprovals(await as(admin)))[o.email]?.approved).toBe(1);
+  });
+});
+
+describe("rule 3774: a reused hold keeps the person it was spent for", () => {
+  it("the receipt of a reused hold names the person, so a refund lowers their spend", () => {
+    expect(readFileSync("src/lib/generate-batch.ts", "utf8")).toContain("...(paid.hold.person ? { person: paid.hold.person } : {})");
   });
 });

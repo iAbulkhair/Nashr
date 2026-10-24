@@ -20,7 +20,7 @@ Status on 2026-10-23, branch `claude/sup-paid-seats`. 25 SAR per extra seat per 
 | 3373 | Concurrent invites cannot oversell: the purchase runs under `lock:team:{aid}` then `lock:user` and re-checks | `tests/paid-seats-3360.test.ts` "concurrent invites" | none |
 | 3374 | Tenant scope: a purchase or a settle only touches the caller's account (`acct(u)`), never one named in the request | `tests/paid-seats-3360.test.ts` "tenant scope" | none |
 | 3375 | The console Workspace tab shows included and extra seats, read only; staff cannot add a paid seat | `IMPERSONATION_BLOCKED` in `tests/paid-seats-3360.test.ts`; the view itself not pinned | a test of `workspaceView(...).plan.seats` |
-| 3376 | The Geidea adapter must settle, price and store seats like `renewPaymob` (`TODO(geidea)` in `billing.ts`) | not pinned (Geidea is on local branches only) | a Geidea renewal test with seats |
+| 3376 | Geidea renews through the same `renewPaymob`: it settles, prices and stores the seats on the intent, so the callback amount check includes them | `tests/geidea.test.ts` "a renewal with paid extra seats" | none |
 | 3377 | Seats on a hand-set plan are counted and shown but charged by no code; the founder invoices them | not pinned | none (documented decision) |
 | 3378 | A refund that ends the plan, or a founder change to a plan that sells no seats, clears `extraSeats` | not pinned | a test in `tests/paymob.test.ts` refund and `admin/plan` change |
 | 3379 | The privacy export carries `extraSeats` with the plan | `tests/profile-allowlist.test.ts` (field listed) | an assertion on the export's plan block |

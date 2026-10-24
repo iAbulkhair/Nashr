@@ -91,8 +91,8 @@ describe("rule 1415: the privacy policy names the agent scope log", () => {
     expect(text("ar", "الاحتفاظ والحذف")).toContain("يُحذف سجل نطاق الفريق تلقائياً بعد 31 يوماً.");
   });
   it("the privacy date moved with the change; the terms keep their own", () => {
-    // 2026-10-13: moved again with the private media store (rule 1764).
-    expect(LEGAL.en.privacy.updated).toBe("Last updated: 2026-10-13");
-    expect(LEGAL.ar.privacy.updated).toBe("آخر تحديث: 2026-10-13");
+    // 2026-10-13: moved again with the private media store (rule 1764); 2026-10-24 with Geidea (rule 3918).
+    expect(LEGAL.en.privacy.updated).toBe("Last updated: 2026-10-24");
+    expect(LEGAL.ar.privacy.updated).toBe("آخر تحديث: 2026-10-24");
   });
 });

@@ -294,6 +294,7 @@ const ROUTE_ROLES: Record<string, Gate> = {
   "POST /api/admin/leads": "admin-console",
   "POST /api/media/hook/[provider]": "public",
   "POST /api/billing/paymob/webhook": "public", // Paymob callbacks: HMAC only, rules 700-729
+  "POST /api/billing/geidea/webhook": "public", // Geidea callbacks: the signature in the body only, rules 3903-3905
   "POST /api/shopify/compliance": "public", // Shopify compliance webhooks: HMAC only, rules 2168-2171
   // The ops agent (rules 2380-2389): no session; per-IP allow() first, then a sameSecret token (OPS_AGENT_TOKEN, or
   // Telegram's webhook secret), 401 while unset. The summary is counts only; the press runs only OPS_ACTIONS, once.
@@ -377,6 +378,8 @@ const READS: Record<string, Gate> = {
   "GET /api/admin/payments/[email]": "admin-console",
   "GET /api/admin/users/[email]": "admin-console",
   "GET /api/admin/users/[email]/workspace": "admin-console", // rule 2077: read-only workspace view, staffMay("workspace.view") after the console gate
+  "GET /api/admin/workspaces": "admin-console", // rule 3720: customers list, one row per workspace, staffMay("workspace.view"), audit on a member-address search
+  "GET /api/admin/workspaces/[email]": "admin-console", // rule 3725: workspace page, staffMay("workspace.view"), audit row before the answer
   "GET /api/admin/people/[email]": "admin-console", // rule 2755: read-only people view (M3, MULTI_ORG), staffMay("workspace.view") after the console gate
   "GET /api/affiliates": "admin-console",
   "GET /api/waitlist": "admin-console",

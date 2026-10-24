@@ -1371,7 +1371,7 @@ export function markFreshCode(req: Request): void {
  * request (a wrong value is Next's 404 in `currentUser`) must not turn a staff, key or founder session away. The brand
  * is not read from the result: only `isFounderActor` is.
  */
-async function sessionAccountForConsole(): Promise<User | null> {
+export async function sessionAccountForConsole(): Promise<User | null> {
   const s = await readSession();
   return s ? resolveSession(s) : null;
 }

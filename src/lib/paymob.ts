@@ -248,6 +248,6 @@ export function paymobProvider(): PaymentProvider | null {
     verifyWebhook: (e, signature) => verifyHmac(e.obj, e.kind === "card_token" ? TOKEN_HMAC_FIELDS : TXN_HMAC_FIELDS, signature, cfg.hmacSecret),
     parseTransaction: parseTxn,
     parseCardToken,
-    refund: (txnId, amountCents) => refundTxn(cfg, txnId, amountCents),
+    refund: (txnId, amountCents) => refundTxn(cfg, Number(txnId), amountCents),
   };
 }

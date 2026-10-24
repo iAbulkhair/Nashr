@@ -388,8 +388,9 @@ async function runBatch(user: User, scope: string, opts: BatchOpts, late: Promis
   // activity row and `BatchDone.cost` report this, so they always say what the balance lost.
   const charged = "hold" in paid ? paid.hold.credits : cost;
   // A reused hold (a claim this batch paid in an earlier, killed run) was warned about by the run that took it.
-  // The hold keeps the top-up receipt of the run that paid (`from`, rule 442), so the receipt names the same packs.
-  if ("hold" in paid) receipt = { ok: true, credits: paid.credits, scope: paid.hold.scope, agent: paid.hold.agent, month: paid.hold.month, ...(paid.hold.from ? { from: paid.hold.from } : {}) };
+  // The hold keeps the top-up receipt of the run that paid (`from`, rule 442), so the receipt names the same packs, and
+  // the person it was spent for (rule 3774), so a refund lowers that person's spend under their cap.
+  if ("hold" in paid) receipt = { ok: true, credits: paid.credits, scope: paid.hold.scope, agent: paid.hold.agent, month: paid.hold.month, ...(paid.hold.from ? { from: paid.hold.from } : {}), ...(paid.hold.person ? { person: paid.hold.person } : {}) };
   else {
     await warnAgentCap(user, paid);
     receipt = paid;

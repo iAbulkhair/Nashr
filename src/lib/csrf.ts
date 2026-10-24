@@ -63,6 +63,8 @@ export const CROSS_SITE_ERROR = "cross_site";
  * - `/api/billing/paymob/`: the Paymob webhook, `/api/billing/paymob/webhook` (PR #279), posted by Paymob's servers and
  *   proven by Paymob's HMAC. The buyer's return from Paymob's page lands on the billing page (a GET), not here;
  *   `/api/billing/checkout` and `/api/billing/renewal` are cookie routes outside the prefix and stay checked.
+ * - `/api/billing/geidea/`: the Geidea order callback, `/api/billing/geidea/webhook` (rule 3905), posted by Geidea's
+ *   servers and proven by the signature inside its body. The buyer's return lands on the billing page (a GET).
  * - `/api/shopify/compliance`: Shopify's mandatory compliance webhooks (rules 2168-2171), posted by Shopify's servers
  *   and proven by `X-Shopify-Hmac-Sha256` over the raw body. Exact: nothing else lives under `/api/shopify`.
  * - `/api/cron/`: the cron runner (GET with the CRON_SECRET bearer, which the check never looks at) and POST
@@ -79,6 +81,7 @@ export const CROSS_SITE_EXEMPT: readonly string[] = [
   "/api/media/hook/",
   "/api/secretary/booking/",
   "/api/billing/paymob/",
+  "/api/billing/geidea/",
   "/api/shopify/compliance",
   "/api/cron/",
 ];

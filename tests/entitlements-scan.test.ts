@@ -98,6 +98,8 @@ const ALLOWED: Record<string, { n: number; why: string }> = {
   "src/components/app/ChatPanel.tsx": { n: 2, why: "display: the activation bar and the first-step hint, shown to a trial only" },
   "src/components/app/settings/CreditUsageCard.tsx": { n: 1, why: "display and copy: the runway lines and the plan rules text differ for a trial (moved from the old profile page, rule 1153)" },
   "src/components/app/TrialBanner.tsx": { n: 1, why: "display: the countdown strip renders for a trial only" },
+  "src/lib/admin-workspaces-math.ts": { n: 1, why: "filter: the founder's Customers list \"trial\" chip (rule 3721); nothing is decided for the account" },
+  "src/lib/admin-workspaces.ts": { n: 2, why: "stats: the Customers list's paying and trial tiles count live workspaces by plan (rule 3720); nothing is decided for the account" },
   "src/lib/admin-users.ts": { n: 3, why: "filter and stats: the founder's Users table chip \"trial ending\" (a trial whose end is within 24 hours, rule 1178) and the paying and trialing tiles the server now counts for the paged table" },
   "src/lib/admin-stats.ts": { n: 4, why: "stats: the founder's counts of paying, active-trial and expired-trial accounts, and signups that paid" },
   "src/lib/auth.ts": { n: 1, why: "ACCESS: `trialOver`, the spend gate (chat, MCP, media, generation, onboarding, routines, the weekly plan): an ended trial or a Paymob-locked subscription may not spend; entitlements() reports them as inactive `trial_over` / `billing_locked`" },
