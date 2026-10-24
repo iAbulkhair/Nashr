@@ -37,7 +37,7 @@ export function byOf(u: User): By {
   if (!a) return systemBy("cron");
   switch (a.kind) {
     case "member": {
-      const role = a.role === "admin" || a.role === "member" ? a.role : undefined;
+      const role = a.role === "admin" || a.role === "member" || a.role === "viewer" ? a.role : undefined;
       const email = str(a.email);
       return { kind: "member", ...(email ? { email } : {}), ...(role ? { role } : {}) };
     }

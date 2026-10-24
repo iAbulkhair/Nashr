@@ -197,8 +197,8 @@ describe("refunds go back where the credits came from (rule 442)", () => {
     expect(batch).toContain("receipt = paid;");
     // A reused Sunday-plan hold names the same packs as the run that paid (rule 458).
     expect(batch).toContain("...(paid.hold.from ? { from: paid.hold.from } : {})");
-    expect(readFileSync("src/lib/media/jobs.ts", "utf8")).toContain("spend: { scope: paid.scope, agent: paid.agent, month: paid.month, ...(paid.from ? { from: paid.from } : {}) },");
-    expect(readFileSync("src/lib/auth.ts", "utf8")).toMatch(/export type OnboardHold = \{[^}]*from\?: Receipt \}/);
+    expect(readFileSync("src/lib/media/jobs.ts", "utf8")).toContain("spend: { scope: paid.scope, agent: paid.agent, month: paid.month, ...(paid.from ? { from: paid.from } : {}), ...(paid.person ? { person: paid.person } : {}) },"); // and the person, so a refund lowers their cap counter (rule 3771)
+    expect(readFileSync("src/lib/auth.ts", "utf8")).toMatch(/export type OnboardHold = \{[^}]*from\?: Receipt; person\?: string \}/);
   });
 });
 

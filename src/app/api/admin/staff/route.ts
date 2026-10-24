@@ -1,8 +1,12 @@
 import { NextResponse, after } from "next/server";
 import { adminActor, viaOf } from "@/lib/auth";
+import { mailReady, sendEmail } from "@/lib/notify";
+import { globalKey } from "@/lib/keys";
+import { appOrigin } from "@/lib/origin";
+import { allow, clientIp, retryLater } from "@/lib/rate";
 import { secondFactorRefusal } from "@/lib/admin-2fa";
 import { adminAudit, cleanReason, reasonRefused } from "@/lib/admin-audit";
-import { OWNERS_LOCK, SETUP_TTL, STAFF_ROLES, getStaff, issueSetupCode, listStaff, otherActiveOwner, saveStaff, staffEmail, withStaffLock, type StaffRole } from "@/lib/staff";
+import { INVITE_TTL, OWNERS_LOCK, SETUP_TTL, STAFF_ROLES, getStaff, issueSetupCode, listStaff, otherActiveOwner, saveStaff, sha, staffEmail, withStaffLock, type StaffRole } from "@/lib/staff";
 import { endStaffSessions } from "@/lib/staff-session";
 import { actorOf, cleanName, freshCodeRefusal, isStaffOwner, lastOwner, secretJson, staffView, withNamedLock } from "@/lib/staff-admin";
 import { alertFoundersKeyStaff, type KeyStaffAction } from "@/lib/staff-alert";
@@ -10,6 +14,24 @@ import { alertFoundersKeyStaff, type KeyStaffAction } from "@/lib/staff-alert";
 export const dynamic = "force-dynamic";
 
 const bad = (error: string, status = 400) => NextResponse.json({ ok: false, error }, { status });
+/** Invites per inviting owner per hour, and per IP per hour (rule 3707). */
+const INVITES_PER_OWNER = 10, INVITES_PER_IP = 20, INVITE_WINDOW = 60 * 60;
+
+/** The invite mail (rule 3706): the code only in the link's fragment, which no browser sends to a server. */
+function inviteMail(lang: "ar" | "en", name: string, role: StaffRole, link: string): { subject: string; text: string } {
+  if (lang === "ar") {
+    const r = role === "owner" ? "مالك" : "دعم (قراءة فقط)";
+    return {
+      subject: "دعوة إلى لوحة موظفي ذكين",
+      text: `مرحبًا ${name}،\n\nدُعيت إلى لوحة موظفي ذكين بدور: ${r}.\nافتح هذا الرابط، واكتب بريدك، واختر كلمة مرور، ثم أعدّ تطبيق المصادقة:\n\n${link}\n\nالرابط يعمل مرة واحدة خلال 24 ساعة. لا تشاركه مع أحد. إن لم تكن تتوقع هذه الدعوة فتجاهلها.`,
+    };
+  }
+  const r = role === "owner" ? "owner" : "support (read-only)";
+  return {
+    subject: "Your invite to the Thakeen staff console",
+    text: `Hello ${name},\n\nYou were invited to the Thakeen staff console as: ${r}.\nOpen this link, type your email, choose a password, then set up an authenticator app:\n\n${link}\n\nThe link works once within 24 hours. Do not share it. If you did not expect this invite, ignore it.`,
+  };
+}
 
 /**
  * Staff management (rules 1635-1640, docs/system/permissions.md section 1.7).
@@ -37,6 +59,11 @@ export async function GET(req: Request) {
  *                                           active owner exists (rule 1643): the person's password, authenticator and
  *                                           recovery codes are void at once, and a reset code is answered once
  *   role    { email, role }                 staff owner only; never one's own, never the last active owner
+ *   invite  { email, name, role, lang }     staff owner only (rule 3706): `owner` or `support`; the record is created
+ *                                           without a password and an invite link is mailed, single use, valid 24
+ *                                           hours, the code only in the link's fragment and only its hash stored.
+ *                                           10 per owner and 20 per IP per hour (rule 3707). When mail is not set up
+ *                                           or the send fails, the link is answered once (no-store) to hand over.
  * The key session needs the console code enrolled and typed (403 `console_code_required`), and every reset or enable it
  * does mails the founders (`ADMIN_EMAILS`, src/lib/staff-alert.ts). Disable, enable, role and reset run under
  * `lock:staff:owners` with their last-owner and other-owner checks (rule 1659). Disable, reset and a role change end
@@ -50,9 +77,9 @@ export async function POST(req: Request) {
   if (no2fa) return no2fa;
   const info = actorOf(req, who);
   if (!info) return NextResponse.json({ ok: false }, { status: 401 });
-  const b = (await req.json().catch(() => ({}))) as { action?: unknown; email?: unknown; name?: unknown; role?: unknown; reason?: unknown; code?: unknown };
+  const b = (await req.json().catch(() => ({}))) as { action?: unknown; email?: unknown; name?: unknown; role?: unknown; reason?: unknown; code?: unknown; lang?: unknown };
   const action = typeof b.action === "string" ? b.action : "";
-  if (!["create", "disable", "enable", "reset", "role"].includes(action)) return bad("unknown_action");
+  if (!["create", "invite", "disable", "enable", "reset", "role"].includes(action)) return bad("unknown_action");
   const byKey = info.via === "key";
   const keyMayDo = byKey && (action === "reset" || action === "enable");
   if (!isStaffOwner(info) && !keyMayDo) return bad(info.via === "staff" || byKey ? "staff_owner_only" : "staff_only", 403);
@@ -65,6 +92,31 @@ export async function POST(req: Request) {
   const reason = cleanReason(b.reason);
   const log = (act: string, what: string, extra: { before?: unknown; after?: unknown } = {}) =>
     adminAudit({ actor: who, via: viaOf(req), section: "system", action: act, target: email, what, reason, ...extra });
+
+  if (action === "invite") {
+    const name = cleanName(b.name);
+    if (!name) return bad("name_required");
+    const role = STAFF_ROLES.find((r) => r === b.role);
+    if (!role) return bad("bad_role");
+    const [perOwner, perIp] = await Promise.all([
+      allow(globalKey.staffInviteBucket(sha(who)), INVITES_PER_OWNER, INVITE_WINDOW),
+      allow(globalKey.staffInviteIpBucket(clientIp(req)), INVITES_PER_IP, INVITE_WINDOW),
+    ]);
+    if (!perOwner || !perIp) return retryLater({ ok: false, error: "slow_down" }, INVITE_WINDOW);
+    const created = await withStaffLock(email, async (s) => {
+      if (s) return false;
+      await saveStaff({ email, name, role, passHash: "", createdAt: new Date().toISOString(), createdBy: who });
+      return true;
+    });
+    if (!created) return bad("exists", 409);
+    const code = await issueSetupCode(email, who, "invite");
+    const lang = b.lang === "en" ? "en" : "ar";
+    const link = `${appOrigin()}/${lang}/admin/login/setup#invite=${code}`;
+    const m = inviteMail(lang, name, role, link);
+    const mailed = mailReady() ? await sendEmail(email, m.subject, m.text).catch(() => false) : false;
+    await log("staff.invite", `staff:invite ${email} (${role})`, { after: { email, name, role, mailed } });
+    return mailed ? secretJson({ ok: true, email, mailed: true, expiresIn: INVITE_TTL }) : secretJson({ ok: true, email, mailed: false, link, expiresIn: INVITE_TTL });
+  }
 
   if (action === "create") {
     const name = cleanName(b.name);

@@ -44,8 +44,11 @@ export async function POST(req: Request) {
   const deadline = deadlineFor(maxDuration);
   const u = await currentUser();
   if (!u) return NextResponse.json({ ok: false }, { status: 401 });
+  // "Run now" runs agents and spends credits like generate: never a Viewer's (rule 3752).
+  const no = forbid(u, "generate");
+  if (no) return no;
   const b = (await req.json().catch(() => ({}))) as { run?: string; id?: unknown };
-  // A login's own "Run now" (any role): its activity rows name that login (or the founder), not the cron.
+  // A login's own "Run now" (an Editor or above): its activity rows name that login (or the founder), not the cron.
   if (b.run === "weekly") return NextResponse.json({ ok: true, result: await runWeekly(u, byOf(u), { deadline, resume: true }) });
   // Only an id from the closed list; the scope is the caller's own (`runRoutine` reads `u.scope`).
   if (b.run === "routine") {

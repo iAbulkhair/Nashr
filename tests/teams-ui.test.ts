@@ -122,13 +122,13 @@ describe("Members page permissions come from can()", () => {
   const as = (actor: User["actor"]) => ({ ...owner, actor }) as User;
   const base = { pid: storedPersonId("x@test.example"), home: true, name: "X", lang: "ar" as const };
   it("owner: everything but leaving", () => {
-    expect(teamPerms(as({ ...base, kind: "owner", email: owner.email, role: "owner" }))).toEqual({ inviteMember: true, inviteAdmin: true, changeRole: true, removeMember: true, removeAdmin: true, viewInvites: true, cancelInvite: true, leave: false, viewLog: false, transfer: false, impersonating: false });
+    expect(teamPerms(as({ ...base, kind: "owner", email: owner.email, role: "owner" }))).toEqual({ inviteMember: true, inviteAdmin: true, changeRole: true, removeMember: true, removeAdmin: true, viewInvites: true, cancelInvite: true, leave: false, viewLog: false, transfer: false, access: true, cap: true, policy: true, impersonating: false });
   });
   it("admin: plain members only, no role changes", () => {
-    expect(teamPerms(as({ ...base, kind: "member", email: admin.email, role: "admin" }))).toEqual({ inviteMember: true, inviteAdmin: false, changeRole: false, removeMember: true, removeAdmin: false, viewInvites: true, cancelInvite: true, leave: true, viewLog: false, transfer: false, impersonating: false });
+    expect(teamPerms(as({ ...base, kind: "member", email: admin.email, role: "admin" }))).toEqual({ inviteMember: true, inviteAdmin: false, changeRole: false, removeMember: true, removeAdmin: false, viewInvites: true, cancelInvite: true, leave: true, viewLog: false, transfer: false, access: true, cap: false, policy: false, impersonating: false });
   });
   it("member: view and leave only", () => {
-    expect(teamPerms(as({ ...base, kind: "member", email: member.email, role: "member" }))).toEqual({ inviteMember: false, inviteAdmin: false, changeRole: false, removeMember: false, removeAdmin: false, viewInvites: false, cancelInvite: false, leave: true, viewLog: false, transfer: false, impersonating: false });
+    expect(teamPerms(as({ ...base, kind: "member", email: member.email, role: "member" }))).toEqual({ inviteMember: false, inviteAdmin: false, changeRole: false, removeMember: false, removeAdmin: false, viewInvites: false, cancelInvite: false, leave: true, viewLog: false, transfer: false, access: false, cap: false, policy: false, impersonating: false });
   });
   it("a founder viewing the account changes nothing in the team", () => {
     const p = teamPerms(as({ ...base, kind: "founder", email: owner.email, role: "owner", impersonating: "f@test.example" }));

@@ -189,6 +189,8 @@ export default function Inbox({ t, lang, tasks, brief, connected = [], banned = 
       else if (j.error === "wordpress_cannot_publish_live") setWpNote({ id, kind: "cannotLive" });
       // Held by the agent-scope check (rule 1410): nothing went out; the server's message says why, in the item's language.
       else if ((j.error === "agent_scope_held" || j.error === "agent_scope_unavailable") && j.message) toast.danger(j.message); // rule 2001
+      // The account's approval policy (rule 3762): nobody who may approve this brand approved it yet.
+      else if (j.error === "approval_required") toast.danger(t.team.errors.approval_required);
       else toast.danger(res.status === 403 ? t.team.errors.forbidden : i.publishFail);
     }
     // `view` renders `local[id] ?? task`, so an entry left over from an earlier approve would mask this task's server

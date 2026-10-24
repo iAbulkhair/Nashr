@@ -85,6 +85,8 @@ export async function runTool(user: User, name: string, input: Record<string, un
   // The role gate comes first: a refused tool reaches no pipeline, write or activity row.
   const needs = Object.prototype.hasOwnProperty.call(TOOL_ACTION, name) ? TOOL_ACTION[name] : null;
   // `todo.write` is held by every login of the account (members too), so for it the refusal is for a chat with no acting login.
+  // A Viewer (rule 3752) reads and comments only: told so plainly, never sent to look for another way.
+  if (needs && !can(user, needs) && user.actor?.role === "viewer") return `Not done: ${name} needs an editor or above, and the person chatting is a viewer of this account (viewers read and comment only). Nothing was changed. Tell them plainly that the owner or an admin can change their role, and do not try another way around it.`;
   if (needs && !can(user, needs)) return MIN_ROLE[needs] === "member" ? `Not done: ${name} needs a signed-in login of this account with access to its to-do list, and this chat has none. Nothing was changed. Tell the owner plainly and do not try another way around it.` : `Not done: ${name} needs the owner or an admin of this account, and the person chatting is neither. Nothing was changed. Tell them plainly that the account owner or an admin can do this, and do not try another way around it.`;
   // The owner's tool authority (rule 2432, src/lib/tool-authority.ts), after the role gate and before any read, charge or
   // write. Read at the moment of the call, not from the turn's start: a capability switched off mid-turn holds for the
@@ -276,6 +278,7 @@ export async function runTool(user: User, name: string, input: Record<string, un
       if (scopeHeld.block) return `Not sent: ${scopeHeld.reply}`;
       // The same checks again on the copy that is sent, under the publish lock.
       const r = await publishOnce(email, t.id, provider, {
+        by: user.actor?.pid,
         check: (cur) => {
           if (cur.status !== "approved" || !reviewed(cur)) return { error: "not_approved" };
           if (taskVersion(cur) !== checkedVersion) return { error: "changed" };
@@ -285,7 +288,7 @@ export async function runTool(user: User, name: string, input: Record<string, un
       });
       if (!r.ok) {
         switch (r.error) {
-          case "refused": return r.refusal.error === "brand_violation" ? `Not published. ${explain(r.refusal.violations as Violation[])} The item changed a moment ago; tell the owner what to fix.` : r.refusal.error === "changed" ? "Not published: the owner edited this item a moment ago. Ask again to publish the new text." : "Not published: the item changed a moment ago and is not approved by the owner any more. Tell the owner to check it in the inbox.";
+          case "refused": return r.refusal.error === "brand_violation" ? `Not published. ${explain(r.refusal.violations as Violation[])} The item changed a moment ago; tell the owner what to fix.` : r.refusal.error === "changed" ? "Not published: the owner edited this item a moment ago. Ask again to publish the new text." : r.refusal.error === "approval_required" ? "Not published: this account needs an approval from the owner, an admin or a teammate allowed to approve this brand before anything goes out, and this item has none that still counts. Tell them to approve it in the inbox first." : "Not published: the item changed a moment ago and is not approved by the owner any more. Tell the owner to check it in the inbox.";
           case "already_published": return `Not published again: this item already went to ${provider}${r.url ? ` (${r.url})` : ""}. Publishing it a second time is the owner's, from the inbox.`;
           case "publish_unknown": return `Not published: an earlier publish to ${provider} (${r.at}) ended without an answer, so it may already be live. Tell the owner to check ${provider}, then publish again from the inbox if it is not there.`;
           case "publish_busy": return `Not published: a publish of this item to ${provider} is already running. Wait a few minutes and check the inbox.`;

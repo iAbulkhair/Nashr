@@ -52,7 +52,7 @@ import { db } from "./db";
 import { pmap } from "./parallel";
 import { sc, trialOver, type User } from "./auth";
 import { AGENTS, AGENT_IDS, isAgentId, type AgentId } from "./agents";
-import { chargeOnce, refundOnce, renewIfDue, renewalDue } from "./credits";
+import { chargeOnce, personOf, refundOnce, renewIfDue, renewalDue } from "./credits";
 import { fairUseGate } from "./fair-use";
 import { getGov } from "./governance";
 import { asData } from "./json";
@@ -399,7 +399,7 @@ async function run(user: User, scope: string, itemId: string, kind: "notes" | "t
     const [gov, ran] = await Promise.all([getGov(scope), db.get<number>(runKey)]);
     const n = typeof ran === "number" && Number.isSafeInteger(ran) && ran > 0 ? ran : 0;
     claim = `meeting:${scope}:${itemId}:${n}`;
-    const c = await chargeOnce(acct(user), MEETING_TRANSCRIPT_COST, { scope, agent: "reem", cap: gov.agentCaps.reem }, claim);
+    const c = await chargeOnce(acct(user), MEETING_TRANSCRIPT_COST, { scope, agent: "reem", cap: gov.agentCaps.reem, person: personOf(user) }, claim);
     if (!c.ok) return c.reason === "agent_cap" ? { ok: false, error: "agent_cap", agent: c.agent, spent: c.spent, cap: c.cap } : { ok: false, error: "no_credits" };
   }
   // From here a failure gives the credit back, once: the hold is dropped in the same save as the refund.
