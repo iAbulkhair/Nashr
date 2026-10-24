@@ -332,7 +332,7 @@ describe("invite, preview and accept", () => {
     expect(await db.get(`invite:${token}`), "the token itself is never a key").toBeNull();
 
     const view = (await (await team.GET()).json()) as { seats: { used: number; limit: number }; invites: { id: string }[] };
-    expect(view.seats).toEqual({ used: 2, limit: 3 });
+    expect(view.seats).toEqual({ used: 2, limit: 3, freeViewers: 3, freeViewersLeft: 3 }); // no viewer yet (rule 3753)
     expect(view.invites.map((i) => i.id)).toEqual([body.invite.id]);
 
     signOut();

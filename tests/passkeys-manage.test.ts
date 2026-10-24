@@ -371,8 +371,8 @@ describe("rule 2416 (route half): removing the last passkey leaves password sign
 });
 
 describe("rule 2412: who may manage passkeys", () => {
-  it("passkeys.manage is member-level and refused while impersonating", () => {
-    expect(MIN_ROLE["passkeys.manage"]).toBe("member");
+  it("passkeys.manage is open to every role (Viewer up, rule 3752) and refused while impersonating", () => {
+    expect(MIN_ROLE["passkeys.manage"]).toBe("viewer");
     expect(IMPERSONATION_BLOCKED.has("passkeys.manage")).toBe(true);
   });
 

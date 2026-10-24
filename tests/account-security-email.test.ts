@@ -258,8 +258,8 @@ describe("rule 1945: taken addresses, the account's own key and a founder impers
     expect(route).toMatch(/verifySendRefusal\(to, req\)/);
   });
 
-  it("email.change is member level and impersonation-blocked", async () => {
-    expect(MIN_ROLE["email.change"]).toBe("member");
+  it("email.change is open to every role (Viewer up, rule 3752) and impersonation-blocked", async () => {
+    expect(MIN_ROLE["email.change"]).toBe("viewer");
     expect(IMPERSONATION_BLOCKED.has("email.change")).toBe(true);
     vi.stubEnv("ADMIN_EMAILS", "founder-em@test.example");
     const u = await newUser("em");

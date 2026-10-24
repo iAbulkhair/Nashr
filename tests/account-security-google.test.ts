@@ -296,7 +296,7 @@ describe("rule 1952: linking from settings links the session's own login only", 
     const u = await newUser("gsi");
     await signIn(u.email, { imp: "founder-gsi@test.example" });
     expect((await link()).status).toBe(403);
-    expect(MIN_ROLE["google.manage"]).toBe("member");
+    expect(MIN_ROLE["google.manage"]).toBe("viewer");
     expect(IMPERSONATION_BLOCKED.has("google.manage")).toBe(true);
   });
 });

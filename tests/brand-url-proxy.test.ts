@@ -243,6 +243,7 @@ describe("rule 888: the guarded list is held to the routes on disk", () => {
       "/api/push/seen": "the login's away mark (pushLogin), no brand data",
       "/api/referral/share": "the account's share credits (acct(u))",
       "/api/support": "a support ticket with the login's address, no brand data",
+      "/api/team": "the account's approval policy, written on acct(u) under its lock (rule 3762), no brand data",
       "/api/team/invite": "the account's team",
       "/api/team/leave": "the account's team",
       "/api/team/member": "the account's team",

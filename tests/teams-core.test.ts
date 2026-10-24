@@ -468,7 +468,7 @@ describe("roster changes", () => {
     if (!inv.ok) throw new Error(inv.error);
     const mine = (await teamView((await resolveAs(owner.email))!))!;
     expect(mine.you).toEqual({ email: owner.email, name: owner.name, role: "owner" });
-    expect(mine.seats).toEqual({ used: 3, limit: 3 });
+    expect(mine.seats).toEqual({ used: 3, limit: 3, freeViewers: 3, freeViewersLeft: 3 }); // no viewer yet (rule 3753)
     expect(mine.members[0]).toEqual({ email: owner.email, name: owner.name, role: "owner" });
     expect(mine.invites).toEqual([{ id: inv.id, email: inv.invite.email, role: "member", expiresAt: inv.invite.expiresAt, invitedBy: owner.email }]);
     expect(JSON.stringify(mine)).not.toContain("passHash");

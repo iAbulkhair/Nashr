@@ -955,7 +955,7 @@ describe("the key form is break-glass; the header is for scripts (rules 1645, 16
     const src = readFileSync("src/components/app/AdminLogin.tsx", "utf8");
     expect(src).toContain("دخول الطوارئ بالمفتاح");
     expect(src).toContain("Break-glass key sign-in");
-    expect(src).toMatch(/name="code"/);
+    expect(src).toMatch(/name="bg-console-code"/); // its own name since rule 3705, so no saved code is autofilled
   });
 
   it("1646: the header key never opens a browser session, and its writes need x-admin-otp once enrolled", async () => {
