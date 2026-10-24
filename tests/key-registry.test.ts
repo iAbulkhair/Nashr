@@ -65,6 +65,8 @@ describe("rule 2030: each builder returns the bytes of its old template", () => 
     [wsKey.fileProposalDone(S, "ab12"), `fileprop-done:${S}:ab12`],
     [wsKey.fileProposalClaim(S, "ab12"), `fileprop-claim:${S}:ab12`],
     [wsKey.dailyMail(S, "2026-10-22"), `dailymail:${S}:2026-10-22`],
+    // The auto-assign turn counter (rule 3764): a new key, written first under the registry.
+    [wsKey.assignTurn(S), `assignturn:${S}`],
     [wsKey.fileProposals(S), `fileprops:${S}`],
     [wsKey.keyCheckBucket(D, "hour"), `keycheck:hour:${E}`],
     [wsKey.connectStartBucket(D), `connectstart:${E}`],
@@ -125,11 +127,15 @@ describe("rule 2030: each builder returns the bytes of its old template", () => 
     [accountKey.seenBucket(E), `tabbeat:${E}`],
     // Account-id R2 (rule 2743): the 30-day hold on a moved-from address; new family, no old template.
     [accountKey.emailHold(E), `emailhold:${E}`],
+    [accountKey.payCard(E), `pay:card:${E}`],
+    [accountKey.payLast(E), `pay:last:${E}`],
+    [accountKey.payAttempt(E, "2026-10-24"), `pay:attempt:${E}:2026-10-24`],
   ];
   const global: [string, string][] = [
     [globalKey.usersAll(), "users:all"],
     [globalKey.runReceipt("routine:a@b.example:dana_weekly_report:2026-10-18"), "runrec:routine:a@b.example:dana_weekly_report:2026-10-18"],
     [globalKey.cronReport("weekly"), "cronreport:weekly"],
+    [globalKey.workspaceAgg(), "admin:wsagg"],
     [globalKey.digests(), "notifydigests"],
     [globalKey.eventDay("2026-10-20", "signup"), "ev:2026-10-20:signup"],
     [globalKey.opsProposal("abc"), "ops:proposal:abc"],
@@ -145,6 +151,15 @@ describe("rule 2030: each builder returns the bytes of its old template", () => 
     [globalKey.rate("files:x"), "rate:files:x"],
     [globalKey.usageAll("2026-10"), "usage:_all:2026-10"],
     [globalKey.paymobRefundEnded(123456), "paymob:refund_ended:123456"],
+    // Geidea (rules 3900-3917): new families, no old template.
+    [globalKey.payIntent("r1"), "pay:intent:r1"],
+    [globalKey.payOpen(), "pay:open"],
+    [globalKey.payTxn("geidea", "o1"), "pay:txn:geidea:o1"],
+    [globalKey.payDone("geidea", "o1"), "pay:done:geidea:o1"],
+    [globalKey.payTxLock("geidea", "o1"), "pay:txlock:geidea:o1"],
+    [globalKey.payRefunded("geidea", "o1"), "pay:refunded:geidea:o1"],
+    [globalKey.payRefundLock("geidea", "o1"), "pay:refundlock:geidea:o1"],
+    [globalKey.payRefundEnded("geidea", "o1"), "pay:refund_ended:geidea:o1"],
     [globalKey.shopifyCompliance(), "shopify:compliance"],
     [globalKey.shopifyRedact(), "shopify:redact"],
     [globalKey.connectionHealth(), "connections:health"],
@@ -155,6 +170,9 @@ describe("rule 2030: each builder returns the bytes of its old template", () => 
     [globalKey.passkeyIpBucket("1.2.3.4"), "pk:ip:1.2.3.4"],
     [globalKey.passkeyVerifyIpBucket("1.2.3.4"), "pkv:ip:1.2.3.4"],
     [globalKey.passkeyCredBucket("h1"), "pkv:cred:h1"],
+    [globalKey.staffBootPasskey("h1"), "staffbootpk:h1"],
+    [globalKey.staffInviteBucket("h1"), "staffinvite:h1"],
+    [globalKey.staffInviteIpBucket("1.2.3.4"), "staffinvite:ip:1.2.3.4"],
     // Account-id R2 (rule 2744): the revert link and its IP bucket are new families; the reset token keeps its old bytes.
     [globalKey.emailRevert("h1"), "emailrevert:h1"],
     [globalKey.emailRevertIpBucket("1.2.3.4"), "emailrevert:ip:1.2.3.4"],

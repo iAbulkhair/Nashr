@@ -1,5 +1,5 @@
 import { trialOver, type User } from "./auth";
-import { charge, refund, renewIfDue, renewalDue, type SpendRef } from "./credits";
+import { charge, personOf, refund, renewIfDue, renewalDue, type SpendRef } from "./credits";
 import { fairUseGate } from "./fair-use";
 import { agentForTask } from "./agents";
 import { addPreference, getBrand, getTask, listPreferencesFor, updateTask, type Brand, type Task } from "./brand";
@@ -138,7 +138,7 @@ export async function reviseTask(user: User, scope: Scope, id: string, input: { 
   const by = byOf(user);
   const row = (kind: Activity["kind"], extra: Partial<Activity> = {}): Activity => ({ at: new Date().toISOString(), kind, agent, by, via: "app", type: t.type, tasks: [t.id], credits: cost, ...extra });
   if (renewalDue(user)) await renewIfDue(acct(user));
-  const paid = await charge(acct(user), cost, { scope, agent, cap: gov.agentCaps[agent] });
+  const paid = await charge(acct(user), cost, { scope, agent, cap: gov.agentCaps[agent], person: personOf(user) });
   if (!paid.ok && paid.reason === "agent_cap") {
     await recordActivity(scope, [row("cap_reached", { outcome: `${paid.spent}/${paid.cap}` })]);
     return { ok: false, reason: "agent_cap", agent: paid.agent, spent: paid.spent, cap: paid.cap, credits: paid.credits };

@@ -22,7 +22,7 @@ import { anyYearlyOffered } from "@/lib/pricing";
  * tabular figures instead of monospace and rows parted by space instead of ruled lines (rule 2318), and on /pricing alone
  * the plan cards rise in once (rule 2319, `plans-rise` in globals.css).
  *
- * Yearly billing (rules 3541-3542, flows.md section 108): only when the founder has set a yearly price in
+ * Yearly billing (rules 3541-3542, flows.md section 110): only when the founder has set a yearly price in
  * src/lib/pricing.ts does a monthly/yearly switch appear over the cards; with none set this renders exactly as before.
  */
 export default function Pricing({ t, lang, headingLevel = 2 }: { t: Dict; lang: Lang; headingLevel?: 1 | 2 }) {

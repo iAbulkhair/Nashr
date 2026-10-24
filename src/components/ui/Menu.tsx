@@ -16,9 +16,27 @@ export function menuIndex(key: string, i: number, n: number): number | null {
 }
 
 /**
+ * The row a typed letter jumps to (rule 3201): the next row after `at` whose label starts with that letter, wrapping, so
+ * typing it again moves on to the next match. Case and outer spaces do not count, and an Arabic alef matches its hamza and
+ * madda forms. A key that is not one printable character, or that matches no row, is not a jump. Pure for the tests.
+ */
+export function menuMatch(key: string, at: number, labels: string[]): number | null {
+  const fold = (s: string) => s.trim().toLocaleLowerCase().replace(/[أإآ]/g, "ا");
+  if ([...key].length !== 1 || !key.trim()) return null;
+  const want = fold(key);
+  const n = labels.length;
+  for (let k = 1; k <= n; k++) {
+    const i = (at + k + n) % n;
+    if (fold(labels[i]).startsWith(want)) return i;
+  }
+  return null;
+}
+
+/**
  * A menu button (rule 1112), the WAI-ARIA pattern: the trigger says `aria-haspopup="menu"` and whether it is open; the
  * list is `role="menu"` with `role="menuitem"` rows. Opening puts focus on the first row (ArrowUp on the trigger: the
- * last); ArrowDown and ArrowUp move and wrap, Home and End jump, Escape closes and gives focus back to the trigger, and
+ * last); ArrowDown and ArrowUp move and wrap, Home and End jump, typing a letter jumps to the next row that starts with it
+ * (rule 3201, `menuMatch`), Escape closes and gives focus back to the trigger, and
  * focus leaving the menu (Tab past the footer) or a click outside closes it. Rows are links or actions; choosing one closes the menu. `footer` is drawn under the rows
  * and outside the menu role (a language switch, a sign-out form), reachable with Tab. `trigger` renders the button from
  * the props it is given, so the caller keeps its look; every row is at least 44px tall on touch screens.
@@ -64,7 +82,8 @@ export default function Menu({ label, items, trigger, footer, placement = "botto
   function onMenuKey(e: React.KeyboardEvent<HTMLUListElement>) {
     const at = rows.current.indexOf(document.activeElement as HTMLElement);
     if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); close(true); return; }
-    const next = menuIndex(e.key, at, items.length);
+    const next = menuIndex(e.key, at, items.length)
+      ?? (e.ctrlKey || e.metaKey || e.altKey ? null : menuMatch(e.key, at, items.map((_, i) => rows.current[i]?.textContent ?? "")));
     if (next !== null) { e.preventDefault(); rows.current[next]?.focus(); }
   }
   const choose = (it: MenuItem) => { close(false); it.onSelect?.(); };

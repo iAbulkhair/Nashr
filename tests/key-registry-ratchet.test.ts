@@ -190,7 +190,7 @@ const RAW_KEYS: Record<string, number> = {
   "src/lib/admin-stats.ts": 4,
   "src/lib/agent-scope.ts": 1,
   "src/lib/auth.ts": 4,
-  "src/lib/billing.ts": 15,
+  "src/lib/billing.ts": 12,
   "src/lib/booking-token.ts": 4,
   "src/lib/brand-proposals.ts": 5,
   "src/lib/brand-rules.ts": 2,
@@ -311,7 +311,7 @@ const STORED_PERSON_ID: Record<string, number> = {
 };
 const STORED_ACCOUNT_ID: Record<string, number> = {
   "src/lib/membership.ts": 6, // aidOf: a resolved account's own id; listOrgs: an orgs:{pid} entry (re-checked); legacyHomeOf/legacyHomeFrom: a legacy owner's own id (twice), a legacy memberOf; pickAccount: lastorg:{pid} (re-checked)
-  "src/lib/auth.ts": 3, // getLogin: a legacy owner's own id, a legacy member's memberOf; resolveIds: the session's acct (re-checked against the account record and roleIn)
+  "src/lib/auth.ts": 4, // getLogin: a legacy owner's own id, a legacy member's memberOf; resolveIds: the session's acct (re-checked against the account record and roleIn); resolveLegacy (customer roles, rule 3752): the legacy member's own memberOf, to read its membership row in the same round
   "src/lib/mcp.ts": 1, // userFromBearer: the token record's address as the legacy account id (used only when aidOf agrees)
   "src/lib/person.ts": 2, // updatePerson: a legacy owner's person id as its own account id (mirror, stampOwned; re-checked with ownerOf)
   "src/lib/team.ts": 1, // aidFrom (multi-workspace M1): an account id from a resolved user or a record (an invite's account, a legacy memberOf, an orgs:{pid} entry)

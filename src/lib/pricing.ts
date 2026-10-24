@@ -39,7 +39,7 @@ export const planFromStore = (v: unknown): Plan => (v === "enterprise" ? "agency
 /** Monthly list price in SAR, excluding VAT (the site's wording, pending the accountant: see PRICES_INCLUDE_VAT). */
 export const PLAN_PRICE_SAR: Readonly<Record<FixedPlan, number>> = { trial: 0, starter: 299, pro: 499, business: 999 };
 
-// ---- Yearly billing (rules 3530-3549, flows.md section 108) ----
+// ---- Yearly billing (rules 3530-3549, flows.md section 110) ----
 
 /** How often a self-serve plan is charged. A stored record without one is monthly (`readInterval`). */
 export type BillingInterval = "month" | "year";
@@ -204,13 +204,61 @@ export function priceOf(u: PlanOf): number {
 }
 
 /**
- * The account's seat limit, owner included: the founder override when it is a positive number (floored); then Agency
- * → Business's 7; a fixed plan → PLAN_SEATS[plan]; anything else → 1.
+ * The account's included seats, owner included: the founder override when it is a positive number (floored); then
+ * Agency → Business's 7; a fixed plan → PLAN_SEATS[plan]; anything else → 1. The override sets the included seats for
+ * free; paid extra seats sit on top of it (rule 3361).
  */
-export function seatLimit(u: { plan: Plan; seats?: number }): number {
+export function includedSeats(u: { plan: Plan; seats?: number }): number {
   if (typeof u.seats === "number" && Number.isFinite(u.seats) && u.seats >= 1) return Math.floor(u.seats);
   if (isAgency(u.plan)) return PLAN_SEATS.business;
   return isFixedPlan(u.plan) ? PLAN_SEATS[u.plan] : 1;
+}
+
+/**
+ * The account's seat limit, owner included (rule 3361): the included seats plus the paid extra seats. A record with no
+ * `extraSeats` reads as the included seats alone, exactly as before (expand, rule 3362).
+ */
+export function seatLimit(u: { plan: Plan; seats?: number; extraSeats?: number }): number {
+  return includedSeats(u) + paidExtraSeats(u);
+}
+
+// ---- Paid extra seats (rules 3360-3379, docs/superpowers/specs/2026-10-23-paid-seats.md) ----
+
+/**
+ * One seat above the plan's included seats, per month, in SAR excluding VAT (founder decision 2026-10-23). VAT is added
+ * the same way as on a plan (`vatHalalasOf`). No other file may hold this number (rule 3360).
+ *
+ * Yearly: 12 × this monthly price unless the founder sets otherwise. There is no yearly interval on main; a yearly
+ * branch must derive its seat price from this constant, never copy the number.
+ */
+export const EXTRA_SEAT_MONTHLY_SAR = 25;
+
+/**
+ * Plans that may buy extra seats (rule 3363): the self-serve paid plans. Never the trial (its included seats are its
+ * limit, with no purchase) and never Agency (a contract: the founder sizes it through `User.seats`).
+ */
+export const extraSeatsSold = (plan: Plan): boolean => (SELF_SERVE_PLANS as readonly string[]).includes(plan);
+
+/**
+ * The paid extra seats this period, read safely (rule 3362): 0 when absent, not a number, below 1, or when the plan
+ * does not sell seats (a trial or Agency account never carries paid seats into its limit). Floored and capped at
+ * MAX_SEAT_OVERRIDE like the founder override.
+ */
+export function paidExtraSeats(u: { plan: Plan; extraSeats?: number }): number {
+  if (!extraSeatsSold(u.plan)) return 0;
+  const n = u.extraSeats;
+  if (typeof n !== "number" || !Number.isFinite(n) || n < 1) return 0;
+  return Math.min(MAX_SEAT_OVERRIDE, Math.floor(n));
+}
+
+/**
+ * Seats in use above the included ones (rule 3366): max(0, used − included), where used = `seatCount` in src/lib/team.ts
+ * (free Viewers excluded, rule 3753; an invite already holds its seat; accepting it never buys another).
+ */
+export function billableExtraSeats(used: number, included: number): number {
+  const u = Number.isFinite(used) ? Math.floor(used) : 0;
+  const i = Number.isFinite(included) ? Math.floor(included) : 0;
+  return Math.max(0, u - i);
 }
 
 /**
@@ -248,6 +296,36 @@ export const PRICES_INCLUDE_VAT = false;
 export const MARGIN_FLOOR = 0.6;
 
 type Prices = Readonly<Record<SelfServePlan, number>>;
+
+/**
+ * VAT on an amount in halalas, rounded to the halala (rule 3364). The one VAT formula: billing.ts charges plans,
+ * renewals and extra seats with it, so a seat line and a plan line round the same way.
+ */
+export function vatHalalasOf(baseHalalas: number): number {
+  return Math.round(baseHalalas * VAT_RATE);
+}
+
+/** The extra-seat line for `n` seats for one month: unit price, base, VAT and total in halalas (rule 3364). */
+export function extraSeatsLine(n: number): { seats: number; unitSar: number; baseHalalas: number; vatHalalas: number; totalHalalas: number } {
+  const seats = Number.isFinite(n) && n > 0 ? Math.min(MAX_SEAT_OVERRIDE, Math.floor(n)) : 0;
+  const baseHalalas = seats * EXTRA_SEAT_MONTHLY_SAR * 100;
+  const vatHalalas = vatHalalasOf(baseHalalas);
+  return { seats, unitSar: EXTRA_SEAT_MONTHLY_SAR, baseHalalas, vatHalalas, totalHalalas: baseHalalas + vatHalalas };
+}
+
+/**
+ * The monthly bill at list price (rule 3365, the billing page): the plan plus the paid extra seats, VAT on the sum. A
+ * price lock or an offer can lower what a renewal actually charges; `priceFor` in billing.ts is the charge.
+ */
+export function monthlyTotal(u: { plan: Plan; extraSeats?: number; deal?: AgencyDeal | null }): {
+  planHalalas: number; seatsHalalas: number; baseHalalas: number; vatHalalas: number; totalHalalas: number;
+} {
+  const planHalalas = Math.round(priceOf(u) * 100);
+  const seatsHalalas = extraSeatsLine(paidExtraSeats(u)).baseHalalas;
+  const baseHalalas = planHalalas + seatsHalalas;
+  const vatHalalas = vatHalalasOf(baseHalalas);
+  return { planHalalas, seatsHalalas, baseHalalas, vatHalalas, totalHalalas: baseHalalas + vatHalalas };
+}
 
 /** A list price net of VAT when prices include it. */
 export function netPriceSar(listSar: number, includesVat: boolean = PRICES_INCLUDE_VAT): number {

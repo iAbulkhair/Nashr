@@ -9,7 +9,8 @@ const CLOSE = { ar: "إغلاق", en: "Close" } as const;
 /**
  * A modal on a native `<dialog>` opened with `showModal()` (rule 1089), like `ConfirmDialog`: the browser traps focus
  * inside it, makes the page behind it inert and closes it on Escape. It is named by its title and described by
- * `description`. Focus goes back to whatever opened it when it closes, so a keyboard user keeps their place. A click on
+ * `description`. The page behind does not scroll while it is open (rule 3200). Focus goes back to whatever opened it when
+ * it closes, so a keyboard user keeps their place. A click on
  * the backdrop does nothing (the second click of a double click lands there). `onClose` runs on Escape, on the close
  * button and on `close()`; `blockClose` keeps it open while a request is on its way.
  */
@@ -29,7 +30,14 @@ export function Dialog({ lang, title, description, onClose, blockClose = false, 
     const opener = document.activeElement as HTMLElement | null;
     const d = ref.current;
     if (d && !d.open) d.showModal();
-    return () => { if (opener?.isConnected) opener.focus(); };
+    // The page behind does not scroll while it is open (rule 3200), as in `Sheet`.
+    const root = document.documentElement;
+    const before = root.style.overflow;
+    root.style.overflow = "hidden";
+    return () => {
+      root.style.overflow = before;
+      if (opener?.isConnected) opener.focus();
+    };
   }, []);
   return (
     <dialog

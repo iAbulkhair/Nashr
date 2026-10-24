@@ -12,7 +12,7 @@ import { listConnections } from "@/lib/connectors/store";
 import { getSchedule } from "@/lib/schedule";
 import { listFiles } from "@/lib/files";
 import { latestBrief } from "@/lib/schedule";
-import { listNotifs } from "@/lib/notifications";
+import { listNotifs, visibleNotifs } from "@/lib/notifications";
 import { db } from "@/lib/db";
 import type { PlanItem } from "@/lib/chat";
 import { loadJourney } from "@/lib/journey-load";
@@ -72,7 +72,7 @@ export default async function Page({ params, searchParams }: PageProps<"/[lang]/
   // The active conversation's record, read once: its pick sets the allowance line's ceiling and the model picker's
   // selection (the sidebar's list holds only the newest hundred, so an older conversation opened by link needs its own).
   const record = getConversation(sc(u), conv);
-  const [initial, connections, schedule, files, brief, notifs, brand, rows, op, journey, chat] = await Promise.all([historyFor(sc(u), conv), listConnections(sc(u)), getSchedule(sc(u)), listFiles(sc(u)), latestBrief(sc(u)), listNotifs(acct(u)), getBrand(sc(u)), listLite(sc(u), kpiSince()), db.get<{ goal: string; plan: PlanItem[] }>(wsKey.onboardPlan(sc(u))), loadJourney(sc(u), u.email), record.then((c) => chatStatus(u, chatRouteFor(u, c).model))]);
+  const [initial, connections, schedule, files, brief, notifs, brand, rows, op, journey, chat] = await Promise.all([historyFor(sc(u), conv), listConnections(sc(u)), getSchedule(sc(u)), listFiles(sc(u)), latestBrief(sc(u)), listNotifs(acct(u)).then((all) => visibleNotifs(all, u)), getBrand(sc(u)), listLite(sc(u), kpiSince()), db.get<{ goal: string; plan: PlanItem[] }>(wsKey.onboardPlan(sc(u))), loadJourney(sc(u), u.email), record.then((c) => chatStatus(u, chatRouteFor(u, c).model))]);
   const active = await record;
   const firstPending = rows.find(isWaiting);
   // Majed's handoff cards in this thread (every one it names: the thread holds at most 40 messages, one card each), read

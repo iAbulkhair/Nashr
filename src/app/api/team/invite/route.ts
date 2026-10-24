@@ -19,7 +19,8 @@ const PER_TRIAL_ACCOUNT_DAY = 5;
 const PER_IP_HOUR = 30;
 const PER_ADDRESS_DAY = 5;
 
-const ROLE = { ar: { admin: "مدير", member: "عضو" }, en: { admin: "admin", member: "member" } } as const;
+/** The Editor role is stored as "member" until the contract release (rule 3751). */
+const ROLE = { ar: { admin: "مدير", member: "محرر", viewer: "مشاهد" }, en: { admin: "an admin", member: "an editor", viewer: "a viewer" } } as const;
 
 /**
  * The invitation email, in the invite's language. A fixed template: the only thing in it the sender chose is the
@@ -40,7 +41,7 @@ function inviteMail(inv: Invite, inviterEmail: string, link: string) {
   }
   return {
     subject: "You are invited to join a team on Thakeen",
-    text: `Hello,\n\nThe Thakeen user ${inviterEmail} invited you to join their account on Thakeen as ${inv.role === "admin" ? "an admin" : "a member"}.\n\nOpen this link within 7 days to choose your name and password:\n\n${link}\n\nThe invitation is for this email address only. If you did not expect it, ignore this email and nothing changes.`,
+    text: `Hello,\n\nThe Thakeen user ${inviterEmail} invited you to join their account on Thakeen as ${ROLE.en[inv.role]}.\n\nOpen this link within 7 days to choose your name and password:\n\n${link}\n\nThe invitation is for this email address only. If you did not expect it, ignore this email and nothing changes.`,
     context,
   };
 }
@@ -68,8 +69,11 @@ async function tellOwner(u: User, inviter: string, emailed: boolean) {
 }
 
 /**
- * POST /api/team/invite {email, role, lang?} → {ok, invite, emailed, link?}. The owner may invite either role, an admin
- * plain members only. The link carries the token in its fragment (`/{lang}/app/join#t=…`), so it never reaches a server
+ * POST /api/team/invite {email, role, lang?, brands?, approves?, addSeat?} → {ok, invite, emailed, link?, seatAdded?}. The
+ * owner may invite any role, an admin editors and viewers only (role "editor" is the Editor, stored "member", rule 3751).
+ * `brands` (a list of the account's own active brand ids, absent = every brand) and `approves` need `team.access` (rules
+ * 3756, 3760). Over the seat limit the answer is 409 {error:"seats", used, limit, included, extra, unitSar, canBuy}; the
+ * owner confirms and sends addSeat:true (paid seats, rules 3366-3369). The link carries the token in its fragment (`/{lang}/app/join#t=…`), so it never reaches a server
  * or edge log. When mail can reach a customer the link goes ONLY to the invited address: if that send fails, the invite
  * is withdrawn and the answer is 502 {error:"send_failed"}, never the link, so an inviter cannot accept an invite for an
  * address they do not control by making the send fail. When mail is not set up at all, the link is returned once to the
@@ -81,7 +85,7 @@ export async function POST(req: Request) {
   const no = forbid(u, "team.invite.member");
   if (no) return no;
   const a = u.actor!;
-  const b = (await req.json().catch(() => ({}))) as { email?: unknown; role?: unknown; lang?: unknown };
+  const b = (await req.json().catch(() => ({}))) as { email?: unknown; role?: unknown; lang?: unknown; brands?: unknown; approves?: unknown; addSeat?: unknown };
   const to = normalizeEmail(typeof b.email === "string" ? b.email : "");
   const [perAccount, perIp, perAddress] = await Promise.all([
     allow(`team:invite:acct:${u.email}`, u.plan === "trial" ? PER_TRIAL_ACCOUNT_DAY : PER_ACCOUNT_DAY, 86400),
@@ -94,7 +98,9 @@ export async function POST(req: Request) {
   const lang = b.lang === "ar" || b.lang === "en" ? b.lang : a.lang;
   // Decided once, before anything is created: with mail on, the link must reach the invited address or nobody.
   const byEmail = mailReady();
-  const res = await createInvite(u, a, to, typeof b.role === "string" ? b.role : "", lang);
+  // `addSeat: true` is the owner's confirmation of one paid seat (rules 3366-3369): only the literal true counts, and
+  // createInvite still checks who acts, the plan and the count under the team lock. Without it, over the limit is a 409.
+  const res = await createInvite(u, a, to, typeof b.role === "string" ? b.role : "", lang, { brands: b.brands, approves: b.approves }, { addSeat: b.addSeat === true });
   if (!res.ok) return teamFail(res);
 
   const inv = res.invite;
@@ -107,7 +113,7 @@ export async function POST(req: Request) {
     }
   }
   await tellOwner(u, a.name || a.email, byEmail);
-  return Response.json({ ok: true, invite: { id: res.id, email: inv.email, role: inv.role, expiresAt: inv.expiresAt }, emailed: byEmail, ...(byEmail ? {} : { link }) });
+  return Response.json({ ok: true, invite: { id: res.id, email: inv.email, role: inv.role, expiresAt: inv.expiresAt }, emailed: byEmail, ...(byEmail ? {} : { link }), ...(res.seatAdded ? { seatAdded: true } : {}) });
 }
 
 /** DELETE /api/team/invite {id} → {ok}. `id` is the invite's SHA-256 from GET /api/team. Admins cancel member invites only. */

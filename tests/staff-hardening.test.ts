@@ -232,7 +232,9 @@ describe("someone else's failures cannot lock the owner out (rule 1644)", () => 
       loginWith(staffAddress("nobody"), PW, "123456"),
     ]);
     expect(answers.map((r) => r.status)).toEqual([401, 401, 401, 401]);
-    expect(new Set(await Promise.all(answers.map((r) => r.text())))).toEqual(new Set([plain]));
+    // Rule 3702: the locked address answers `locked: true` whatever was sent; the never-failed address the plain 401.
+    const locked = '{"ok":false,"error":"invalid","locked":true}';
+    expect(await Promise.all(answers.map((r) => r.text()))).toEqual([locked, locked, locked, plain]);
     expect(jar().has(STAFF_COOKIE)).toBe(false);
     const ok = await loginWith(staff.email, PW, codeAt(secret));
     expect(await ok.json()).toEqual({ ok: true, next: "done" });

@@ -23,7 +23,7 @@ const fileBody = z.object({ name: z.string().min(1), content: z.string(), baseAt
 // Every other write in the codebase is throttled; this one was not, so one account could sit in a loop creating
 // files until its index was unusable for everyone reading it.
 export const PUT = handler(
-  { auth: "user", rate: { bucket: "files", max: 60, window: WINDOW.hour, per: "scope" }, maxBytes: MAX_BODY_BYTES, input: fileBody, invalid: "missing" },
+  { auth: "user", role: "files.write", rate: { bucket: "files", max: 60, window: WINDOW.hour, per: "scope" }, maxBytes: MAX_BODY_BYTES, input: fileBody, invalid: "missing" },
   async ({ u, scope, input: b }) => {
     // A core file is what every agent reads on every turn; writing one empty is deleting it (memoryBlock skips empty
     // files). So it needs what DELETE needs, compared after the same normalisation writeFile applies.
@@ -44,7 +44,7 @@ export const PUT = handler(
   },
 );
 
-export const DELETE = handler({ auth: "user", query: z.object({ name: z.string().min(1) }) }, async ({ u, scope, query: { name } }) => {
+export const DELETE = handler({ auth: "user", role: "files.write", query: z.object({ name: z.string().min(1) }) }, async ({ u, scope, query: { name } }) => {
   // Compared after the same normalisation deleteFile applies, so "Brand.MD" cannot slip past as a different name.
   if (CORE_FILES.includes(safeName(name))) {
     const no = forbid(u, "files.core.delete");

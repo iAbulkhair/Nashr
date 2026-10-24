@@ -7,7 +7,7 @@ import { startCheckout, type CheckoutError } from "@/lib/billing";
 
 const STATUS: Record<CheckoutError, number> = {
   not_enabled: 404, bad_request: 400, bad_plan: 400, bad_pack: 400, bad_interval: 400, not_found: 404,
-  agency: 409, topup_needs_paid_plan: 409, need_phone: 409, yearly_not_offered: 409, yearly_active: 409, paymob_error: 502,
+  agency: 409, topup_needs_paid_plan: 409, need_phone: 409, yearly_not_offered: 409, yearly_active: 409, paymob_error: 502, provider_error: 502,
 };
 
 /**

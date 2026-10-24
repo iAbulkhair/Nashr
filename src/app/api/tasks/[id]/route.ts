@@ -12,24 +12,46 @@ import { appendPreferences, cleanNote } from "@/lib/task-notes";
 import { taskVersion } from "@/lib/task-version";
 import { acct } from "@/lib/account-id";
 
-type Patch = { status?: string; editedBody?: string; note?: unknown; scheduledFor?: string | null; version?: unknown; notNow?: unknown };
+type Patch = { status?: string; editedBody?: string; note?: unknown; scheduledFor?: string | null; version?: unknown; notNow?: unknown; comment?: unknown };
+
+/** Rule 3758: a comment is plain text, kept to 1,000 characters, and an item keeps its newest 50. */
+const COMMENT_MAX = 1000;
+const COMMENTS_KEPT = 50;
+const cleanComment = (v: unknown): string | null => {
+  if (typeof v !== "string") return null;
+  const text = v.replace(/[\u0000-\u0008\u000b-\u001f\u007f]/g, "").trim().slice(0, COMMENT_MAX);
+  return text || null;
+};
+const only = (b: object, allowed: readonly string[]) => Object.keys(b).every((k) => allowed.includes(k));
 
 export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }> }) {
   const u = await currentUser();
   if (!u) return NextResponse.json({ ok: false }, { status: 401 });
   const { id } = await ctx.params;
   const scope = sc(u);
-  // Any member may edit, reject, reopen and reschedule a draft (src/lib/roles.ts "drafts"). An item that ENDS approved
-  // needs admin or owner ("publish"): approving it, or changing the text of an item that stays approved, because an
-  // approved item is what gets published and the approval must cover the words that go out. The publish check runs
-  // inside the task lock below, on the task as stored now, so an approval landing mid-request is judged correctly.
-  const no = forbid(u, "drafts");
+  // An Editor (and up) may edit, reject, reopen and reschedule a draft (src/lib/roles.ts "drafts"). An item that ENDS
+  // approved needs "approve" (rule 3760: admin or owner, or a member the owner or an admin let approve): approving it, or
+  // changing the text of an item that stays approved, because an approved item is what gets published and the approval
+  // must cover the words that go out. The check runs inside the task lock below, on the task as stored now, so an
+  // approval landing mid-request is judged correctly. A Viewer (rule 3757) may only comment, and decide (approve or
+  // reject, with a note) when allowed to approve: any other field from a viewer is refused before anything is read.
+  const no = forbid(u, "comment");
   if (no) return no;
   const gate = { refused: false, missing: false, changed: false, notPending: false };
   // Who decides is worked out from the session's actor (`byOf`), never from the body.
   const [raw, gov, brand, by] = await Promise.all([req.json().catch(() => ({})) as Promise<Patch>, getGov(scope), getBrand(scope), byOf(u)]);
-  const b: Patch = raw && typeof raw === "object" ? raw : {};
+  const b: Patch = raw && typeof raw === "object" && !Array.isArray(raw) ? raw : {};
   const note = cleanNote(b.note);
+  const comment = cleanComment(b.comment);
+  const commentOnly = comment !== null && only(b, ["comment"]);
+  if ("comment" in b && !commentOnly) return NextResponse.json({ ok: false, error: "bad_request" }, { status: 400 });
+  const decisionOnly = (b.status === "approved" || b.status === "rejected") && only(b, ["status", "note", "version"]);
+  const edits = can(u, "drafts");
+  if (!edits && !commentOnly) {
+    const refused = decisionOnly ? forbid(u, "approve") : forbid(u, "drafts");
+    if (refused) return refused;
+  }
+  const pid = u.actor?.pid;
 
   // What the owner waits for is the saved task. Preference learning, event tracking and the decision records are
   // collected here and run after the response.
@@ -41,9 +63,16 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
   // The owner's change is applied to the task as stored now, under the task lock: a render that finished while this
   // request was in flight keeps its image or clip (src/lib/brand.ts, updateTask).
   const t = await updateTask(scope, id, (t) => {
+    // A comment changes nothing that is published or decided (no version, no decision record): it is added and kept.
+    if (commentOnly) {
+      if (!pid) { gate.refused = true; return null; }
+      t.comments = [...(Array.isArray(t.comments) ? t.comments : []), { pid, name: (u.actor?.name ?? "").slice(0, 80), text: comment!, at: now }].slice(-COMMENTS_KEPT);
+      return t;
+    }
     const ends = b.status === "approved" || b.status === "rejected" || b.status === "pending" ? b.status : t.status;
     const rewrites = typeof b.editedBody === "string" && b.editedBody !== t.body && b.editedBody.slice(0, 20000) !== (t.editedBody ?? t.body);
-    const need = ends === "approved" && (t.status !== "approved" || rewrites) ? "publish" : "drafts";
+    // A viewer reaches here only with a pure decision, which needs "approve" either way.
+    const need = (ends === "approved" && (t.status !== "approved" || rewrites)) || !edits ? "approve" : "drafts";
     if (!can(u, need)) {
       gate.refused = true;
       return null;
@@ -52,7 +81,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
     // or by rewriting, or that says "approved", carries the version of the card it was made from, and it must still be
     // the item's version now, read under the task lock. Otherwise a member's edit made after the admin opened the card
     // would be approved, and later published, under the admin's name. Nothing is saved; the card reloads.
-    if (need === "publish" || b.status === "approved") {
+    if ((ends === "approved" && need === "approve") || b.status === "approved") {
       if (typeof b.version !== "string") gate.missing = true;
       else if (b.version !== taskVersion(t)) gate.changed = true;
       if (gate.missing || gate.changed) return null;
@@ -96,10 +125,16 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
       delete t.notNow;
     }
     if (touched || (b.status === "pending" && decided.some((d) => d.action === "reopen"))) t.touchedAt = now;
-    // An admin or owner who rewrites an item that stays approved has decided it (the role check above needed "publish"):
+    // An admin or owner who rewrites an item that stays approved has decided it (the role check above needed "approve"):
     // an item only auto-approval had passed becomes theirs, so the judge's veto and the chat's "nobody reviewed it" no
     // longer apply to it (src/lib/judge.ts, chat.ts publish_item).
     if (t.status === "approved" && rewrites && !t.decidedAt) t.decidedAt = now;
+    // Rule 3761: who approved the words that will go out. Set by an approval or a rewrite of an approved item (both
+    // needed "approve" above), cleared when the item leaves approved; `publishOnce` checks it under the approval policy.
+    if (t.status === "approved" && (decided.some((d) => d.action === "approve") || rewrites)) {
+      if (pid) t.approvedBy = { pid, at: now };
+      else delete t.approvedBy;
+    } else if (t.status !== "approved") delete t.approvedBy;
     // The brand file's rules are checked here, in code: an item whose final text breaks one cannot end up approved,
     // whether the owner clicked approve, saved an edit of an approved item, or the model asked for it. Nothing is saved,
     // so the card keeps its state and the owner sees which rule fired.
@@ -109,7 +144,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
     }
     return t;
   });
-  if (gate.refused) return forbid(u, "publish") ?? NextResponse.json({ error: "forbidden" }, { status: 403 });
+  if (gate.refused) return forbid(u, "approve") ?? NextResponse.json({ error: "forbidden" }, { status: 403 });
   if (!t) return NextResponse.json({ ok: false, error: "not_found" }, { status: 404 });
   if (gate.missing) return NextResponse.json({ ok: false, error: "version_required" }, { status: 400 });
   if (gate.notPending) return NextResponse.json({ ok: false, error: "not_pending", task: t }, { status: 409 });

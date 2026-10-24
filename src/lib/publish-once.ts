@@ -4,6 +4,9 @@ import { publishTask, type PublishResult } from "./connectors/publish";
 import { ReconnectRequired, RefreshBusy } from "./connectors/fresh";
 import { SOCIAL_PUB_KEY } from "./social-stats";
 import { log } from "./log";
+import { getAccount } from "./auth";
+import { accountOfScope } from "./account-id";
+import { approvalRefusal } from "./approval-policy";
 
 /**
  * One publish per item and platform, and an honest answer when a publish may or may not have landed.
@@ -69,16 +72,19 @@ const KEEPS_ID: readonly string[] = ["wordpress", "instagram", "linkedin"];
 const OWN_POSTS: readonly string[] = ["instagram", "facebook", "linkedin", "youtube", "tiktok", "x"];
 const quietly = (p: Promise<unknown>, what: string) => p.catch((e) => log.error(`publish ${what} failed`, e));
 
-export async function publishOnce(scope: string, id: string, provider: string, opts: { again?: boolean; live?: boolean; check?: (t: Task) => Refusal | null; lockS?: number } = {}): Promise<PublishOnce> {
+export async function publishOnce(scope: string, id: string, provider: string, opts: { again?: boolean; live?: boolean; check?: (t: Task) => Refusal | null; lockS?: number; by?: string } = {}): Promise<PublishOnce> {
   const lk = lockKey(scope, id, provider);
   if (!(await db.lock(lk, opts.lockS ?? LOCK_S))) return { ok: false, error: "publish_busy" };
   try {
     const mk = attemptKey(scope, id, provider);
-    const [t, tried] = await Promise.all([getTask(scope, id), db.get<{ at: string }>(mk)]);
+    // The account is read here, not passed in, so no caller can leave the approval policy out (rule 3762).
+    const [t, tried, account] = await Promise.all([getTask(scope, id), db.get<{ at: string }>(mk), getAccount(accountOfScope(scope))]);
     if (!t) return { ok: false, error: "not_found" };
     // The copy that goes out passes the caller's gates: an edit that landed after the caller read the item is judged too.
     const refusal = opts.check?.(t);
     if (refusal) return { ok: false, error: "refused", refusal };
+    const unapproved = await approvalRefusal(account, scope, t, opts.by);
+    if (unapproved) return { ok: false, error: "refused", refusal: { error: unapproved } };
     if (!opts.again) {
       // A marker is newer than any record: a successful publish removes it after writing its record.
       if (tried) return { ok: false, error: "publish_unknown", at: tried.at };
@@ -120,6 +126,8 @@ export async function publishOnce(scope: string, id: string, provider: string, o
       // Publishing a pending item is the owner approving it, so it records when that happened.
       approving = cur.status === "pending";
       if (approving) cur.decidedAt = at;
+      // The publisher approved it by publishing (rule 3761); `by` is the session's own person.
+      if (approving && opts.by) cur.approvedBy = { pid: opts.by, at };
       cur.status = "approved";
       return cur;
     });

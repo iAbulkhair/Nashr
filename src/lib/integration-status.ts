@@ -40,6 +40,7 @@ export const INTEGRATIONS: readonly IntegrationDef[] = [
   { id: "cron", name: { ar: "المهام المجدولة (Cron)", en: "Scheduled jobs (cron)" }, what: { ar: "التجديد والملخصات والخطط الأسبوعية وتنبيه الهامش", en: "Renewals, briefs, weekly plans, the margin alert" }, need: all("CRON_SECRET") },
   { id: "resend", name: { ar: "Resend (البريد)", en: "Resend (email)" }, what: { ar: "رموز التحقق وروابط الاستعادة والدعوات والرسائل", en: "Verification codes, reset links, invites, notices" }, need: all("RESEND_API_KEY", "MAIL_FROM"), optional: ["WAITLIST_TO"] },
   { id: "paymob", name: { ar: "Paymob (الدفع بالبطاقة)", en: "Paymob (card payments)" }, what: { ar: "الدفع والتجديد بالبطاقة", en: "Card checkout and renewals" }, need: all("PAYMOB_SECRET_KEY", "PAYMOB_PUBLIC_KEY", "PAYMOB_HMAC_SECRET", "PAYMOB_INTEGRATION_ID_CARD"), optional: ["PAYMOB_INTEGRATION_ID_MOTO", "PAYMOB_LIVE"] },
+  { id: "geidea", name: { ar: "Geidea (الدفع بالبطاقة)", en: "Geidea (card payments)" }, what: { ar: "الدفع والتجديد بالبطاقة، ويُقدَّم على Paymob إن ضُبط الاثنان", en: "Card checkout and renewals; chosen over Paymob when both are set" }, need: all("GEIDEA_PUBLIC_KEY", "GEIDEA_API_PASSWORD"), optional: ["GEIDEA_MIT", "GEIDEA_LIVE"] },
   { id: "paylinks", name: { ar: "روابط الدفع الخارجية", en: "External payment links" }, what: { ar: "زر الدفع في صفحة الفوترة حين لا يعمل Paymob", en: "The billing page's pay button while Paymob is off" }, need: { any: [["PAY_LINK_STARTER"], ["PAY_LINK_PRO"], ["PAY_LINK_BUSINESS"]] }, optional: ["PAY_LINK_STARTER", "PAY_LINK_PRO", "PAY_LINK_BUSINESS"] },
   { id: "composio", name: { ar: "Composio (النشر والتقارير)", en: "Composio (publishing, results)" }, what: { ar: "ربط لينكدإن وتيك توك وإعلانات المنصات عبر Composio", en: "LinkedIn, TikTok and ad platforms through Composio" }, need: all("COMPOSIO_API_KEY", "COMPOSIO_PROVIDERS"), optional: ["COMPOSIO_AUTH_FACEBOOK", "COMPOSIO_AUTH_INSTAGRAM", "COMPOSIO_AUTH_TWITTER", "COMPOSIO_AUTH_LINKEDIN", "COMPOSIO_AUTH_TIKTOK", "COMPOSIO_AUTH_WHATSAPP", "COMPOSIO_AUTH_YOUTUBE", "COMPOSIO_AUTH_METAADS", "COMPOSIO_AUTH_SNAPCHAT", "COMPOSIO_AUTH_GOOGLEADS", "COMPOSIO_AUTH_TIKTOK_ADS", "COMPOSIO_AUTH_LINKEDIN_ADS", "COMPOSIO_AUTH_GOOGLE_ANALYTICS", "COMPOSIO_AUTH_GOOGLE_SEARCH_CONSOLE", "COMPOSIO_AUTH_GOOGLEDOCS", "COMPOSIO_AUTH_GOOGLESHEETS", "COMPOSIO_AUTH_GOOGLEDRIVE", "COMPOSIO_AUTH_DROPBOX", "COMPOSIO_AUTH_ONEDRIVE"] },
   { id: "fal", name: { ar: "fal.ai (الصورة السريعة)", en: "fal.ai (fast image)" }, what: { ar: "نموذج الصورة الافتراضي", en: "The default image model" }, need: all("FAL_KEY") },
@@ -92,6 +93,11 @@ export function gatesOf(id: string, has: (name: string) => boolean, claudePaused
       return [{ id: "llm_provider", off: !has("LLM_PROVIDER"), label: { ar: "يعمل فقط حين يُضبط LLM_PROVIDER على straitly", en: "Used only while LLM_PROVIDER is set to straitly" } }];
     case "paymob":
       return [{ id: "paymob_live", off: !has("PAYMOB_LIVE"), label: { ar: "مفاتيح الإنتاج تُرفض بلا PAYMOB_LIVE (مفاتيح الاختبار فقط)", en: "Live keys are refused without PAYMOB_LIVE (test keys only)" } }];
+    case "geidea":
+      return [
+        { id: "geidea_live", off: !has("GEIDEA_LIVE"), label: { ar: "بلا GEIDEA_LIVE يُقبل طلب الاختبار فقط، ولا يُقبل GEIDEA_LIVE إلا على النشر الحي", en: "Without GEIDEA_LIVE only test orders are accepted; GEIDEA_LIVE is honoured on the production deploy only" } },
+        { id: "geidea_mit", off: !has("GEIDEA_MIT"), label: { ar: "التجديد التلقائي بالبطاقة المحفوظة يحتاج GEIDEA_MIT بعد أن تفعّله Geidea", en: "Saved-card renewals need GEIDEA_MIT, once Geidea enables merchant-initiated charges" } },
+      ];
     case "kie":
     case "higgsfield":
       return [{ id: "media_models_on", off: !has("MEDIA_MODELS_ON"), label: { ar: "لا يُعرض نموذج منها حتى يُذكر في MEDIA_MODELS_ON", en: "No model of it is offered until listed in MEDIA_MODELS_ON" } }];

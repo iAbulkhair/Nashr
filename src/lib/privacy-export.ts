@@ -135,6 +135,7 @@ export async function buildExport(u: User, now = new Date()): Promise<AccountExp
       trialEnds: u.trialEnds,
       ...(u.renewedAt ? { renewedAt: u.renewedAt } : {}),
       ...(u.seats !== undefined ? { seats: u.seats } : {}),
+      ...(u.extraSeats !== undefined ? { extraSeats: u.extraSeats } : {}),
       topups: (u.topups ?? []).map((t) => ({ credits: t.credits, left: t.left, at: t.at, expiresAt: t.expiresAt })),
       ...(u.founding || u.priceLock ? { founding: foundingView(u) } : {}),
       ...(u.billing ? { subscription: { plan: u.billing.plan, status: u.billing.status, paidThrough: u.billing.paidThrough, autoRenew: u.billing.autoRenew, ...(u.billing.card ? { card: { brand: u.billing.card.brand, last4: u.billing.card.last4 } } : {}) } } : {}),

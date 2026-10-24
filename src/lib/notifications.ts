@@ -31,7 +31,35 @@ export type NotifKind = "due" | "pending" | "weekly" | "credits" | "trial" | "qu
  * about (`aboutKey`) and how many notices about it arrived while it stayed unread. Both optional (rule 679): older entries
  * have neither, and older code ignores them and shows the entry as it always did.
  */
-export type Notif = { id: string; kind: NotifKind; title: string; body: string; href: string; at: string; read?: boolean; agent?: AgentId; about?: string; count?: number };
+export type Notif = { id: string; kind: NotifKind; title: string; body: string; href: string; at: string; read?: boolean; agent?: AgentId; about?: string; count?: number; brand?: string };
+
+/**
+ * The brand a bell entry is about (rule 3773), or undefined for an entry about the whole account. `brand` is written by
+ * `pushNotifs` from the entry's scope (customer roles M3, expand: optional, older code ignores it); an entry written
+ * before it falls back to the scope inside its `about` key (`aboutKey`) and then to the `/b/{id}` of its link.
+ */
+export function notifBrand(n: Pick<Notif, "brand" | "about" | "href">): string | undefined {
+  if (typeof n.brand === "string" && n.brand) return n.brand;
+  const about = typeof n.about === "string" ? /^(?:due|pending|notnow|quality|reconnect|todo):([^:]+)/.exec(n.about) : null;
+  if (about) return brandOfScope(about[1]);
+  const link = typeof n.href === "string" ? /\/b\/([^/?#]+)/.exec(n.href) : null;
+  if (!link) return undefined;
+  try {
+    return decodeURIComponent(link[1]);
+  } catch {
+    return link[1];
+  }
+}
+
+/** The entries the session's actor may see (rule 3773): a member narrowed to some brands sees theirs and the account's. */
+export function visibleNotifs(all: Notif[], u: { actor?: { brands?: readonly string[] } }): Notif[] {
+  const brands = u.actor?.brands;
+  if (!brands) return all;
+  return all.filter((n) => {
+    const b = notifBrand(n);
+    return b === undefined || brands.includes(b);
+  });
+}
 
 const KEY = (email: string) => accountKey.notifications(email);
 const MAX = 50;
@@ -143,7 +171,11 @@ export function collapse(fresh: Notif[], all: Notif[]): Notif[] {
   return [...out, ...all.filter((x) => !x.about || !seen.has(x.about))].slice(0, MAX);
 }
 
-/** `scope`: the brand the entry is about, whose notification preferences apply (the account's when left out). */
+/**
+ * `scope`: the brand the entry is about, whose notification preferences apply (the account's when left out). The entry
+ * keeps the brand (`brand`, rule 3773) so the bell can hide it from a member narrowed to other brands, except the kinds
+ * that describe the account (`ACCOUNT_KINDS`), which every member sees.
+ */
 export type Push = { n: Omit<Notif, "id" | "at">; fingerprint?: string; ttlDays?: number; scope?: string };
 /**
  * Claim each fingerprint with SET NX and its TTL, all in one round; only what this caller claimed is pushed, in one
@@ -165,7 +197,7 @@ export async function pushNotifs(email: string, entries: Push[], known?: Map<str
     known && scopes.every((s) => known.has(s)) ? known : readPrefsMany(scopes, email),
   ]);
   const at = new Date().toISOString();
-  const aligned: (Notif | null)[] = entries.map((e, i) => (won[i] ? { id: randomBytes(5).toString("hex"), at, ...e.n } : null));
+  const aligned: (Notif | null)[] = entries.map((e, i) => (won[i] ? { id: randomBytes(5).toString("hex"), at, ...e.n, ...(e.scope && !ACCOUNT_KINDS.has(e.n.kind) ? { brand: brandOfScope(e.scope) } : {}) } : null));
   const items = aligned.filter((x, i): x is Notif => !!x && inAppAllowed(prefs.get(entries[i].scope ?? email)!, x.kind));
   if (!items.length) return aligned;
   try {
@@ -180,6 +212,8 @@ export async function pushNotifs(email: string, entries: Push[], known?: Map<str
   }
   return aligned;
 }
+/** Kinds about the account, not a brand (as in `brandFingerprint`): never tagged with a brand. */
+const ACCOUNT_KINDS: ReadonlySet<NotifKind> = new Set<NotifKind>(["credits", "trial"]);
 async function pushMany(email: string, entries: Push[]): Promise<Notif[]> {
   return (await pushNotifs(email, entries)).filter((x): x is Notif => !!x);
 }

@@ -182,7 +182,8 @@ describe("rule 1119: the shell's counts are read once on the server and shared",
   it("the layout reads brand, notifications and approvals in one Promise.all and wraps the tree in WorkspaceProvider", () => {
     const layout = read("src/app/[lang]/app/layout.tsx");
     // Since rule 1177 the impersonation banner reads the session's founder actor, so the cookie read left this round.
-    expect(layout).toMatch(/await Promise\.all\(\[getBrand\(sc\(user\)\), listNotifs\(acct\(user\)\), pendingCount\(sc\(user\)\)\]\)/);
+    // Since customer roles M3 (rule 3773) the bell is filtered to a narrowed member's brands in the same round.
+    expect(layout).toMatch(/await Promise\.all\(\[getBrand\(sc\(user\)\), listNotifs\(acct\(user\)\)\.then\(\(all\) => visibleNotifs\(all, user\)\), pendingCount\(sc\(user\)\)\]\)/);
     // The session's brand (rule 889) and, since multi-workspace M2, the page's workspace handle and the switch.
     expect(layout).toMatch(/<WorkspaceProvider initial=\{\{ credits: user\.credits, unread, pending: toApprove \}\} brandId=\{user\.brandId \?\? null\} handle=\{handle\} multiOrg=\{MULTI_ORG\}>/);
   });

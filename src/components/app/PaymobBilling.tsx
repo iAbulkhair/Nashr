@@ -12,7 +12,7 @@ const T = {
     errors: {
       need_phone: "أضف رقم جوالك في الملف الشخصي أولاً: بوابة الدفع تطلبه.", topup_needs_paid_plan: "باقات الشحن متاحة بعد الاشتراك في خطة مدفوعة.",
       agency: "خطة الوكالات بعقد، تواصل معنا.", slow_down: "محاولات كثيرة. حاول بعد ساعة.", not_enabled: "الدفع الإلكتروني غير متاح الآن.",
-      paymob_error: "تعذّر فتح صفحة الدفع. حاول مرة أخرى.", forbidden: "الدفع لمالك الحساب فقط.", server: "تعذّر الطلب. حاول مرة أخرى.",
+      paymob_error: "تعذّر فتح صفحة الدفع. حاول مرة أخرى.", provider_error: "تعذّر فتح صفحة الدفع. حاول مرة أخرى.", forbidden: "الدفع لمالك الحساب فقط.", server: "تعذّر الطلب. حاول مرة أخرى.",
       no_card: "لا توجد بطاقة محفوظة. ادفع الشهر القادم بالبطاقة لحفظها.", no_billing: "لا يوجد اشتراك إلكتروني.",
       yearly_not_offered: "الدفع السنوي غير متاح لهذه الخطة.", yearly_active: "اشتراكك السنوي ما زال سارياً. يمكنك تغيير الخطة عند نهاية السنة المدفوعة، أو تواصل معنا.",
     } as Record<string, string>,
@@ -36,7 +36,7 @@ const T = {
     errors: {
       need_phone: "Add your mobile number in your profile first: the payment gateway needs it.", topup_needs_paid_plan: "Top-up packs are available once you subscribe to a paid plan.",
       agency: "Agency is sold by contract: contact us.", slow_down: "Too many tries. Try again in an hour.", not_enabled: "Online payment is not available right now.",
-      paymob_error: "Could not open the payment page. Try again.", forbidden: "Only the account owner can pay.", server: "Could not complete the request. Try again.",
+      paymob_error: "Could not open the payment page. Try again.", provider_error: "Could not open the payment page. Try again.", forbidden: "Only the account owner can pay.", server: "Could not complete the request. Try again.",
       no_card: "No saved card. Pay the next month by card to save one.", no_billing: "No online subscription.",
       yearly_not_offered: "Yearly billing is not offered for this plan.", yearly_active: "Your yearly plan is still running. You can change plan when the paid year ends, or contact us.",
     } as Record<string, string>,

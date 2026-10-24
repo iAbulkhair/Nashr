@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { forbid } from "@/lib/roles";
 import { currentUser, sc } from "@/lib/auth";
 import { isAgentId } from "@/lib/agents";
 import { recordThumb } from "@/lib/evals";
@@ -8,6 +9,9 @@ import { allow, FEEDBACK_PER_HOUR, retryLater } from "@/lib/rate";
 export async function POST(req: Request) {
   const u = await currentUser();
   if (!u) return NextResponse.json({ ok: false }, { status: 401 });
+  // A Viewer reads and comments only: no agent runs, no credits spent (rule 3752).
+  const no = forbid(u, "feedback");
+  if (no) return no;
   // Per account, before the body is read: every thumb is a write to the brand's feedback log.
   if (!(await allow(`chatfeedback:${u.email}`, FEEDBACK_PER_HOUR, 3600))) return retryLater({ ok: false, error: "slow_down" }, 3600);
   const b = (await req.json().catch(() => ({}))) as { agent?: string; value?: number; reason?: string; at?: string };

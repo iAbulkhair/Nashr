@@ -13,7 +13,7 @@ import { modelState } from "@/lib/model";
 import { clearOnboard, confirmedAnswers, confirmedOnboard, heldOnboard, onboardUrl } from "@/lib/onboard-confirm";
 import { answersHint, answersToBrand } from "@/lib/dictionary";
 import { forbid } from "@/lib/roles";
-import { agentSpendFor, capOf, chargeOnboard, refundOnboard, settleOnboard, type OnboardCharge } from "@/lib/credits";
+import { agentSpendFor, capOf, chargeOnboard, personOf, refundOnboard, settleOnboard, type OnboardCharge } from "@/lib/credits";
 import { fairUseGate } from "@/lib/fair-use";
 import { getGov } from "@/lib/governance";
 import { warnAgentCap } from "@/lib/notifications";
@@ -71,8 +71,9 @@ async function refuse(u: User, scope: string, cost: number, r: PayRefusal): Prom
     await recordActivity(scope, [setupRow(u, "cap_reached", cost, { agent: r.agent, outcome: `${r.spent}/${r.cap}` })]);
     return owe("agent_cap", cost, r.credits, { agent: r.agent, spent: r.spent, cap: r.cap });
   }
-  if (r.reason === "no_credits") await recordActivity(scope, [setupRow(u, "no_credits", cost)]);
-  return owe(r.reason, cost, r.credits);
+  // Over the member's own monthly cap (rule 3771) reads as no credits: `credits` is what is left of their cap.
+  if (r.reason === "no_credits" || r.reason === "person_cap") await recordActivity(scope, [setupRow(u, "no_credits", cost)]);
+  return owe(r.reason === "person_cap" ? "no_credits" : r.reason, cost, r.credits);
 }
 
 /**
@@ -142,7 +143,7 @@ export async function POST(req: Request) {
   // Whether this run holds a charge: one it took now, or one a run that did not finish took (reused, never charged twice).
   let held = false;
   if (cost > 0) {
-    const c = await chargeOnboard(acct(u), cost, { scope, agent: "noor", cap: gov?.agentCaps.noor }).catch(async (e) => { await release(); throw e; });
+    const c = await chargeOnboard(acct(u), cost, { scope, agent: "noor", cap: gov?.agentCaps.noor, person: personOf(u) }).catch(async (e) => { await release(); throw e; });
     if (!c.ok) {
       const [res] = await Promise.all([refuse(u, scope, cost, c), release()]);
       return res;

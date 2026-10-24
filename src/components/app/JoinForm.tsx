@@ -11,7 +11,7 @@ import { forgetInviteToken, readInviteToken, recallInviteToken, rememberInviteTo
 import Scribble from "@/components/Scribble";
 import { appHref } from "@/lib/ws-path";
 
-type Preview = { team: string; inviter: string; email: string; role: "admin" | "member"; expiresAt: string; signIn?: boolean };
+type Preview = { team: string; inviter: string; email: string; role: "admin" | "member" | "viewer"; expiresAt: string; signIn?: boolean };
 /**
  * Multi-workspace M2 (rule 2116) adds three, only when the page passes `person` (`MULTI_ORG` on): "signIn" (the invited
  * address already signs in: log in, the token is kept for this tab), "joinAs" (signed in with the invited address: one
