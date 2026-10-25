@@ -34,6 +34,8 @@ let owned: Record<string, string[]>;
 let status = "ACTIVE";
 let redirect = "https://connect.composio.dev/link/lk_1";
 let revokeFails: string | null = null;
+let revokeCode: string | null = null;
+let deleteFails = false;
 
 function fake(): ComposioClient {
   return {
@@ -41,8 +43,8 @@ function fake(): ComposioClient {
       link: async (userId, auth, o) => { calls.link.push({ userId, auth, callbackUrl: o.callbackUrl, allowMultiple: o.allowMultiple }); return { id: "ca_new", redirectUrl: redirect }; },
       waitForConnection: async (id) => ({ id, status }),
       list: async (q) => ({ items: (owned[q.userIds[0]] ?? []).map((id) => ({ id })) }),
-      revoke: async (id) => { if (revokeFails) throw new Error(revokeFails); calls.revoked.push(id); },
-      delete: async (id) => { calls.deleted.push(id); },
+      revoke: async (id) => { if (revokeFails) throw Object.assign(new Error(revokeFails), revokeCode ? { code: revokeCode } : {}); calls.revoked.push(id); },
+      delete: async (id) => { if (deleteFails) throw new Error("delete down"); calls.deleted.push(id); },
     },
     tools: {
       execute: async (slug, body) => {
@@ -62,7 +64,7 @@ beforeEach(() => {
   owned = {};
   status = "ACTIVE";
   redirect = "https://connect.composio.dev/link/lk_1";
-  revokeFails = null;
+  revokeFails = null; revokeCode = null; deleteFails = false;
   vi.stubEnv("COMPOSIO_API_KEY", "test-key");
   vi.stubEnv("COMPOSIO_PROVIDERS", "meta,x,linkedin,tiktok");
   for (const t of ["FACEBOOK", "INSTAGRAM", "TWITTER", "LINKEDIN", "TIKTOK"]) vi.stubEnv(`COMPOSIO_AUTH_${t}`, `ac_${t.toLowerCase()}`);
@@ -339,6 +341,29 @@ describe("disconnecting (rule 651)", () => {
     expect(calls.revoked).toEqual(["ca_x"]);
     expect(calls.deleted).toEqual(["ca_x"]);
     expect(await getConnection(acct(u), "x")).toBeNull();
+  });
+
+  it("deletes at Composio when the platform cannot revoke, and still fails on a real error (rule 4270)", async () => {
+    const u = await newUser("cpunsup");
+    await signIn(u.email);
+    const del = () => connectRoute.DELETE(new Request("https://app.test/api/connect/meta", { method: "DELETE" }), ctx("meta"));
+    for (const code of ["CONNECTED_ACCOUNT_REVOCATION_NOT_SUPPORTED", "CONNECTED_ACCOUNT_NOT_REVOKABLE"]) {
+      await saveConnection(acct(u), via("meta", { facebook: "ca_fb", instagram: "ca_ig" }, { pageId: "1" }));
+      calls.deleted.length = 0;
+      revokeFails = "Revoke is not available for this account"; revokeCode = code;
+      expect((await del()).status).toBe(200);
+      expect(await getConnection(acct(u), "meta")).toBeNull();
+      expect(calls.deleted.sort()).toEqual(["ca_fb", "ca_ig"]);
+    }
+    revokeFails = "network down"; revokeCode = null;
+    await saveConnection(acct(u), via("meta", { facebook: "ca_fb" }, { pageId: "1" }));
+    expect((await del()).status).toBe(502);
+    expect((await getConnection(acct(u), "meta"))!.needsReconnect).toBe("revoke_failed");
+
+    revokeFails = "x"; revokeCode = "CONNECTED_ACCOUNT_NOT_REVOKABLE"; deleteFails = true;
+    expect((await del()).status).toBe(502);
+    expect(await getConnection(acct(u), "meta")).not.toBeNull();
+    revokeFails = null; revokeCode = null; deleteFails = false;
   });
 
   it("revokes every Composio account when the account is deleted", async () => {
