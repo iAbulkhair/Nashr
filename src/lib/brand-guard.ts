@@ -61,6 +61,8 @@ export const BRAND_API: readonly string[] = [
   "/api/conversations",
   "/api/files",
   "/api/files/proposals/[id]",
+  "/api/memory",
+  "/api/memory/proposals/[id]",
   "/api/generate",
   "/api/handoffs/[id]/decline",
   "/api/handoffs/[id]/run",

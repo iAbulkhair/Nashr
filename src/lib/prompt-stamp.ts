@@ -4,7 +4,7 @@
  *
  * A prompt changes in two places. The playbooks are content (content/skills/*.md, one per agent, plus review.md shared
  * by the reviewer and the judge); the rest is code: the owning agent's own system prompt (`fixedPrompt`: persona, RULES,
- * OUTPUT FORMAT), the task spec (SPECS in noor.ts), the reviewer's checks for the owning agent (`reviewerRubric`), the
+ * OUTPUT FORMAT), the task spec (the owning agent's profile, src/lib/agent-profiles.ts), the reviewer's checks for the owning agent (`reviewerRubric`), the
  * judge's rubric (`JUDGE_RUBRIC`) and the industry playbooks (playbooks.ts). Hashing
  * only content/skills would read "unchanged" after a change made in code, so each source has its own hash:
  * `skills` (the owning agent's playbook and its slices of ads.md and growth.md), `review` (review.md), `industry` (`id:hash`, when the brand is known) and

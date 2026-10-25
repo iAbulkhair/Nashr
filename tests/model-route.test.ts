@@ -22,8 +22,8 @@ const HAIKU = "claude-haiku-5-5";
 const RETIRED = ["claude-opus-5", "claude-sonnet-5"] as const;
 /** Haiku 5.5 off automatic routing, so a test-only entry can be the judge's alternative. */
 const noHaiku = (m: ModelEntry): ModelEntry => (m.id === HAIKU ? { ...m, auto: false } : m);
-const PURPOSES = ["chat", "generate", "review", "xreview", "judge", "onboard", "imagePrompt", "tool", "meeting", "agentScope"] as const satisfies readonly Purpose[];
-const FIXED = ["review", "xreview", "judge", "onboard", "imagePrompt", "tool", "meeting", "agentScope"] as const satisfies readonly Purpose[];
+const PURPOSES = ["chat", "generate", "review", "xreview", "judge", "onboard", "imagePrompt", "tool", "meeting", "agentScope", "compact"] as const satisfies readonly Purpose[];
+const FIXED = ["review", "xreview", "judge", "onboard", "imagePrompt", "tool", "meeting", "agentScope", "compact"] as const satisfies readonly Purpose[];
 
 /** A test-only catalog entry. The real catalog holds the Claude models; the mocked ones below add to or change them. */
 const entry = (o: Partial<ModelEntry> & { id: string }): ModelEntry => ({
@@ -69,6 +69,8 @@ describe("the defaults are the three current models, one per purpose (rules 809 
       // Reem B2b's meeting tasks: Sonnet 5.5, as the call site used before it asked route() (2026-10-10).
       meeting: SONNET,
       agentScope: HAIKU,
+      // Thread compaction (v2 C11, rule 4581): a short summary call on the global meter, like the classifier.
+      compact: HAIKU,
     });
     expect(Object.isFrozen(DEFAULTS)).toBe(true);
     expect(Object.keys(DEFAULTS).sort()).toEqual([...PURPOSES].sort());

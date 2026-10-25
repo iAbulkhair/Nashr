@@ -39,6 +39,8 @@ import { XSTATS_KEY } from "./social-read/common";
 import { instructionKeys, removeFeedRowsFor } from "./instructions-store";
 import { instructionProposalKeys } from "./instruction-proposals";
 import { fileProposalKeys } from "./file-proposals";
+import { memoryKeys } from "./memory";
+import { dropNamespace } from "./memory-index";
 import { spendProposalKeys } from "./spend-proposals";
 import { forgetScopeMedia } from "./media/store";
 import { log } from "./log";
@@ -134,9 +136,9 @@ export async function wipeAccount(id: string, opts: { userLocked?: boolean; logi
   const keys: string[] = [];
   // Every id, not only the newest 200 tasks or 100 conversations: nothing of a deleted account may stay behind. All
   // scopes are read in parallel (Upstash is HTTP per command).
-  const perScope = await pmap(scopes, (s) => Promise.all([db.lrange(wsKey.tasks(s), 0, -1), listFiles(s), db.lrange(wsKey.convs(s), 0, -1), db.smembers(wsKey.conns(s)), db.smembers(wsKey.taskMonths(s)), secretaryKeys(s), handoffKeys(s, (fp) => seenKey(e, fp)), proposalKeys(s), instructionProposalKeys(s), spendProposalKeys(s), fileProposalKeys(s), db.lrange(wsKey.runs(s), 0, -1)]));
+  const perScope = await pmap(scopes, (s) => Promise.all([db.lrange(wsKey.tasks(s), 0, -1), listFiles(s), db.lrange(wsKey.convs(s), 0, -1), db.smembers(wsKey.conns(s)), db.smembers(wsKey.taskMonths(s)), secretaryKeys(s), handoffKeys(s, (fp) => seenKey(e, fp)), proposalKeys(s), instructionProposalKeys(s), spendProposalKeys(s), fileProposalKeys(s), db.lrange(wsKey.runs(s), 0, -1), memoryKeys(s)]));
   scopes.forEach((s, i) => {
-    const [taskIds, files, convIds, conns, months, sec, handoffs, proposals, instrProposals, spendProposals, fileProposals, runIds] = perScope[i];
+    const [taskIds, files, convIds, conns, months, sec, handoffs, proposals, instrProposals, spendProposals, fileProposals, runIds, memory] = perScope[i];
     keys.push(
       // The run log and the gateway's audit list (rules 4511, 4503): steps and tool names only, but they name the scope.
       ...runIds.map((id) => wsKey.run(s, id)), wsKey.runs(s), wsKey.audit(s),
@@ -144,7 +146,7 @@ export async function wipeAccount(id: string, opts: { userLocked?: boolean; logi
       ...files.map((f) => wsKey.file(s, f.name)),
       // Already deleted under their lock above; listed again for an id `deleteConversation` refuses (a malformed one) and
       // for the lock key itself (10 s TTL, src/lib/conversations.ts).
-      ...convIds.flatMap((id) => [wsKey.conv(s, id), wsKey.chat(s, id), wsKey.convLock(s, id)]),
+      ...convIds.flatMap((id) => [wsKey.conv(s, id), wsKey.chat(s, id), wsKey.convLock(s, id), wsKey.convSummary(s, id)]),
       ...conns.map((p) => wsKey.conn(s, p)), // encrypted third-party credentials
       ...months.map((m) => wsKey.taskMonth(s, m)),
       // The chat feedback log: per brand, and it holds the free-text reason the owner typed, so it must not outlive
@@ -177,6 +179,9 @@ export async function wipeAccount(id: string, opts: { userLocked?: boolean; logi
       ...spendProposals,
       // Core-file rewrites waiting on a chat card (rule 2306): the proposal with its full text, outcome, claim and index.
       ...fileProposals,
+      // Saved memory and the facts waiting on a chat card (rule 4559): the owner's own words, the outcomes, claims, index
+      // and the day's proposal counter (src/lib/memory.ts).
+      ...memory,
       // Each routine's last run, locks, hold and attempt counts, for every routine id (routines.ts), and the hold of
       // Majed's auto-run under the same weekly cap (360 s).
       ...routineKeys(s), autoHoldKey(s),
@@ -217,12 +222,15 @@ export async function wipeAccount(id: string, opts: { userLocked?: boolean; logi
       profileKey(s),
       // The devices that get phone notifications for this brand (rule 2571).
       wsKey.pushSubs(s),
-      wsKey.onboardPlan(s), wsKey.pending(s), wsKey.notNow(s), wsKey.pendingIndex(s), wsKey.taskMonths(s), wsKey.taskIndexVersion(s), wsKey.tasks(s), wsKey.files(s), wsKey.brand(s), wsKey.prefs(s), wsKey.chat(s), wsKey.convs(s), wsKey.gov(s), wsKey.schedule(s), wsKey.brief(s), wsKey.conns(s),
+      wsKey.onboardPlan(s), wsKey.pending(s), wsKey.notNow(s), wsKey.pendingIndex(s), wsKey.taskMonths(s), wsKey.taskIndexVersion(s), wsKey.tasks(s), wsKey.files(s), wsKey.brand(s), wsKey.prefs(s), wsKey.chat(s), wsKey.convSummary(s), wsKey.convs(s), wsKey.gov(s), wsKey.schedule(s), wsKey.brief(s), wsKey.conns(s),
     );
   });
   // Our media copies on disk (rule 1761): every file of every brand, its index entries and the space they held. A disk
   // error stops the wipe (a retry runs it again), so the account is never gone while its pictures and clips remain.
   keys.push(...(await forgetScopeMedia(scopes)));
+  // The search index's copy of each brand's saved facts (rule 4559). A failed call is logged and the wipe goes on: the
+  // index is only ever read through ids found in `mem:{scope}`, which is deleted below, so a leftover entry is never shown.
+  await Promise.all(scopes.map((s) => dropNamespace(s).catch((err) => log.error("memory index drop failed", err))));
   // Named one-time email markers, their in-flight claims and their repair flags: the names are only knowable from the
   // index `sendOnce()` keeps (src/lib/notify.ts).
   const onceNames = await db.smembers(ONCE_INDEX(e));

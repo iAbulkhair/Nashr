@@ -42,6 +42,8 @@ describe("rule 2030: each builder returns the bytes of its old template", () => 
     [wsKey.convs(S), `convs:${S}`],
     [wsKey.conv(S, "c1"), `conv:${S}:c1`],
     [wsKey.convLock(S, "c1"), `convlock:${S}:c1`],
+    [wsKey.convSummary(S), `convsum:${S}`],
+    [wsKey.convSummary(S, "c1"), `convsum:${S}:c1`],
     [wsKey.chat(S), `chat:${S}`],
     [wsKey.chat(S, "c1"), `chat:${S}:c1`],
     [wsKey.conns(S), `conns:${S}`],
@@ -72,6 +74,13 @@ describe("rule 2030: each builder returns the bytes of its old template", () => 
     // The auto-assign turn counter (rule 3764): a new key, written first under the registry.
     [wsKey.assignTurn(S), `assignturn:${S}`],
     [wsKey.fileProposals(S), `fileprops:${S}`],
+    // Scoped memory (Thakeen v2 phase 1, rules 4550-4579): new keys, written first under the registry.
+    [wsKey.mem(S), `mem:${S}`],
+    [wsKey.memProp(S, "ab12"), `memprop:${S}:ab12`],
+    [wsKey.memPropDone(S, "ab12"), `memprop-done:${S}:ab12`],
+    [wsKey.memPropClaim(S, "ab12"), `memprop-claim:${S}:ab12`],
+    [wsKey.memProps(S), `memprops:${S}`],
+    [wsKey.memProposalBucket(S), `memprop-day:${S}`],
     [wsKey.keyCheckBucket(D, "hour"), `keycheck:hour:${E}`],
     [wsKey.connectStartBucket(D), `connectstart:${E}`],
     [wsKey.storeSyncBucket(D), `storesync:${E}`],

@@ -197,6 +197,9 @@ const ROUTE_ROLES: Record<string, Gate> = {
   "POST /api/instructions/proposals/[id]": g("admin", "instructions.write"),
   // Core-file rewrite cards (rule 2306): Apply writes a file every agent reads.
   "POST /api/files/proposals/[id]": g("admin", "files.core.write"),
+  // Memory cards (Thakeen v2 phase 1, rules 4557-4558): Save writes a fact every agent reads back; forgetting one is the same role.
+  "POST /api/memory/proposals/[id]": g("admin", "brand.write"),
+  "DELETE /api/memory": g("admin", "brand.write"),
   "POST /api/brands": g("admin", "brands.manage", "brands.switch"),
   "POST /api/catalog": g("admin", "catalog.import"),
   "POST /api/connect/[provider]": g("admin", "connectors", "catalog.import", "read", "generate"),
@@ -408,6 +411,7 @@ const READS: Record<string, Gate> = {
   "GET /api/connect": "member",
   "GET /api/conversations": "member",
   "GET /api/files": "member",
+  "GET /api/memory": "member", // rule 4558: the brand's saved facts, the ones its agents read; 404 while MEMORY_V2 is off
   "GET /api/drives": "member",
   "GET /api/governance": "member",
   "GET /api/instructions": "member",
@@ -473,6 +477,8 @@ const SESSION_RATE_LIMITED = ["POST /api/account/logo", "DELETE /api/account/log
   "PUT /api/instructions", "POST /api/instructions/activate", "POST /api/instructions/refs/search", "POST /api/instructions/refs/import", "POST /api/instructions/discard", "POST /api/instructions/restore", "POST /api/instructions/proposals/[id]", "POST /api/instructions/test",
   // Core-file rewrite cards (rule 2306).
   "POST /api/files/proposals/[id]",
+  // Memory cards and forgetting a fact (rules 4557-4558).
+  "POST /api/memory/proposals/[id]", "DELETE /api/memory",
   // UI/UX phase 3 (rules 1145, 1150, 1155); the status poll is a read, limited all the same.
   "POST /api/account/sessions", "PUT /api/notifications/prefs", "GET /api/billing/status",
   // The digest email choice (rule 2355).

@@ -274,7 +274,7 @@ const RAW_KEYS: Record<string, number> = {
 const SCOPE_PARAM: Record<string, number> = {
   "src/lib/brand.ts": 26,
   "src/lib/connectors/store.ts": 7,
-  "src/lib/conversations.ts": 15,
+  "src/lib/conversations.ts": 13,
   "src/lib/decisions.ts": 1,
   "src/lib/evals.ts": 2,
   "src/lib/feedback.ts": 1,
