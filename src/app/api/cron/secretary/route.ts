@@ -5,6 +5,7 @@ import { recordCronRun } from "@/lib/cron-heartbeat";
 import { verifyQstash } from "@/lib/qstash";
 import { SWEEP_BUDGET_TICK_MS, sweepReminders } from "@/lib/secretary-remind";
 import { sweepCalendars } from "@/lib/secretary-gcal";
+import { emptyCalendlyReport, sweepCalendly } from "@/lib/secretary-calendly";
 import { sweepDigests } from "@/lib/notif-digest";
 import { zonesDue } from "@/lib/secretary-evening";
 
@@ -81,11 +82,16 @@ export async function POST(req: Request) {
   // timed reminders as running; the daily fallback (`/api/cron/daily`) never does.
   // The two sweeps touch different records and run side by side, each against its own deadline, so neither starves the
   // other. The linked calendars: each due brand's next 7 days are read and kept (spec §7). A failure there never loses the reminders' answer.
-  const [sweep, calendars, digests] = await Promise.all([
+  const [sweep, calendars, calendly, digests] = await Promise.all([
     sweepReminders(now, { tick: true, deadline }),
     sweepCalendars(now, calDeadline).catch((e) => {
       console.error("cal sweep failed", e instanceof Error ? e.name : "error");
       return { scopes: 0, synced: 0, lost: 0, retried: 0, deferred: 0 };
+    }),
+    // Calendly bookings read through Composio for owners without webhooks (rules 4300-4329), on the calendars' deadline.
+    sweepCalendly(now, calDeadline).catch((e) => {
+      console.error("calendly sweep failed", e instanceof Error ? e.name : "error");
+      return emptyCalendlyReport();
     }),
     // The owners' digest emails (rule 2354): each account whose window closed on this tick, with what time is left.
     sweepDigests(now, deadline).catch((e) => {
@@ -104,5 +110,5 @@ export async function POST(req: Request) {
     try { after(kick); } catch { void kick(); }
   }
   await recordCronRun("secretary");
-  return NextResponse.json({ ok: true, via: byQstash ? "qstash" : "bearer", ...sweep, calendars, digests, evening: zones.length && secret ? zones.length : 0 });
+  return NextResponse.json({ ok: true, via: byQstash ? "qstash" : "bearer", ...sweep, calendars, calendly, digests, evening: zones.length && secret ? zones.length : 0 });
 }

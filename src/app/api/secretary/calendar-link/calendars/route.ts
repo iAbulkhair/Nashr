@@ -4,7 +4,7 @@ import { forbid } from "@/lib/roles";
 import { getBrand } from "@/lib/brand";
 import { proofOf } from "@/lib/secretary-cal-proof";
 import { getLink, putLink } from "@/lib/secretary-cal-link";
-import { freshAccess, listOwnCalendars, loseLink, withCalLock } from "@/lib/secretary-gcal";
+import { freshAccess, listCalendars, loseLink, withCalLock } from "@/lib/secretary-gcal";
 import { calLimit, refuse } from "@/lib/secretary-cal-routes";
 
 /**
@@ -36,7 +36,7 @@ export async function GET() {
     }
     let owned: { id: string; name: string }[];
     try {
-      owned = await listOwnCalendars(link.provider, fresh.access, fresh.link.account);
+      owned = await listCalendars(scope, fresh.link, fresh.access, fresh.link.account);
     } catch (e) {
       if ((e as { status?: unknown }).status === 401) await loseLink(scope, fresh.link, login);
       else console.error("cal list failed", e instanceof Error ? e.name : "error");

@@ -46,6 +46,7 @@ export const INTEGRATIONS: Integration[] = [
   { id: "google_drive", name: "Google Drive", group: "data", status: "soon", note: "Import brand files and images, save finished media to your Drive" },
   { id: "dropbox", name: "Dropbox", group: "data", status: "soon", note: "Import brand files and images, save finished media to your Dropbox" },
   { id: "onedrive", name: "OneDrive", group: "data", status: "soon", note: "Import brand files and images, save finished media to your OneDrive" },
+  { id: "calendly", name: "Calendly", group: "data", status: "soon", note: "Reem finds your bookings without a paid Calendly plan; read only, nothing is booked or changed" },
   { id: "icloud", name: "iCloud Drive", group: "data", status: "planned", note: "Apple offers no way for a web app to link iCloud Drive. Upload from the Files picker on iPhone or iPad instead: it includes iCloud Drive" },
   { id: "notion", name: "Notion", group: "data", status: "planned" },
   { id: "slack", name: "Slack", group: "messaging", status: "planned" },

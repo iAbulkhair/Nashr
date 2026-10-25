@@ -128,6 +128,8 @@ export const PROVIDERS: Provider[] = [
   { id: "google_drive", name: "Google Drive", kind: "oauth", capabilities: [] },
   { id: "dropbox", name: "Dropbox", kind: "oauth", capabilities: [] },
   { id: "onedrive", name: "OneDrive", kind: "oauth", capabilities: [] },
+  // Reem's Calendly bookings read through Composio (rules 4300-4329): the owner's events and invitees, nothing written.
+  { id: "calendly", name: "Calendly (Reem's bookings)", kind: "oauth", capabilities: [] },
 ];
 
 /** The two calendar providers Reem can read (flagged `secretary` in PROVIDERS). */
@@ -138,7 +140,7 @@ export function getProvider(id: string) {
   return PROVIDERS.find((p) => p.id === id) ?? null;
 }
 /** Providers with no direct publishing code: they connect through Composio or not at all. */
-export const COMPOSIO_ONLY = ["linkedin", "tiktok", "google_ads", "tiktok_ads", "linkedin_ads", "google", "posthog", "whatsapp", "youtube", "google_workspace", "google_drive", "dropbox", "onedrive"];
+export const COMPOSIO_ONLY = ["linkedin", "tiktok", "google_ads", "tiktok_ads", "linkedin_ads", "google", "posthog", "whatsapp", "youtube", "google_workspace", "calendly", "google_drive", "dropbox", "onedrive"];
 
 /**
  * Rule 2175: the OAuth providers a platform app of ours can connect (the start route refuses the others). Only these
