@@ -21,7 +21,10 @@ function fnSlice(src: string, signature: string): string {
 
 describe("rule 1414: where the agent-scope gates sit", () => {
   it("chat(): the input gate runs before the first model call", () => {
-    const chat = fnSlice(read("src/lib/chat.ts"), "export async function chat(");
+    // `chat` opens the run log's run (rule 4510) and hands the whole turn to `chatTurn`; the gates are pinned there.
+    const src = read("src/lib/chat.ts");
+    expect(fnSlice(src, "export async function chat(")).toMatch(/return withRun\([^\n]*\(\) => chatTurn\(user, text, conv, agentId, opts\)\);\n\}/);
+    const chat = fnSlice(src, "async function chatTurn(");
     const gate = chat.indexOf('scopeCheck("input"');
     const model = chat.indexOf(".stream(");
     expect([gate, model].every((i) => i > -1)).toBe(true);

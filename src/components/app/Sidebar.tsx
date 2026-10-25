@@ -158,7 +158,7 @@ export default function Sidebar({ t, lang, user, show, brandName, workspaceLogo,
   /** The brand you work on, and the bell beside it (outside the scrolling list, so its panel is never clipped). In the sheet the bell stays in the phone header. */
   const top = (bell: boolean) => (
     <>
-    {/* Above the brand: the workspace switcher (multi-workspace M2), drawn only with two workspaces or more. */}
+    {/* Above the brand: the workspace switcher (multi-workspace M2), drawn with one workspace too (rule 4702). */}
     <WorkspaceSwitcher t={t.workspaces} lang={lang} onNavigate={() => setOpen(false)} />
     <div className="flex items-center gap-1 border-b-[1.5px] border-border-strong p-4 pb-3">
       <BrandSwitcher lang={lang} brands={brandList?.brands ?? null} current={{ id: brandFromPath(path) ?? sessionBrand ?? "default", name: brandName || (lang === "ar" ? "علامتك" : "Your brand") }} canAdd={brandList?.canAdd ?? false} sub={N.workspace} logo={workspaceLogo} onOpen={loadBrands} onPicked={() => { setOpen(false); brandsAsked.current = false; }} />

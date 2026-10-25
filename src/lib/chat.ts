@@ -34,6 +34,9 @@ import { statusFor, system } from "./chat-prompt";
 import { toolsFor } from "./chat-tools";
 import { getGov } from "./governance";
 import { policyNote } from "./tool-authority";
+import { withRun } from "./runs";
+import { gatedTool } from "./gateway";
+import type { ToolCtx } from "./chat-gates";
 import { runTool } from "./chat-run-tool";
 
 export { history, push } from "./chat-history";
@@ -48,6 +51,11 @@ export type { ToolCtx } from "./chat-gates";
 export { runTool } from "./chat-run-tool";
 
 export async function chat(user: User, text: string, conv?: string, agentId: AgentId = "noor", opts: ChatOpts = {}): Promise<ChatTurn> {
+  // One run of the run log (rules 4510-4519, src/lib/runs.ts): off in this release, a plain call then.
+  return withRun({ scope: sc(user), kind: "chat", agent: agentId, via: opts.via ?? "app" }, () => chatTurn(user, text, conv, agentId, opts));
+}
+
+async function chatTurn(user: User, text: string, conv: string | undefined, agentId: AgentId, opts: ChatOpts): Promise<ChatTurn> {
   // Taken first: up to five model turns can use most of the ceiling before a tool starts a render.
   const deadline = opts.deadline ?? deadlineFor(CHAT_MAX_DURATION_S);
   const lang = opts.lang ?? user.lang;
@@ -190,7 +198,10 @@ export async function chat(user: User, text: string, conv?: string, agentId: Age
         let isError = false;
         opts.onStatus?.(statusFor(u.name, lang, agentName));
         try {
-          out = await runTool(user, u.name, u.input as Record<string, unknown>, actions, made, deadline, { lang, agent: agentId, by, via, proposed, awayProposed, instructionProposed, spendProposed, fileProposed, ownerMsg: text, conv, modes: scopeModes });
+          // Through the action gateway (rules 4500-4509, src/lib/gateway.ts): off in this release; in log mode it records the
+          // call and its verdict and never changes the answer. Every gate in runTool still decides.
+          const ctx: ToolCtx = { lang, agent: agentId, by, via, proposed, awayProposed, instructionProposed, spendProposed, fileProposed, ownerMsg: text, conv, modes: scopeModes };
+          out = await gatedTool(user, u.name, ctx, () => runTool(user, u.name, u.input as Record<string, unknown>, actions, made, deadline, ctx));
         } catch (e) {
           isError = true;
           out = e instanceof Error ? e.message : "tool_failed";
