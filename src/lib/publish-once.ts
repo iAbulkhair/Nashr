@@ -4,6 +4,7 @@ import { publishTask, type PublishResult } from "./connectors/publish";
 import { ReconnectRequired, RefreshBusy } from "./connectors/fresh";
 import { SOCIAL_PUB_KEY } from "./social-stats";
 import { log } from "./log";
+import { runEvent } from "./runs";
 import { getAccount } from "./auth";
 import { accountOfScope } from "./account-id";
 import { approvalRefusal } from "./approval-policy";
@@ -72,7 +73,16 @@ const KEEPS_ID: readonly string[] = ["wordpress", "instagram", "linkedin"];
 const OWN_POSTS: readonly string[] = ["instagram", "facebook", "linkedin", "youtube", "tiktok", "x"];
 const quietly = (p: Promise<unknown>, what: string) => p.catch((e) => log.error(`publish ${what} failed`, e));
 
-export async function publishOnce(scope: string, id: string, provider: string, opts: { again?: boolean; live?: boolean; check?: (t: Task) => Refusal | null; lockS?: number; by?: string } = {}): Promise<PublishOnce> {
+export async function publishOnce(scope: string, id: string, provider: string, opts: PublishOpts = {}): Promise<PublishOnce> {
+  const r = await publishOnceLocked(scope, id, provider, opts);
+  // The run log's step (rule 4513, src/lib/runs.ts): the platform and the answer's code, never the post.
+  runEvent({ t: "publish", provider, ok: r.ok, ...(r.ok ? {} : { error: r.error }) });
+  return r;
+}
+
+type PublishOpts = { again?: boolean; live?: boolean; check?: (t: Task) => Refusal | null; lockS?: number; by?: string };
+
+async function publishOnceLocked(scope: string, id: string, provider: string, opts: PublishOpts): Promise<PublishOnce> {
   const lk = lockKey(scope, id, provider);
   if (!(await db.lock(lk, opts.lockS ?? LOCK_S))) return { ok: false, error: "publish_busy" };
   try {

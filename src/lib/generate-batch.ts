@@ -15,7 +15,8 @@
  * A saved batch is one row of the activity log (src/lib/activity.ts), and so is a refusal at the charge on an owner path.
  */
 import { randomBytes } from "crypto";
-import { trialOver, type User } from "./auth";
+import { sc, trialOver, type User } from "./auth";
+import { withRun } from "./runs";
 import { charge, chargeOnce, personOf, refund, refundOnce, refundOncePart, renewIfDue, renewalDue, type SpendRef } from "./credits";
 import { fairUseGate } from "./fair-use";
 import { agentForTask, type AgentId } from "./agents";
@@ -290,7 +291,8 @@ export async function generateBatch(user: User, scope: string, opts: BatchOpts):
   // function that ends with the answer never leaves a classifier call and its log line behind.
   const late: Promise<unknown>[] = [];
   try {
-    return await runBatch(user, scope, opts, late);
+    // One run of the run log (rules 4510-4519), or a part of the chat turn or MCP call it runs in.
+    return await withRun({ scope: sc(user), kind: "batch", label: opts.type }, () => runBatch(user, scope, opts, late));
   } finally {
     await Promise.allSettled(late);
   }

@@ -134,10 +134,12 @@ export async function wipeAccount(id: string, opts: { userLocked?: boolean; logi
   const keys: string[] = [];
   // Every id, not only the newest 200 tasks or 100 conversations: nothing of a deleted account may stay behind. All
   // scopes are read in parallel (Upstash is HTTP per command).
-  const perScope = await pmap(scopes, (s) => Promise.all([db.lrange(wsKey.tasks(s), 0, -1), listFiles(s), db.lrange(wsKey.convs(s), 0, -1), db.smembers(wsKey.conns(s)), db.smembers(wsKey.taskMonths(s)), secretaryKeys(s), handoffKeys(s, (fp) => seenKey(e, fp)), proposalKeys(s), instructionProposalKeys(s), spendProposalKeys(s), fileProposalKeys(s)]));
+  const perScope = await pmap(scopes, (s) => Promise.all([db.lrange(wsKey.tasks(s), 0, -1), listFiles(s), db.lrange(wsKey.convs(s), 0, -1), db.smembers(wsKey.conns(s)), db.smembers(wsKey.taskMonths(s)), secretaryKeys(s), handoffKeys(s, (fp) => seenKey(e, fp)), proposalKeys(s), instructionProposalKeys(s), spendProposalKeys(s), fileProposalKeys(s), db.lrange(wsKey.runs(s), 0, -1)]));
   scopes.forEach((s, i) => {
-    const [taskIds, files, convIds, conns, months, sec, handoffs, proposals, instrProposals, spendProposals, fileProposals] = perScope[i];
+    const [taskIds, files, convIds, conns, months, sec, handoffs, proposals, instrProposals, spendProposals, fileProposals, runIds] = perScope[i];
     keys.push(
+      // The run log and the gateway's audit list (rules 4511, 4503): steps and tool names only, but they name the scope.
+      ...runIds.map((id) => wsKey.run(s, id)), wsKey.runs(s), wsKey.audit(s),
       ...taskIds.map((id) => wsKey.task(s, id)),
       ...files.map((f) => wsKey.file(s, f.name)),
       // Already deleted under their lock above; listed again for an id `deleteConversation` refuses (a malformed one) and

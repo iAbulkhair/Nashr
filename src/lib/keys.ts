@@ -190,6 +190,12 @@ export const wsKey = {
   pushSent: (s: Scope, agent: string, state: string) => `pushsent:${s}:${agent}:${state}`,
   /** The claim of one workspace's daily email on one UTC day (rule 3023); expires on its own, so the wipe needs no entry. */
   dailyMail: (scope: string, day: string) => `dailymail:${scope}:${day}`,
+  /** json `Run` (src/lib/runs.ts, rule 4510): one chat turn, MCP call or batch, its steps only (no text); 30 days. */
+  run: (s: Scope, id: string) => `run:${s}:${id}`,
+  /** list: run ids, newest first, capped at `RUNS_KEEP` (rule 4511); 30 days from the last run. */
+  runs: (s: Scope) => `runs:${s}`,
+  /** list: json `AuditRow`s of the action gateway, newest first, capped at `AUDIT_KEEP` (rule 4503); 30 days from the last row. */
+  audit: (s: Scope) => `audit:${s}`,
 } as const;
 
 export const personKey = {
@@ -290,7 +296,8 @@ export const accountKey = {
   /** string: who referred this account. */
   referredBy: (email: string) => `referredBy:${email}`,
   /** marker: a share bonus, per platform when given. */
-  shared: (email: string, platform?: string) => (platform === undefined ? `shared:${email}` : `shared:${email}:${platform}`),
+  shared: (email: string, platform?: string) =>
+    platform === undefined ? `shared:${email}` : `shared:${email}:${platform}`,
   /** string: last activity time. */
   lastSeen: (email: string) => `ulast:${email}`,
   /** lock: the weekly mail. */
@@ -538,4 +545,7 @@ export const runClaim = {
  * The records an address may still name after an account moved in place (account-id R2, L3, rule 2740): the account and
  * the person stored under the address as their id. Read only, by `addressBlocked` (src/lib/email-hold.ts).
  */
-export const addressRecordKeys = (address: string): [string, string] => [accountKey.user(address), personKey.person(address as PersonId)];
+export const addressRecordKeys = (address: string): [string, string] => [
+  accountKey.user(address),
+  personKey.person(address as PersonId),
+];
