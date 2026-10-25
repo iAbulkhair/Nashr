@@ -20,7 +20,7 @@ import { withRun } from "./runs";
 import { charge, chargeOnce, personOf, refund, refundOnce, refundOncePart, renewIfDue, renewalDue, type SpendRef } from "./credits";
 import { fairUseGate } from "./fair-use";
 import { agentForTask, type AgentId } from "./agents";
-import { briefOf, dropTasks, getBrand, listPreferencesFor, saveTask, type Brand, type Task, type TaskParent } from "./brand";
+import { briefOf, dropTasks, getBrand, listPreferencesFor, saveTask, type Brand, type Task, type TaskParent, type TaskPlan } from "./brand";
 import { TASK_COST, TASK_COUNT, isDraftType, type TaskType } from "./tasks";
 import { getGov, type Governance } from "./governance";
 import { missingData } from "./cart-recovery";
@@ -38,6 +38,8 @@ import { statsFor } from "./stats";
 import { feedbackFor } from "./feedback";
 import { generate, type Generated } from "./noor";
 import { judgeLater } from "./judge";
+import { selfCheck } from "./self-check";
+import { SELF_CHECK } from "./v2-flags";
 import { warnAgentCap } from "./notifications";
 import { initialStatus, isCustomerFacing } from "./brand-rules";
 import { regulatedSector, withDisclaimer } from "./regulated";
@@ -93,6 +95,14 @@ export type BatchOpts = {
    * when Majed's auto-run started it (such tasks count as autonomous, `isAutonomous` in brand.ts).
    */
   parent?: TaskParent;
+  /** The plan step the batch is run for (v2 C3, rule 4632): kept on every task it makes (`Task.plan`). Set by the step's run, in code. */
+  plan?: TaskPlan;
+  /**
+   * Self-check before the save (v2 C6, rules 4670-4689, src/lib/self-check.ts): each item is scored first and one below the
+   * bar is rewritten once with the judge's notes, inside the batch's price. Read only while `SELF_CHECK` is on; the
+   * scheduled paths (routines, plan steps) pass it, so the owner's own requests run exactly as before.
+   */
+  selfCheck?: boolean;
   /**
    * When the caller's request or cron invocation ends (epoch ms). Only the cross-agent review reads it: notes only, it is
    * skipped with too little time left (`CROSS_REVIEW_MIN_MS`, noor.ts), so it never pushes a charged batch past the
@@ -235,6 +245,8 @@ export type ItemContext = {
   createdAt: string;
   /** The handoff item the batch was run for (`Task.parent`). */
   parent?: TaskParent;
+  /** The plan step the batch was run for (`Task.plan`). */
+  plan?: TaskPlan;
   /** The hashes of the platform and owner instruction blocks the batch carried (`instructionBlocks(...).stamp`), recorded in `pb`; left out, the stamp has neither field. */
   ins?: { plat: string; ins: string };
 };
@@ -264,6 +276,7 @@ export function taskFromItem(it: Generated, c: ItemContext): Task {
     pb: promptStamp(c.type, c.brand, c.ins),
     ...(verdicts ? { crossReview: verdicts } : {}),
     ...(c.parent ? { parent: { handoff: c.parent.handoff, item: c.parent.item, ...(c.parent.conv ? { conv: c.parent.conv } : {}), ...(c.parent.auto === true ? { auto: true as const } : {}) } } : {}),
+    ...(c.plan ? { plan: { id: c.plan.id, step: c.plan.step } } : {}),
   };
 }
 
@@ -421,8 +434,11 @@ async function runBatch(user: User, scope: string, opts: BatchOpts, late: Promis
     const brief = opts.brief ?? briefOf(opts.notes);
     // One stamp for the batch: the blocks are the same for every item (they hash the layers, not the item).
     const ins = instructionBlocks(layers, agent).stamp;
-    tasks = items.map((it) => taskFromItem(it, { type, brand, autoApprove: gov.autoApprove[type], source: opts.source, brief, forcePending: opts.forcePending, createdAt, parent: opts.parent, ins }));
+    tasks = items.map((it) => taskFromItem(it, { type, brand, autoApprove: gov.autoApprove[type], source: opts.source, brief, forcePending: opts.forcePending, createdAt, parent: opts.parent, plan: opts.plan, ins }));
     made = tasks.length;
+    // The self-check (v2 C6, rule 4675): before the output check, so a rewritten item is checked like any other. It never
+    // throws and never changes the count, so the refund shares below are what they were.
+    if (opts.selfCheck && SELF_CHECK && tasks.length) tasks = await selfCheck(tasks, { email: acct(user), brand, type, requested: opts.count, ground, prefs, memory, feedback, layers, agentScope: scopeModes.prompt === "on", model, noEmDash: gov.noEmDash, meterWho: usageWho(user, scope), via: opts.via, deadline: opts.deadline });
     // Layer 4, the output check on the items (rule 801; spec section 6), between generation and saving: each item's title and
     // body, as the owning agent's text, five at a time (`pmap`, never one await per item). `enforce`: a refused item is not
     // saved; when none is left, or any is refused in a claim's batch (`once`, which charges and refunds only whole), the batch

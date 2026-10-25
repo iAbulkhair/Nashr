@@ -66,6 +66,8 @@ export const BRAND_API: readonly string[] = [
   "/api/generate",
   "/api/handoffs/[id]/decline",
   "/api/handoffs/[id]/run",
+  // Majed's plans (v2 C3, rules 4630-4631): `goalplan:{sc(u)}:{id}`, one brand's record like a handoff's.
+  "/api/plans/[id]",
   "/api/media/upload",
   "/api/performance",
   "/api/publish/[id]",

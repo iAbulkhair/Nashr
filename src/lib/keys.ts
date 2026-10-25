@@ -210,6 +210,20 @@ export const wsKey = {
   memProps: (s: Scope) => `memprops:${s}`,
   /** rate bucket (`allow`, stored as `rate:{bucket}`): the memory proposals of this scope today (rule 4553). */
   memProposalBucket: (s: Scope) => `memprop-day:${s}`,
+  /** json `Plan`: a goal Majed turned into steps (src/lib/plans.ts, rule 4620); 90 days from its last write. */
+  goalPlan: (s: Scope, id: string) => `goalplan:${s}:${id}`,
+  /** list: plan ids, newest first, capped at `PLANS_KEEP` (rule 4621); 90 days from the last plan. */
+  goalPlans: (s: Scope) => `goalplans:${s}`,
+  /** lock: one plan's writes (approve, pause, a step's run and its commit); 300 s like a handoff's run lock. */
+  goalPlanLock: (s: Scope, id: string) => `goalplanlock:${s}:${id}`,
+  /** rate bucket (`allow`, stored as `rate:{bucket}`): the planner calls of this scope today (rule 4626). */
+  goalPlanBucket: (s: Scope) => `goalplan-day:${s}`,
+  /** json `QueueJob` (src/lib/queue.ts, rule 4650): one queued unit of work; 30 days from its last write. */
+  queueJob: (s: Scope, id: string) => `qjob:${s}:${id}`,
+  /** list: the ids of this scope's waiting jobs, oldest first, capped at `QUEUE_MAX` (rule 4651). */
+  queue: (s: Scope) => `jobq:${s}`,
+  /** set: every job id this scope ever queued, for `wipeAccount` (rule 4652); 30 days from the last job. */
+  queueJobs: (s: Scope) => `qjobs:${s}`,
 } as const;
 
 export const personKey = {
@@ -414,6 +428,8 @@ export const globalKey = {
   digests: () => "notifydigests",
   /** set: every account id (`acct(u)`: in R1 the owner's first address). */
   usersAll: () => "users:all",
+  /** set: the scopes whose job queue holds work (src/lib/queue.ts, rule 4652), read by the queue tick; a scope leaves when its queue is empty. */
+  queueScopes: () => "qscopes",
   /**
    * json `{ at, rows }`: the founder console's customers list, one aggregate per account id (numbers and the display name
    * only), rebuilt when older than five minutes or on demand (src/lib/admin-workspaces.ts, rule 3724). Expires in an hour.
@@ -549,6 +565,8 @@ export const runClaim = {
   routine: (scope: string, id: string, period: string) => `routine:${scope}:${id}:${period}`,
   /** One item of one of Majed's handoffs. */
   handoff: (scope: string, id: string, n: number) => `handoff:${scope}:${id}:${n}`,
+  /** One step of one of Majed's plans (src/lib/plans.ts, rule 4640). */
+  planStep: (scope: string, id: string, n: number) => `planstep:${scope}:${id}:${n}`,
   /** The owner's one notice for a run held for them. */
   heldNotice: (claim: string) => `held:${claim}`,
   /** The owner's one notice for a day's sweep refunds. */

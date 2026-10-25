@@ -156,7 +156,7 @@ function normalizeChannel(raw: string): string {
   return c.slice(0, 20) || "general";
 }
 
-function parseItems(text: string): Generated[] {
+export function parseItems(text: string): Generated[] {
   const cleaned = text.trim().replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/, "");
   const start = cleaned.indexOf("[");
   const end = cleaned.lastIndexOf("]");
@@ -181,7 +181,7 @@ function mock(type: TaskType, brand: Brand): Generated[] {
 
 export type GenOptions = { /** the scope paragraph in the cached fixed block (rule 797): on unless false; `generateBatch` passes the founder's `prompt` switch */ agentScope?: boolean; /** account email for token metering */ meter?: string; /** who in the account and which brand the metered calls worked for (rule 2901, `usageWho`) */ meterWho?: UsageWho; memory?: string; reviewer?: boolean; noEmDash?: boolean; /** WORKSPACE DATA block for report tasks */ stats?: string; /** produce exactly this many items instead of the batch size (small asks from chat) */ count?: number; /** `feedbackFor` output for the owning agent, placed in the uncached block; the golden set passes none */ feedback?: string; /** the cross-agent review (`Governance.crossReview`); on unless false. The golden set passes false */ crossReview?: boolean; /** an item of Majed's handoff (src/lib/handoffs.ts): his brief, a labelled data block for the agent, the reviewer, the cross-reviewers and the judge; never owner notes */ leadBrief?: string; /** when the caller's request ends (epoch ms): the cross-agent review, notes only, is skipped when less than CROSS_REVIEW_MIN_MS of it is left */ deadline?: number; /** the model that writes the batch: the one the caller priced (`generateBatch` resolves it once and passes it here); left out, `route("generate")` */ model?: string; /** the instruction layers for this batch (`loadLayers`): the platform and the workspace text in the generation prompt, and the reviewer and the cross-review read the same object (`critique`, `crossReview`); left out, none. The judge is not called from here: `generateBatch` hands it the same object in `JudgeContext.layers` */ layers?: Layers };
 
-function stripDashes(items: Generated[]) {
+export function stripDashes(items: Generated[]) {
   return items.map((i) => ({ ...i, body: i.body.replace(/\s*[—–]\s*/g, ", ") }));
 }
 

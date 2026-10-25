@@ -17,8 +17,9 @@ import { pmap } from "./parallel";
  * cron, replacing the weekly-only sweep there:
  *
  * - `weekly:` claims as before (`weeklyKept`, rule 337): an ended week's hold is kept when its plan exists.
- * - `routine:` and `handoff:` claims (rules 2470-2471) whose hold is older than `RUN_STALE_MS` (no run of them can still
- *   be in flight): kept when the run delivered (the routine's receipt says `delivered`; the handoff item is `done`),
+ * - `routine:`, `handoff:` and `planstep:` claims (rules 2470-2471, 4634) whose hold is older than `RUN_STALE_MS` (no run
+ *   of them can still be in flight): kept when the run delivered (the routine's and the plan step's receipt says `delivered`,
+ *   written in the step's commit for 8 days; the handoff item is `done`),
  *   refunded otherwise: a run killed after its charge that nobody ran again, or a held run the owner did not run.
  * - A kept claim whose receipt records credits it owes back (a short batch's share whose refund failed) gives them back
  *   in the same ledger save that drops the hold (`resolveOnceHolds` with a number), so they are never given twice.
@@ -29,13 +30,13 @@ import { pmap } from "./parallel";
 export async function sweepHolds(u: Pick<User, "id" | "email" | "paidOnce" | "lang">, now = Date.now()) {
   const weekly = (await weeklyKept(u, now)) ?? {};
   const settled = (at: string) => !(now - Date.parse(at) < RUN_STALE_MS);
-  const runs = Object.entries(u.paidOnce ?? {}).filter(([claim, hold]) => /^(routine|handoff):/.test(claim) && settled(hold.at));
+  const runs = Object.entries(u.paidOnce ?? {}).filter(([claim, hold]) => /^(routine|handoff|planstep):/.test(claim) && settled(hold.at));
   // This week's Sunday-plan holds are not `weeklyKept`'s (it waits for the week to end); one whose run the cron held is
   // refunded now, as the held notice promises (rule 2474). The owner's Run later in the week is charged afresh.
   const thisWeek = Object.entries(u.paidOnce ?? {}).filter(([claim, hold]) => claim.startsWith("weekly:") && !(claim in weekly) && settled(hold.at)).map(([c]) => c);
   const claims = [...Object.keys(weekly), ...runs.map(([c]) => c), ...thisWeek];
   if (!claims.length) return null;
-  // One round: every claim's receipt, and the handoff items the handoff claims name, each read from its hold's own scope.
+  // One round: every claim's receipt, and the handoff items and plan steps the claims name, each read from its hold's own scope.
   const [receipts, items] = await Promise.all([
     readRuns(claims),
     Promise.all(runs.map(async ([claim, hold]) => {
@@ -67,7 +68,7 @@ export async function sweepHolds(u: Pick<User, "id" | "email" | "paidOnce" | "la
   const kept: Record<string, boolean | number> = {};
   for (const [claim, has] of Object.entries(weekly)) kept[claim] = has ? keep(claim) : false;
   runs.forEach(([claim], i) => {
-    const delivered = claim.startsWith("routine:") ? receipt.get(claim)?.state === "delivered" || lastDelivered.has(claim) : items[i] === "done";
+    const delivered = claim.startsWith("planstep:") ? receipt.get(claim)?.state === "delivered" : claim.startsWith("routine:") ? receipt.get(claim)?.state === "delivered" || lastDelivered.has(claim) : items[i] === "done";
     kept[claim] = delivered ? keep(claim) : false;
   });
   for (const claim of thisWeek) if (receipt.get(claim)?.state === "held") kept[claim] = false;
