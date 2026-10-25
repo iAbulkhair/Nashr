@@ -26,6 +26,7 @@ import { movePasskeys, passkeyKeys } from "./passkeys";
 import { revokeAllDevices } from "./devices";
 import { addressBlocked } from "./email-hold";
 import { workspaceLabel } from "./workspace-name";
+import { avatarUrls, forgetAvatar } from "./avatar";
 
 /**
  * Teams (seats): memberships, invites and seat accounting (docs/superpowers/specs/2026-09-29-teams-design.md;
@@ -375,7 +376,7 @@ export async function forgetPerson(pid: PersonId, email: string, opts: { loginLo
   // The person's passkeys go with the person whoever holds the address now (rule 2425, pre-flight ruling 6): they are
   // keyed by pid, and `passkeyKeys` lists only reverse entries that still name this pid.
   const keys = [personKey.person(pid), personKey.orgs(pid), personKey.lastOrg(pid), ...passkeys, ...(own ? [...mfaKeys(email), accountKey.emailChange(email), accountKey.emailChangeTries(email), accountKey.googleSub(email), accountKey.invitesFor(email), ...google] : [])];
-  await Promise.all([...keys.map((k) => db.del(k)), own ? revokeAllDevices(email) : null, releaseLogin(email, pid, { locked: true })]);
+  await Promise.all([...keys.map((k) => db.del(k)), own ? revokeAllDevices(email) : null, releaseLogin(email, pid, { locked: true }), forgetAvatar(pid)]);
 }
 
 /**
@@ -617,8 +618,14 @@ async function dropInvites(owner: string, items: readonly (string | Pick<Pending
   );
 }
 
+/**
+ * Who carried a team change out, for its team log row: the customer's own team page ("web", the default) or Thakeen
+ * support from the founder console ("console", rules 3550-3569, src/lib/admin-workspace-edit.ts). The checks are the same.
+ */
+export type TeamVia = { via?: "web" | "console" };
+
 /** The acting person as a team log row names them (rule 2129): the person id and the address of the day. */
-const who = (a: Pick<Actor, "pid" | "email">) => ({ pid: a.pid as string, email: normalizeEmail(a.email) });
+const who =(a: Pick<Actor, "pid" | "email">) => ({ pid: a.pid as string, email: normalizeEmail(a.email) });
 
 /**
  * Invite `email` into `owner`'s account as `role`. The owner may invite either role; an admin only plain members; a
@@ -638,7 +645,7 @@ export async function createInvite(
   rawRole: string,
   lang: string,
   access: { brands?: unknown; approves?: unknown } = {},
-  opts: { addSeat?: boolean; seatHalalas?: number } = {},
+  opts: TeamVia & { addSeat?: boolean; seatHalalas?: number } = {},
 ): Promise<{ ok: true; token: string; id: string; invite: Invite; seatAdded?: true } | TeamFail> {
   const role = teamRoleFrom(rawRole);
   if (!role) return fail("invalid_role");
@@ -716,7 +723,7 @@ export async function createInvite(
       // Its TTL is the newest invite's, so the set never outlives the invites in it. Only while `MULTI_ORG` is on, so
       // with the flag off the store is byte-for-byte M2's.
       MULTI_ORG ? db.sadd(accountKey.invitesFor(e), id).then(() => db.expire(accountKey.invitesFor(e), INVITE_TTL_SECONDS)) : null,
-      logTeam(aid, { kind: "invited", actor: who(actor), target: { email: e }, role, via: "web" }, { teamLocked: true }),
+      logTeam(aid, { kind: "invited", actor: who(actor), target: { email: e }, role, via: opts.via ?? "web" }, { teamLocked: true }),
     ]);
     return { ok: true as const, token, id, invite, ...(seatAdded ? { seatAdded: true as const } : {}) };
   });
@@ -1067,7 +1074,7 @@ export async function discardInvite(owner: string, id: string) {
 }
 
 /** Cancel a pending invite of this account. An admin may cancel only editor and viewer invites. One "invite_cancelled" row. */
-export async function cancelInvite(owner: User, actor: Actor, id: string): Promise<{ ok: true } | TeamFail> {
+export async function cancelInvite(owner: User, actor: Actor, id: string, opts: TeamVia = {}): Promise<{ ok: true } | TeamFail> {
   const acting = { ...owner, actor };
   if (!can(acting, "team.invite.cancel")) return fail("forbidden");
   if (typeof id !== "string" || !TOKEN_RE.test(id)) return fail("not_found");
@@ -1083,7 +1090,7 @@ export async function cancelInvite(owner: User, actor: Actor, id: string): Promi
     if (!cur || inviteAccount(cur) !== aid) return false;
     await Promise.all([
       dropInvites(aid, [{ id, email: cur.email }]),
-      logTeam(aid, { kind: "invite_cancelled", actor: who(actor), target: { email: cur.email }, role: cur.role, via: "web" }, { teamLocked: true }),
+      logTeam(aid, { kind: "invite_cancelled", actor: who(actor), target: { email: cur.email }, role: cur.role, via: opts.via ?? "web" }, { teamLocked: true }),
     ]);
     return true;
   });
@@ -1175,7 +1182,7 @@ export async function moveMemberLogin(owner: string, from: string, target: strin
  * itself is no membership and cannot be removed. Checked again on the membership read under `lock:team:{aid}`; one
  * "removed" team log row.
  */
-export async function removeMember(owner: User, actor: Actor, email: string): Promise<{ ok: true } | TeamFail> {
+export async function removeMember(owner: User, actor: Actor, email: string, opts: TeamVia = {}): Promise<{ ok: true } | TeamFail> {
   const acting = { ...owner, actor };
   if (!can(acting, "team.remove.member")) return fail("forbidden");
   const aid = aidOf(owner);
@@ -1188,7 +1195,7 @@ export async function removeMember(owner: User, actor: Actor, email: string): Pr
     if (!cur.ms) return "not_found" as const;
     if (cur.ms.role === "admin" && !can(acting, "team.remove.admin")) return "forbidden" as const;
     await deleteMembership(aid, m.pid, { home: cur.home, teamLocked: true });
-    await logTeam(aid, { kind: "removed", actor: who(actor), target: { pid: m.pid, email: m.email }, role: cur.ms.role, via: "web" }, { teamLocked: true });
+    await logTeam(aid, { kind: "removed", actor: who(actor), target: { pid: m.pid, email: m.email }, role: cur.ms.role, via: opts.via ?? "web" }, { teamLocked: true });
     return "ok" as const;
   });
   return res === "ok" ? { ok: true } : fail(res);
@@ -1483,6 +1490,10 @@ export async function teamView(u: User) {
   const seesSpend = can(u, "team.cap");
   // Scope, approve toggle and cap (rules 3756-3770) are shown to those who may change them; to the rest only roles.
   const access = (m: MemberView) => (manage ? { ...(m.brands ? { brands: m.brands } : {}), ...(m.approves ? { approves: true as const } : {}), ...(typeof m.creditCap === "number" ? { creditCap: m.creditCap } : {}), ...(seesSpend ? { spent: personSpendFor(u, m.pid) } : {}) } : {});
+  // Rule 3502: every listed person's picture in ONE mget (`avatarUrls`); a person without one shows an initial.
+  const ownerPid = ownerOf(u);
+  const faces = await avatarUrls([ownerPid, ...members.map((m) => m.pid)]);
+  const face = (pid: PersonId) => (faces.has(pid) ? { avatar: faces.get(pid)! } : {});
   const used = seatCount(members, invites);
   const limit = seatLimit(u);
   const mayBuy = can(u, "billing.seats") && extraSeatsSold(u.plan) && !billingLocked(u.billing) && used <= limit;
@@ -1504,8 +1515,8 @@ export async function teamView(u: User) {
       ...seatChargeView(how),
     },
     members: [
-      { email: u.email, name: u.name, role: "owner" as const },
-      ...members.map((m) => ({ email: m.email, name: m.name, role: m.role, acceptedAt: m.acceptedAt, ...(m.disabled ? { disabled: m.disabled } : {}), ...access(m) })),
+      { email: u.email, name: u.name, role: "owner" as const, ...face(ownerPid) },
+      ...members.map((m) => ({ email: m.email, name: m.name, role: m.role, acceptedAt: m.acceptedAt, ...(m.disabled ? { disabled: m.disabled } : {}), ...access(m), ...face(m.pid) })),
     ],
     invites: can(u, "team.invites.view")
       ? invites.map((i) => ({ id: i.id, email: i.email, role: i.role, expiresAt: i.expiresAt, invitedBy: i.invitedBy, ...(manage && i.brands ? { brands: i.brands } : {}), ...(manage && i.approves ? { approves: true as const } : {}) }))

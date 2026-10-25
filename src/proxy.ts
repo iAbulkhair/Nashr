@@ -9,7 +9,7 @@ import { LANG_COOKIE, SESSION_COOKIE, readCookie } from "@/lib/cookie-names";
 import { MULTI_ORG } from "@/lib/multi-org";
 import { WS_HEADER, asHandle, splitWsPath, stripWs, workspaceMissing } from "@/lib/ws-path";
 import { REQUEST_ID_HEADER, requestId } from "@/lib/request-id";
-import { NONCE_HEADER, cspNonce, pageCsp, pagePath, reportOnlyCsp } from "@/lib/csp";
+import { NONCE_HEADER, cspNonce, pageCsp, pagePath, reportOnlyCsp, uploadOrigin } from "@/lib/csp";
 
 type Lang = "ar" | "en";
 
@@ -204,7 +204,7 @@ export function proxy(req: NextRequest) {
   res.headers.set(REQUEST_ID_HEADER, rid);
   if (nonce) {
     res.headers.set("Content-Security-Policy", pageCsp(nonce, dev));
-    res.headers.set("Content-Security-Policy-Report-Only", reportOnlyCsp(nonce, dev));
+    res.headers.set("Content-Security-Policy-Report-Only", reportOnlyCsp(nonce, dev, uploadOrigin()));
   }
 
   if (staging || CONSOLE_PATH.test(pathname)) res.headers.set("x-robots-tag", NOINDEX);

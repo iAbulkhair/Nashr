@@ -98,6 +98,9 @@ export const WORKSPACE_FREE: readonly string[] = [
   "/api/account/sessions",
   "/api/account/email",
   "/api/account/google",
+  // The person's picture (rule 3502): the person's, never a workspace's.
+  "/api/account/avatar",
+  "/api/account/avatar/",
   // Rule 3826: the Security page (a person page, no handle) adds, renames and removes the person's passkeys (`passkeys:{pid}`).
   "/api/account/passkeys",
   "/api/admin/",

@@ -47,7 +47,7 @@ export function pageCsp(nonce: string, dev: boolean): string {
  * 'self': Turnstile's frame and calls; inline styles (above); images and video from any https host, because rendered
  * replies and catalogue images name outside hosts and media plays from blob: and the storage host.
  */
-export function reportOnlyCsp(nonce: string, dev: boolean): string {
+export function reportOnlyCsp(nonce: string, dev: boolean, bucketOrigin: string | null = null): string {
   return [
     "default-src 'self'",
     scriptSrc(nonce, dev),
@@ -55,12 +55,31 @@ export function reportOnlyCsp(nonce: string, dev: boolean): string {
     "img-src 'self' data: blob: https:",
     "media-src 'self' blob: https:",
     "font-src 'self' data:",
-    `connect-src 'self' ${TURNSTILE_ORIGIN} https://*.public.blob.vercel-storage.com`,
+    `connect-src 'self' ${TURNSTILE_ORIGIN} https://*.public.blob.vercel-storage.com${bucketOrigin ? ` ${bucketOrigin}` : ""}`,
     `frame-src ${TURNSTILE_ORIGIN}`,
     "worker-src 'self' blob:",
     "manifest-src 'self'",
     ...BASE,
   ].join("; ");
+}
+
+/**
+ * Rule 3616: the S3 bucket's origin the browser uploads to directly, for the report-only `connect-src` above, or null.
+ * Only when the switch is on (`MEDIA_STORAGE=s3`), direct upload is not off (`S3_UPLOAD=off`) and `S3_ENDPOINT` is a bare
+ * `https://` origin; the disk default adds nothing. Import-free like the rest of this file, so it reads the variables
+ * itself (the same checks as `s3Config` in src/lib/media/s3.ts). The enforced policy has no `connect-src`, so this only
+ * keeps the report-only twin quiet; it never widens what is enforced.
+ */
+export function uploadOrigin(env: Record<string, string | undefined> = process.env): string | null {
+  if ((env.MEDIA_STORAGE ?? "").trim().toLowerCase() !== "s3") return null;
+  if ((env.S3_UPLOAD ?? "").trim().toLowerCase() === "off") return null;
+  try {
+    const u = new URL((env.S3_ENDPOINT ?? "").trim());
+    if (u.protocol !== "https:" || u.username || u.password || (u.pathname && u.pathname !== "/") || u.search || u.hash) return null;
+    return u.origin;
+  } catch {
+    return null;
+  }
 }
 
 /**

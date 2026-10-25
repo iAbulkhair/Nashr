@@ -8,6 +8,7 @@ import type { Role } from "@/lib/auth";
 import type { TeamPerms } from "./teamPerms";
 import ReadOnlyNote from "./ReadOnlyNote";
 import { Icon } from "./Icons";
+import PersonAvatar from "./PersonAvatar";
 import { useConfirm } from "./ConfirmDialog";
 import Scribble from "@/components/Scribble";
 import { useToast } from "@/components/ui/Toast";
@@ -18,7 +19,7 @@ import { EXTRA_SEAT_MONTHLY_SAR } from "@/lib/pricing";
 type TeamRole = "admin" | "member" | "viewer";
 /** Rules 3756, 3760, 3770: brand scope (absent = every brand), the approve toggle and the monthly cap, shown to managers. */
 type Access = { brands?: string[]; approves?: true; creditCap?: number; spent?: number };
-type Row = { email: string; name: string; role: Role; acceptedAt?: string; disabled?: "seats" } & Access;
+type Row = { email: string; name: string; role: Role; acceptedAt?: string; disabled?: "seats"; avatar?: string } & Access;
 type PendingRow = { id: string; email: string; role: TeamRole; expiresAt: string; invitedBy: string; brands?: string[]; approves?: true };
 /** The GET /api/team body, which `teamView` in src/lib/team.ts builds (the page renders it on the server first). */
 export type TeamView = {
@@ -307,7 +308,7 @@ export default function TeamPanel({ t, lang, initial, perms, mailOn = true, tran
               return (
                 <li key={m.email} className={`flex flex-wrap items-center justify-between gap-3 py-3 ${m.disabled ? "opacity-70" : ""}`}>
                   <div className="flex min-w-0 items-center gap-3">
-                    <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-foreground/10 font-semibold text-foreground" aria-hidden>{label.charAt(0).toUpperCase()}</span>
+                    <PersonAvatar src={m.avatar} name={label} size={36} className="bg-foreground/10 text-foreground" />
                     <div className="min-w-0">
                       <p className="flex flex-wrap items-center gap-2">
                         <span className="clip font-medium" dir="auto">{label}</span>

@@ -11,6 +11,7 @@ import LangToggle from "../LangToggle";
 import ThemeToggle from "@/components/ui/ThemeToggle";
 import Wordmark from "../Wordmark";
 import { Icon, type IconName } from "./Icons";
+import PersonAvatar from "./PersonAvatar";
 import { PARTNER_COPY } from "@/lib/partner-copy";
 import { adminHref } from "@/lib/admin-gate";
 import { settingsHref } from "@/lib/settings-nav";
@@ -48,7 +49,7 @@ const avatar = (id: AgentId) => ({ style: { background: `var(--color-agent-${id}
  * `collapsed`, so the first paint has the chosen width. The arrow is the directional `next` icon, mirrored in Arabic and
  * turned to point at the rail's own edge while open. The phone header and its sheet never fold.
  */
-export default function Sidebar({ t, lang, user, show, brandName, admin, supportWa, collapsed = false }: { t: AppDict; lang: Lang; user: { name: string; email: string; role: Role; credits: number; plan: string }; show: { owner: boolean; refer: boolean; mcp: boolean; partner?: boolean }; brandName?: string; admin?: boolean; supportWa?: string; collapsed?: boolean }) {
+export default function Sidebar({ t, lang, user, show, brandName, workspaceLogo, admin, supportWa, collapsed = false }: { t: AppDict; lang: Lang; user: { name: string; email: string; role: Role; credits: number; plan: string; avatar?: string | null }; show: { owner: boolean; refer: boolean; mcp: boolean; partner?: boolean }; brandName?: string; workspaceLogo?: string | null; admin?: boolean; supportWa?: string; collapsed?: boolean }) {
   const path = usePathname();
   const sp = useSearchParams();
   const r = useRouter();
@@ -160,7 +161,7 @@ export default function Sidebar({ t, lang, user, show, brandName, admin, support
     {/* Above the brand: the workspace switcher (multi-workspace M2), drawn only with two workspaces or more. */}
     <WorkspaceSwitcher t={t.workspaces} lang={lang} onNavigate={() => setOpen(false)} />
     <div className="flex items-center gap-1 border-b-[1.5px] border-border-strong p-4 pb-3">
-      <BrandSwitcher lang={lang} brands={brandList?.brands ?? null} current={{ id: brandFromPath(path) ?? sessionBrand ?? "default", name: brandName || (lang === "ar" ? "علامتك" : "Your brand") }} canAdd={brandList?.canAdd ?? false} sub={N.workspace} onOpen={loadBrands} onPicked={() => { setOpen(false); brandsAsked.current = false; }} />
+      <BrandSwitcher lang={lang} brands={brandList?.brands ?? null} current={{ id: brandFromPath(path) ?? sessionBrand ?? "default", name: brandName || (lang === "ar" ? "علامتك" : "Your brand") }} canAdd={brandList?.canAdd ?? false} sub={N.workspace} logo={workspaceLogo} onOpen={loadBrands} onPicked={() => { setOpen(false); brandsAsked.current = false; }} />
       {bell && <NotificationCenter t={t} lang={lang} align="start" />}
       {/* Only the desktop rail folds (the phone sheet draws the top without the bell). */}
       {bell && foldButton}
@@ -222,6 +223,8 @@ export default function Sidebar({ t, lang, user, show, brandName, admin, support
 
       {group(`${p}-brand`, X.brand, <>
         <li>{row(to("/files"), N.files, "folder")}</li>
+        {/* Rule 3507: the overview charts, beside the full reports. */}
+        <li>{row(to("/overview"), N.overview, "dashboard")}</li>
         <li>{row(to("/reports"), N.performance, "chart")}</li>
         <li>{row(to("/activity"), N.activity, "clock")}</li>
         <li>{row(to("/inspo"), N.contentInspo, "spark")}</li>
@@ -300,7 +303,7 @@ export default function Sidebar({ t, lang, user, show, brandName, admin, support
           </button>
         ) : (
           <button {...props} aria-label={`${X.account}: ${user.name || user.email}`} className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-start text-sm text-foreground hover:bg-background-muted/60">
-            <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-background-muted font-semibold" aria-hidden>{(user.name || user.email).charAt(0).toUpperCase()}</span>
+            <PersonAvatar src={user.avatar} name={user.name} email={user.email} size={32} />
             <span className="min-w-0 flex-1">
               <span className="flex min-w-0 items-center gap-1.5"><span className="clip" dir="auto">{user.name || user.email}</span><span className="shrink-0 rounded-full bg-background-muted px-1.5 text-xs text-foreground-muted">{t.team.roles[user.role]}</span></span>
               <span className="clip block text-xs text-foreground-muted" dir="ltr">{user.email}</span>
