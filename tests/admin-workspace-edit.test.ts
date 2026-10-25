@@ -246,7 +246,7 @@ describe("rules 3553-3555, 3557, 3561: the changes, through the customer's team 
     const o = await account("wse-seat", 2);
     await newMember(o, "member", "wseseat");
     const r = await answer(await post(o.email, { action: "invite", owner: o.email, email: invitee(), role: "member" }));
-    expect(r).toEqual({ status: 409, body: { error: "seats", used: 2, limit: 2 } });
+    expect(r).toEqual({ status: 409, body: { error: "seats", used: 2, limit: 2, included: 2, extra: 0, unitSar: 25, canBuy: false } });
     expect(sent).toHaveLength(0);
     expect(await listInvites(acct(o))).toEqual([]);
   });
@@ -337,7 +337,7 @@ describe("rules 3559-3561: names, the order of the gates and source pins", () =>
       expect(f).not.toMatch(/for \([^)]*\)\s*\{?[^}]*await /);
     }
     // The lib changes teams only through the customer's own functions, with via "console".
-    for (const s of ['createInvite(owner, a, email, input.role ?? "", lang, { via: "console" })', 'removeMember(owner, a, email, { via: "console" })', 'cancelInvite(owner, a, inv.id, { via: "console" })']) expect(lib).toContain(s);
+    for (const s of ['createInvite(owner, a, email, input.role ?? "", lang, {}, { via: "console" })', 'removeMember(owner, a, email, { via: "console" })', 'cancelInvite(owner, a, inv.id, { via: "console" })']) expect(lib).toContain(s);
   });
 
   it("the panel's edit requests live in WorkspaceEdit.tsx; the owner row has no button", () => {
