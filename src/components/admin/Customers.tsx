@@ -75,7 +75,7 @@ export default function Customers({ lang, keySession }: SectionProps) {
   }
   if (ended) return <EndedNotice lang={lang} keySession={keySession} />;
 
-  const here = (email: string) => `${adminHref(lang, "users")}/${encodeURIComponent(email)}`;
+  const here = (email: string, ws?: string) => `${adminHref(lang, "users")}/${encodeURIComponent(email)}${ws ? `?ws=${encodeURIComponent(ws)}` : ""}`;
   const count = (n: number | undefined) => (n == null ? "" : ` (${n})`);
   const facets = data?.facets;
   const showRole = !!data?.person;
@@ -84,7 +84,7 @@ export default function Customers({ lang, keySession }: SectionProps) {
       id: "name", header: C.cols.name, sort: "name", className: "min-w-48",
       cell: (r) => (
         <span className="flex flex-wrap items-center gap-2">
-          <Link href={here(r.email)} className="min-h-[var(--hit-min)] text-start text-foreground underline pointer-fine:min-h-6"><span dir="auto">{r.name}</span></Link>
+          <Link href={here(r.email, r.handle)} className="min-h-[var(--hit-min)] text-start text-foreground underline pointer-fine:min-h-6"><span dir="auto">{r.name}</span></Link>
           {r.suspended && <Badge tone="danger">{C.suspendedBadge}</Badge>}
         </span>
       ),

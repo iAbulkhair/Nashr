@@ -66,6 +66,8 @@ export function wsQueryParams(q: WsQuery): URLSearchParams {
 export type WorkspaceRow = {
   /** The owner's sign-in address: the link to the workspace page (`/{lang}/admin/users/{email}`). */
   email: string;
+  /** The workspace's handle (rule 4700): with the address it opens this very workspace, when its owner holds several. */
+  handle?: string;
   /** The brand's name, else the workspace name, else the owner's name. */
   name: string;
   ownerName: string;

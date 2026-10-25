@@ -8,7 +8,8 @@ import { listOrgs } from "./membership";
 import { pmap } from "./parallel";
 import { brandCapFor, includedSeats, paidExtraSeats, seatLimit } from "./pricing";
 import { isSuspended, suspensionEnd } from "./suspension";
-import { inviterAddress, listMembers, peekInvites, seatCount } from "./team";
+import { heldAnywhere, inviterAddress, listMembers, peekInvites, seatCount } from "./team";
+import { handlesReady, matchHandle } from "./ws-handle";
 import { lastActive } from "./track";
 
 /**
@@ -51,6 +52,9 @@ export type WorkspaceView = {
   workspaceName: string | null;
 };
 
+/** The shape of a workspace handle (`wsHandle`): `w_` and 16 base32 characters. */
+export const WS_HANDLE = /^w_[a-z2-7]{16}$/;
+
 const iso = (ms: number | null) => (ms === null ? null : new Date(ms).toISOString());
 
 /**
@@ -59,11 +63,21 @@ const iso = (ms: number | null) => (ms === null ? null : new Date(ms).toISOStrin
  * The console's workspace edit (src/lib/admin-workspace-edit.ts, rule 3551) resolves its account here too, so a change
  * lands on exactly the account the view showed.
  */
-export async function accountForChosen(chosen: string): Promise<{ owner: User; openedFrom: string | null } | null> {
+export async function accountForChosen(chosen: string, ws?: string | null): Promise<{ owner: User; openedFrom: string | null } | null> {
   const email = normalizeEmail(chosen);
   if (!email) return null;
   const login = await getLogin(email);
   if (!login) return null;
+  // A person who holds several workspaces (rule 4700): `ws` picks one of them, matched only among the accounts this
+  // person owns or is a member of now (`heldAnywhere`), never decoded. A handle they do not hold opens nothing.
+  if (ws && WS_HANDLE.test(ws) && handlesReady()) {
+    const held = await heldAnywhere(login.pid);
+    const aid = matchHandle(ws, held.map((h) => h.aid));
+    if (!aid) return null;
+    const owner = await getAccount(aid);
+    if (!owner || acct(owner) !== aid) return null;
+    return { owner, openedFrom: held.find((h) => h.aid === aid)?.owner ? null : email };
+  }
   if (login.kind === "owner") return { owner: login.user, openedFrom: null };
   if (!login.acct) return null;
   const owner = await getAccount(login.acct);

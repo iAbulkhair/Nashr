@@ -25,7 +25,8 @@ export const GET = handler<"admin", undefined, undefined, { email: string }>({ a
   } catch {
     return NextResponse.json({ ok: false, error: "not_found" }, { status: 404 });
   }
-  const detail = await workspaceDetail(chosen);
+  // `ws` (rule 4700): which of the person's workspaces, a selector matched among the ones they hold, never a key.
+  const detail = await workspaceDetail(chosen, Date.now(), new URL(req.url).searchParams.get("ws"));
   if (!detail) return NextResponse.json({ ok: false, error: "not_found" }, { status: 404 });
   await adminAudit({
     actor: who, via: viaOf(req), section: "users", target: detail.view.owner.email, what: "workspace view", action: "workspace.view",
