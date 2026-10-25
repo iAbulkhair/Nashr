@@ -1,4 +1,5 @@
 import type { AgentId } from "./agents";
+import { runEvent } from "./runs";
 import { meterBilled, type BilledUsage, type Kind, type UsageWho } from "./usage";
 
 /**
@@ -45,11 +46,24 @@ export async function metered<M extends Reply>(stream: StreamLike<M>, to: MeterT
   } catch (e) {
     const snap = stream.currentMessage ?? stream.receivedMessages?.at(-1);
     if (snap?.usage) await meterBilled(to.email, snap.model, to.kind, partialUsage(snap), to.agent, to.requested, to.who);
+    runEvent(modelStep(to, snap?.model ?? to.requested ?? "", snap?.usage ? partialUsage(snap) : undefined, false));
     throw e;
   }
   await meterBilled(to.email, msg.model, to.kind, msg.usage, to.agent, to.requested, to.who);
+  runEvent(modelStep(to, msg.model, msg.usage, true));
   return msg;
 }
+
+/** The run log's step for one call (rule 4512, src/lib/runs.ts): model, purpose and tokens, never the prompt or the reply. */
+const modelStep = (to: MeterTo, model: string, usage: BilledUsage | undefined, ok: boolean) => ({
+  t: "model" as const,
+  model,
+  kind: to.kind,
+  ...(to.agent ? { agent: to.agent } : {}),
+  in: (usage?.input_tokens ?? 0) + (usage?.cache_read_input_tokens ?? 0) + (usage?.cache_creation_input_tokens ?? 0),
+  out: usage?.output_tokens ?? 0,
+  ok,
+});
 
 /**
  * The usage of a stream that ended early. Input and cache counts are exact (the first event carries them). The output

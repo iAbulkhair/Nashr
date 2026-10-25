@@ -3,7 +3,7 @@ import { MCP_TOOL_ACTION, userFromBearer } from "@/lib/mcp";
 import { DRAFTS_PER_HOUR, chatCaps, chatRefusal } from "@/lib/rate";
 import { DRAFT_LIMITS, draftReport, parseDraft, saveExternalDraft } from "@/lib/external-drafts";
 import { chat, chatRefusedText } from "@/lib/chat";
-import { sc, trialOver } from "@/lib/auth";
+import { sc, trialOver, type User } from "@/lib/auth";
 import { entitlements } from "@/lib/entitlements";
 import { refusalText, reserveChatTurn, runChatTurn } from "@/lib/chat-allowance";
 import { fairUseText } from "@/lib/fair-use";
@@ -16,7 +16,9 @@ import { listFiles, readFile } from "@/lib/files";
 import { CUSTOMER_FACING, brandRules, explain, gateTask, isCustomerFacing } from "@/lib/brand-rules";
 import { tokenBy } from "@/lib/actor";
 import { SEC_TOOL_DEFS, isSecTool, runSecretaryTool } from "@/lib/secretary";
-import { can } from "@/lib/roles";
+import { can, type Action } from "@/lib/roles";
+import { gatedMcp } from "@/lib/gateway";
+import { withRun } from "@/lib/runs";
 import { deadlineFor } from "@/lib/media/keys";
 import { appOrigin } from "@/lib/origin";
 import { route } from "@/lib/models/route";
@@ -83,6 +85,12 @@ export async function POST(req: Request) {
   const args = (params.arguments ?? {}) as Record<string, unknown>;
   const need = Object.prototype.hasOwnProperty.call(MCP_TOOL_ACTION, name) ? MCP_TOOL_ACTION[name] : null;
   if (!need) return err(id, -32602, "Unknown tool");
+  // Through the run log and the action gateway (rules 4500-4519): both off in this release, plain calls then. The
+  // gateway judges the call before it runs and records its outcome; every check in `callTool` still decides.
+  return withRun({ scope: sc(user), kind: "mcp", label: name, via: "mcp" }, () => gatedMcp(user, name, need, () => callTool(id, user, name, args, need, deadline)));
+}
+
+async function callTool(id: Rpc["id"], user: User, name: string, args: Record<string, unknown>, need: Action, deadline: number): Promise<NextResponse> {
   if (!can(user, need)) return ok(id, { ...text("Not allowed: this tool needs a higher role in the account. Nothing was done."), isError: true });
   try {
     switch (name) {

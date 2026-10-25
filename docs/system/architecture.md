@@ -742,6 +742,10 @@ Built by `src/lib/keys.ts` (`personKey` for the pid-keyed families, `globalKey` 
 
 The cookie `thakeen_pk` holds the sign-in nonce (32 random bytes, base64url): `httpOnly`, `Secure` in production, `SameSite=Lax`, `maxAge=300`; only its SHA-256 is stored, and the verify route reads and clears it first, so every outcome clears it (rule 2408). The nonce, the challenge, the credential id and the public key are never logged.
 
+### 3.z Action gateway and run log keys (2026-10-25, branch `claude/thakeen-v2-intelligence-152d6b`, rules 4500-4518)
+
+Thakeen v2 phase 0. `src/lib/gateway.ts` sits in front of `runTool` and the MCP `tools/call` dispatch; `src/lib/runs.ts` keeps one record per chat turn, MCP call and batch through `AsyncLocalStorage`, fed by `metered`, the gateway and `publishOnce`. Both are switched by constants in `src/lib/v2-flags.ts` and ship off. Keys (workspace, `wsKey`): `run:{scope}:{id}` (json `Run`, 30 days), `runs:{scope}` (list of ids, newest 200), `audit:{scope}` (list of json `AuditRow`, newest 1000, 30 days). Flow: `flows.md` section 129.
+
 ## 4. Request lifecycles
 
 ### (a) Marketing page

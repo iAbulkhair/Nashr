@@ -2001,3 +2001,26 @@ Files: `src/lib/product-stats.ts`, `src/lib/connectors/composio-catalog.ts` (`po
 6. Nothing writes to PostHog and no person-level or event-level data is stored: the catalog lists no write tool, and `READS_PRODUCT` keeps the figures out of the store and ad banners.
 7. Founder steps (not done by the code): create the PostHog (API key) auth config in the Composio dashboard and set its id as `COMPOSIO_AUTH_POSTHOG` (staging first), add `posthog` to `COMPOSIO_PROVIDERS`, run `scripts/check-composio-pins.ts` for the toolkit, and connect a test PostHog project on staging to measure the two response shapes (rule 4238). The customer's personal API key needs read scopes: at least `query:read` and `project:read` (and likely `organization:read` for the project list).
 
+
+## 129. Thakeen v2 phase 0: the action gateway in log mode and the run log (2026-10-25, branch `claude/thakeen-v2-intelligence-152d6b`, rules 4500-4518)
+
+The plan: the Claude Doc "Thakeen v2 — PRD, Spec and Roadmap" (components C1 and C2). Files: `src/lib/v2-flags.ts`, `src/lib/gateway.ts`, `src/lib/runs.ts`, wired in `src/lib/chat-run-tool.ts` (`runTool`), `src/app/api/mcp/route.ts` (`tools/call`), `src/lib/chat.ts` (`chat`), `src/lib/generate-batch.ts` (`generateBatch`), `src/lib/metered.ts`, `src/lib/publish-once.ts` and the account wipe (`src/lib/account.ts`).
+
+Action gateway ("Action gateway", C1, `GATEWAY_MODE`):
+
+1. Every chat tool call (`runTool`) and every MCP `tools/call` passes `gatedTool` / `gatedMcp`. Off (the shipped value), they are plain calls: nothing is read or written.
+2. In log mode the gateway reads its inputs the way the old path reads them, from the session user and stored settings, never from the model's words: whether the tool is offered to the talking agent (`toolsFor`), the role's action (`TOOL_ACTION` / `MCP_TOOL_ACTION` with `can`), and the owner's tool authority for the agent (`authorityOf` on `getGov`). Who started it: `mcp` over MCP, `agent` in a chat turn with an agent, `person` otherwise (`routine` is reserved for phase 2).
+3. `decide` is a pure policy table, first match wins: not offered → deny; role → deny; MCP and `publish_item` or `handoff_note` → deny; authority off → deny; `publish_item` → ask (a person's approval of the item, checked on the stored item by the old path); authority ask → ask; else allow.
+4. The `check` row (tool, initiator, agent, verdict, rule, the open run's id) is pushed to `audit:{scope}` before the call runs; the `done` row (outcome `ran`, `refused` or `error`, and `mismatch`) after. A mismatch is a call the gateway would deny that the old path ran; it is also logged as a warning. The outcome of a chat tool is read from its answer's first words (`refusedAnswer`), of an MCP call from the JSON-RPC answer (`isError` or `error`).
+5. Log mode never blocks and never changes an answer; a failure inside the gateway is logged and the call goes on. Enforcement is phase 4 and needs the mismatch evidence first.
+
+Run log ("Run log", C2, `RUN_LOG`):
+
+6. `withRun` opens one run per chat turn, MCP tool call and batch; a run opened inside another joins it (Node `AsyncLocalStorage`), so one request is one record. Off (the shipped value) it is a plain call.
+7. Steps: each metered model call (model, purpose, agent, input tokens including cache reads and writes, output tokens, ok), each tool call (tool, outcome, milliseconds, and the gateway's verdict and rule when it judged), each publish attempt (platform, ok, the answer's code). Never a prompt, reply, tool input or item text. At most 200 steps; the rest are counted in `dropped`.
+8. When the run settles, its record is written to `run:{scope}:{id}` (30 days) and its id pushed to `runs:{scope}` (the newest 200, 30 days from the last run). A write failure is logged and never changes the answer. `replay` reads a run back in order with its totals; no route shows runs yet (the work view is phase 3).
+9. The account wipe deletes every run record, the index and the audit list of each brand.
+
+### 129.1 Release step (rule 679)
+
+Expand: three new key families, no stored shape changes, both switches off. Turning either on is a later release that changes one constant in `src/lib/v2-flags.ts`; turning it off again leaves rows that expire on their own.
