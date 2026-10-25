@@ -373,6 +373,7 @@ describe("who can reach Composio (rule 652)", () => {
       "src/lib/connectors/registry.ts",
       "src/lib/connectors/via-composio.ts",
       "src/lib/instruction-refs.ts",
+      "src/lib/secretary-calendly.ts",
       "src/lib/site-stats.ts",
       "src/lib/social-read/facebook.ts",
       "src/lib/social-read/tiktok.ts",
