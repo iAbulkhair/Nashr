@@ -149,6 +149,8 @@ export const wsKey = {
   feedbackLog: (s: Scope) => `fblog:${s}`,
   /** json: the site's GA4 and Search Console totals. */
   siteStats: (s: Scope) => `sitestats:${s}`,
+  /** json: the owner's PostHog totals (src/lib/product-stats.ts). */
+  productStats: (s: Scope) => `productstats:${s}`,
   /** json: Instagram and LinkedIn page results. */
   socialStats: (s: Scope) => `socialstats:${s}`,
   /** json: ids Thakeen published on Instagram. */
@@ -175,6 +177,8 @@ export const wsKey = {
   connectStartBucket: (s: Scope) => `connectstart:${s}`,
   /** bucket name for `allow` (stored as `rate:storesync:{scope}`): manual store sales syncs of one workspace (rule 2243). */
   storeSyncBucket: (s: Scope) => `storesync:${s}`,
+  /** bucket name for `allow` (stored as `rate:productsync:{scope}`): PostHog reads asked from the card or after a project choice, 6 an hour per workspace (rule 4237). */
+  productSyncBucket: (s: Scope) => `productsync:${s}`,
   /** bucket name for `allow` (stored as `rate:catalogimport:{scope}`): product imports from a store of one workspace (rule 2243). */
   catalogImportBucket: (s: Scope) => `catalogimport:${s}`,
   /**

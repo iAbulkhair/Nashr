@@ -8,7 +8,7 @@ import type { Lang } from "./i18n";
  */
 export const CONNECT_ERROR_CODES = [
   "verify_failed", "unknown_provider", "slow_down", "composio_rate_limited", "not_connected", "bad_value", "bad_action",
-  "unknown_property", "unknown_page", "unknown_org", "unknown_account", "no_page", "shop_required", "bad_shop", "bad_hmac",
+  "unknown_property", "unknown_project", "unknown_page", "unknown_org", "unknown_account", "no_page", "shop_required", "bad_shop", "bad_hmac",
   "revoke_failed", "provider_not_configured", "zid_access_denied", "invalid_state", "session_mismatch", "forbidden",
   "token_failed", "provider_error", "access_denied", "connect_failed", "busy",
 ] as const;
@@ -27,6 +27,7 @@ export const CONNECT_ERRORS: Record<Lang, Messages> = {
     bad_value: "القيمة المختارة غير صالحة. حدّث الصفحة واختر مرة أخرى.",
     bad_action: "تعذّر تنفيذ الطلب. حدّث الصفحة وحاول مرة أخرى.",
     unknown_property: "لم نجد هذا الحساب في Google. حدّث القائمة واختر مرة أخرى.",
+    unknown_project: "لم نجد هذا المشروع في PostHog. حدّث القائمة واختر مرة أخرى.",
     unknown_page: "لم نجد هذه الصفحة في حسابك. حدّث القائمة واختر مرة أخرى.",
     unknown_org: "لم نجد صفحة الشركة هذه في حسابك. حدّث القائمة واختر مرة أخرى.",
     unknown_account: "لم نجد هذا الحساب الإعلاني. حدّث القائمة واختر مرة أخرى.",
@@ -56,6 +57,7 @@ export const CONNECT_ERRORS: Record<Lang, Messages> = {
     bad_value: "That choice is not valid. Refresh the page and choose again.",
     bad_action: "That could not be done. Refresh the page and try again.",
     unknown_property: "We could not find this Google property. Refresh the list and choose again.",
+    unknown_project: "We could not find this PostHog project. Refresh the list and choose again.",
     unknown_page: "We could not find this Page in your account. Refresh the list and choose again.",
     unknown_org: "We could not find this company page in your account. Refresh the list and choose again.",
     unknown_account: "We could not find this ad account. Refresh the list and choose again.",

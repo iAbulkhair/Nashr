@@ -4,6 +4,7 @@ import { agentForTask } from "./agents";
 import { cartDataBlock } from "./cart-recovery";
 import { salesDataBlock } from "./store-sales";
 import { siteDataBlock } from "./site-stats";
+import { productDataBlock } from "./product-stats";
 import { socialDataBlock } from "./social-stats";
 import { adDataBlock } from "./ad-stats";
 import { notRead, notReadBlock } from "./not-read";
@@ -186,6 +187,6 @@ export async function statsFor(type: TaskType, scope: string): Promise<string> {
   if (type === "cart_recovery") return cartDataBlock(scope);
   if (type === "cash_forecast") return salesDataBlock(scope);
   if (agentForTask(type).id !== "dana" && type !== "strategy_review") return "";
-  const [k, store, site, social, ads, missed] = await Promise.all([kpis(scope), salesDataBlock(scope), siteDataBlock(scope), socialDataBlock(scope), adDataBlock(scope), notRead(scope)]);
-  return [statsText(k, { store: !!store, site: !!site, social: !!social, ads: !!ads }), store, site, social, ads, notReadBlock(missed)].filter(Boolean).join("\n\n");
+  const [k, store, site, product, social, ads, missed] = await Promise.all([kpis(scope), salesDataBlock(scope), siteDataBlock(scope), productDataBlock(scope), socialDataBlock(scope), adDataBlock(scope), notRead(scope)]);
+  return [statsText(k, { store: !!store, site: !!site, social: !!social, ads: !!ads }), store, site, product, social, ads, notReadBlock(missed)].filter(Boolean).join("\n\n");
 }
