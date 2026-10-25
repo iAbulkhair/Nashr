@@ -1,3 +1,4 @@
+import { userNameOf, userUriOf } from "../calendly-shape";
 import type { Connection } from "./store";
 import { CHANNEL_LIMITS } from "../channel-limits";
 import { cutKeepingDisclaimer } from "../regulated";
@@ -322,6 +323,15 @@ export async function connectViaComposio(scope: string, provider: string, toolki
   if (provider === "google_drive") meta.account = "Google Drive";
   if (provider === "dropbox") meta.account = "Dropbox";
   if (provider === "onedrive") meta.account = "OneDrive";
+  // Calendly (rules 4300-4329): the owner's user URI is the one value the poll lists events by. A login that names none
+  // that is Calendly's own is refused; the account label is the profile name.
+  if (toolkit === "calendly") {
+    const me = await composioRead(scope, "calendly", "CALENDLY_GET_CURRENT_USER", {}, accountId);
+    const uri = userUriOf(me);
+    if (!uri) throw new Error("calendly_no_user");
+    meta.calUser = uri;
+    meta.account = userNameOf(me);
+  }
   // A reconnected toolkit leaves its old Composio account behind; it is revoked, quietly, after the new one is in hand.
   if (before && before !== accountId) await composioRevoke(scope, before).catch(() => log.error("composio revoke of replaced account failed"));
   return { ...base, meta, expiresAt: undefined };
