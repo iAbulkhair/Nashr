@@ -853,3 +853,10 @@ What each agent may do from a conversation, set by the owner and checked in code
 - The model only proposes: a fact enters memory on a person's Save, checked in the route, never on the model's word. The `remember` tool is refused over MCP and for API tokens.
 - Facts are keyed by `sc(u)` only. An agent fact is read only in that agent's turns, a conversation fact only in its thread; another brand's or workspace's facts are never read, and the vector index can rank only ids already found in the caller's own hash.
 - A recalled fact is data in the prompt, fenced, and never authorises publishing, spending or a brand change; those stay checked in code as before.
+
+## Thread compaction (2026-10-25, branch `claude/thakeen-v2-p1-memory`, rules 4580-4589)
+
+- No new route and no new permission. The summary is written inside a chat turn that already passed authentication, keyed by `sc(u)` and a checked conversation id only; another brand's or workspace's summary is never read.
+- The summarised messages and the summary are data, fenced in the prompt; a summary never approves publishing, spending or a brand change, which stay checked in code as before. A line that looks like a credential is never stored.
+- Facts from a summary are only proposed as memory cards (with `MEMORY_V2` on), screened, counted and saved on a person's Save; never over MCP or for an API token.
+- The summary call is metered to Thakeen's global counters, never charged to the owner.

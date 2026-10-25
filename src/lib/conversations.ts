@@ -18,7 +18,7 @@ export type Conversation = { id: string; title: string; createdAt: string; updat
  * A conversation id as `createConversation` makes them, checked before it is put in a key: letters, digits, "_" and "-",
  * at most 64. A request's id is never trusted as is; within the caller's scope it can only name the caller's own records.
  */
-const isConversationId = (id: unknown): id is string => typeof id === "string" && /^[A-Za-z0-9_-]{1,64}$/.test(id);
+export const isConversationId = (id: unknown): id is string => typeof id === "string" && /^[A-Za-z0-9_-]{1,64}$/.test(id);
 
 /** A stored conversation record, checked (rule 2039): null when absent or when it has no id, logged without values. */
 const asConversation = (raw: unknown) => parseStored("conversation", ConversationRecord, raw, null) as Conversation | null;
@@ -145,7 +145,7 @@ export async function liveConversations(scope: string, ids: readonly string[]): 
   return new Set(uniq.filter((_, i) => rows[i] !== null));
 }
 /**
- * Delete a conversation: its record, its thread and its id in the index, under the conversation's lock, so a writer that
+ * Delete a conversation: its record, its thread, its summary (C11) and its id in the index, under the conversation's lock, so a writer that
  * read the record before cannot write it back afterwards. `busy` (nothing deleted) when the lock was not taken in time.
  */
 export async function deleteConversation(scope: string, id: string): Promise<ConversationWrite> {
@@ -153,7 +153,8 @@ export async function deleteConversation(scope: string, id: string): Promise<Con
   const r = await withConversationLock(scope, id, async () => {
     // The id has to leave the index as well as the record. `listConversations` reads only the newest 100 ids, so dead
     // ids left behind push live conversations out of that window and they disappear from the owner's list for good.
-    await Promise.all([db.del(wsKey.conv(scopeParam(scope), id)), db.del(wsKey.chat(scopeParam(scope), id)), db.lrem(wsKey.convs(scopeParam(scope)), id)]);
+    const s = scopeParam(scope);
+    await Promise.all([db.del(wsKey.conv(s, id)), db.del(wsKey.chat(s, id)), db.del(wsKey.convSummary(s, id)), db.lrem(wsKey.convs(s), id)]);
   });
   return r.ok ? "ok" : "busy";
 }

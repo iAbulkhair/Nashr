@@ -129,6 +129,8 @@ export const wsKey = {
   convLock: (s: Scope, id: string) => `convlock:${s}:${id}`,
   /** list: a chat thread. Without an id, the legacy default thread (no conversation record). */
   chat: (s: Scope, convId?: string) => (convId === undefined ? `chat:${s}` : `chat:${s}:${convId}`),
+  /** json `ThreadSummary` (src/lib/compaction.ts): the summary of a thread's older messages. Without an id, the default thread's. */
+  convSummary: (s: Scope, convId?: string) => (convId === undefined ? `convsum:${s}` : `convsum:${s}:${convId}`),
   /** set: connected provider ids. */
   conns: (s: Scope) => `conns:${s}`,
   /** json: one connection, credentials encrypted. */

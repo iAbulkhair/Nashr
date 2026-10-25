@@ -41,7 +41,8 @@ import { runTool } from "./chat-run-tool";
 import type { MemoryProposal } from "./memory";
 import { REMEMBER_TOOL, runRemember } from "./memory-tool";
 import { recall, recallBlock } from "./recall";
-import { MEMORY_V2 } from "./v2-flags";
+import { COMPACTION, MEMORY_V2 } from "./v2-flags";
+import { compactThread, droppedTurns, proposeSummaryFacts, readSummary, summaryBlock, type ThreadSummary } from "./compaction";
 
 export { history, push } from "./chat-history";
 export type { ChatItem, ChatMsg, PlanItem } from "./chat-history";
@@ -96,13 +97,16 @@ async function chatTurn(user: User, text: string, conv: string | undefined, agen
   // Independent reads, fetched together: one after another they cost 1-2 s of silence before every model call. The last
   // two are for the agent-scope input gate below: the modes (the route's copy when it passed one) and the names of the
   // account's other brands. A store error on the brand names must not cost the owner the turn: the gate reads none.
-  const [brand, prefs, memory, files, conns, thread, feedback, notes, by, workDays, layers, scopeModes, otherBrands, gov, recalled] = await Promise.all([getBrand(email), listPreferencesFor(email, agentId), memoryBlock(email), listFileNames(email), listConnections(email), history(email, conv), feedbackFor(email, agentId, { chat: true }), handoffNotesFor(email, agentId), opts.by ?? byOf(user), db.get<unknown>(SEC_KEYS.cal(email)), loadLayers(sc(user), entitlements(user).instructions, "active", [agentId], "stub"), opts.agentScope ?? readAgentScopeModes(), otherBrandNames(user).catch((e): string[] => {
+  const [brand, prefs, memory, files, conns, thread, feedback, notes, by, workDays, layers, scopeModes, otherBrands, gov, recalled, storedSummary] = await Promise.all([getBrand(email), listPreferencesFor(email, agentId), memoryBlock(email), listFileNames(email), listConnections(email), history(email, conv), feedbackFor(email, agentId, { chat: true }), handoffNotesFor(email, agentId), opts.by ?? byOf(user), db.get<unknown>(SEC_KEYS.cal(email)), loadLayers(sc(user), entitlements(user).instructions, "active", [agentId], "stub"), opts.agentScope ?? readAgentScopeModes(), otherBrandNames(user).catch((e): string[] => {
     log.error("agent scope brand names failed", e);
     return [];
   }), getGov(email), MEMORY_V2 ? recall(sc(user), text, { agent: agentId, conv }).catch((e): never[] => {
     log.error("recall failed", e);
     return [];
-  }) : []]);
+  }) : [], COMPACTION ? readSummary(sc(user), conv).catch((e): null => {
+    log.error("thread summary read failed", e);
+    return null;
+  }) : (null as ThreadSummary | null)]);
   // The agent-scope input gate (rule 794; spec docs/superpowers/specs/2026-10-08-entitlements-agent-scope-design.md 4.2),
   // after the paused return and the brand reads and before the first model call. The owner's message is already saved
   // above, so an enforced refusal saves only its reply: the thread reads the same as "message, then refusal".
@@ -140,6 +144,14 @@ async function chatTurn(user: User, text: string, conv: string | undefined, agen
     // full answer. Every later call: estimated from the previous call's metered input (its cached prefix as a cache read)
     // and output, plus the tool results added since.
     const trimmed = trimHistory(thread);
+    // Thread compaction (v2 phase 1, C11, rules 4580-4589): the messages the guard dropped are folded into the thread's
+    // summary, read as data in the uncached block before the first call is fitted. Off, nothing is read or written.
+    if (COMPACTION) {
+      const c = await compactThread(sc(user), conv, storedSummary, droppedTurns(thread, trimmed.length), { agent: agentId, deadline, lang, onStatus: opts.onStatus });
+      const block = summaryBlock(c.summary);
+      if (block) sys[2] = { ...sys[2], text: sys[2].text + block };
+      if (MEMORY_V2) await proposeSummaryFacts(sc(user), c.facts, { agent: agentId, conv, via }, by, memoryProposed);
+    }
     const fit = fitFirstCall(model, trimmed, JSON.stringify(tools).length + sys[0].text.length + sys[1].text.length, sys[2].text.length);
     const large = workspaceLarge(trimmed.length, fit);
     const messages: Anthropic.MessageParam[] = fit.messages;

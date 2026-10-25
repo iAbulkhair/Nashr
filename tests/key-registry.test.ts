@@ -42,6 +42,8 @@ describe("rule 2030: each builder returns the bytes of its old template", () => 
     [wsKey.convs(S), `convs:${S}`],
     [wsKey.conv(S, "c1"), `conv:${S}:c1`],
     [wsKey.convLock(S, "c1"), `convlock:${S}:c1`],
+    [wsKey.convSummary(S), `convsum:${S}`],
+    [wsKey.convSummary(S, "c1"), `convsum:${S}:c1`],
     [wsKey.chat(S), `chat:${S}`],
     [wsKey.chat(S, "c1"), `chat:${S}:c1`],
     [wsKey.conns(S), `conns:${S}`],

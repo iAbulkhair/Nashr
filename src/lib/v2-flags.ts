@@ -23,3 +23,10 @@ export const RUN_LOG: boolean = false;
  * owner saves, and every chat turn recalls the brand's saved facts that fit the message. Release step: EXPAND.
  */
 export const MEMORY_V2: boolean = false;
+
+/**
+ * Thread compaction (phase 1, C11, rules 4580-4599; src/lib/compaction.ts). `false`: the history guard drops the oldest
+ * messages of a long thread, exactly as before. `true`: the messages it drops are folded into a stored summary of the
+ * thread, which the next turns read as data. Release step: EXPAND.
+ */
+export const COMPACTION: boolean = false;

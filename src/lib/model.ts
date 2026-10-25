@@ -254,4 +254,6 @@ export const MODEL_BUDGET = {
   JUDGE_MS: 90_000,
   TOOL_MS: 45_000,
   AGENT_SCOPE_MS: 3_000,
+  /** A thread summary (src/lib/compaction.ts): one short forced call before the turn's first call, skipped past it. */
+  COMPACT_MS: 8_000,
 } as const;

@@ -146,7 +146,7 @@ export async function wipeAccount(id: string, opts: { userLocked?: boolean; logi
       ...files.map((f) => wsKey.file(s, f.name)),
       // Already deleted under their lock above; listed again for an id `deleteConversation` refuses (a malformed one) and
       // for the lock key itself (10 s TTL, src/lib/conversations.ts).
-      ...convIds.flatMap((id) => [wsKey.conv(s, id), wsKey.chat(s, id), wsKey.convLock(s, id)]),
+      ...convIds.flatMap((id) => [wsKey.conv(s, id), wsKey.chat(s, id), wsKey.convLock(s, id), wsKey.convSummary(s, id)]),
       ...conns.map((p) => wsKey.conn(s, p)), // encrypted third-party credentials
       ...months.map((m) => wsKey.taskMonth(s, m)),
       // The chat feedback log: per brand, and it holds the free-text reason the owner typed, so it must not outlive
@@ -222,7 +222,7 @@ export async function wipeAccount(id: string, opts: { userLocked?: boolean; logi
       profileKey(s),
       // The devices that get phone notifications for this brand (rule 2571).
       wsKey.pushSubs(s),
-      wsKey.onboardPlan(s), wsKey.pending(s), wsKey.notNow(s), wsKey.pendingIndex(s), wsKey.taskMonths(s), wsKey.taskIndexVersion(s), wsKey.tasks(s), wsKey.files(s), wsKey.brand(s), wsKey.prefs(s), wsKey.chat(s), wsKey.convs(s), wsKey.gov(s), wsKey.schedule(s), wsKey.brief(s), wsKey.conns(s),
+      wsKey.onboardPlan(s), wsKey.pending(s), wsKey.notNow(s), wsKey.pendingIndex(s), wsKey.taskMonths(s), wsKey.taskIndexVersion(s), wsKey.tasks(s), wsKey.files(s), wsKey.brand(s), wsKey.prefs(s), wsKey.chat(s), wsKey.convSummary(s), wsKey.convs(s), wsKey.gov(s), wsKey.schedule(s), wsKey.brief(s), wsKey.conns(s),
     );
   });
   // Our media copies on disk (rule 1761): every file of every brand, its index entries and the space they held. A disk

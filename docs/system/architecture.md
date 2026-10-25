@@ -750,6 +750,10 @@ Thakeen v2 phase 0. `src/lib/gateway.ts` sits in front of `runTool` and the MCP 
 
 Thakeen v2 phase 1, C5. `src/lib/memory.ts` keeps the facts and the proposal cards, `src/lib/memory-tool.ts` is the chat's `remember` tool, `src/lib/recall.ts` picks the facts a turn sees, `src/lib/memory-index.ts` talks to the optional Upstash Vector index. Switched by `MEMORY_V2` in `src/lib/v2-flags.ts`, shipped off. Keys (workspace, `wsKey`): `mem:{scope}` (hash id → json `Fact`, at most 200), `memprop:{scope}:{id}` (json `MemoryProposal`, 7 days), `memprop-done:{scope}:{id}` (`saved` or `dismissed`, 7 days), `memprop-claim:{scope}:{id}` (60 seconds, one decision at a time), `memprops:{scope}` (set of proposal ids, 7 days), and the rate bucket `memprop-day:{scope}` (`MEMORY_PROPOSALS_PER_DAY`). The vector index, when configured, holds one namespace per scope (the scope URL-encoded) with the fact's id, text and scope/agent/conversation labels; it ranks, it never adds a fact. Flow: `flows.md` section 130.
 
+### 3.z.2 Thread summary keys (2026-10-25, branch `claude/thakeen-v2-p1-memory`, rules 4580-4589)
+
+Thakeen v2 phase 1, C11. `src/lib/compaction.ts` folds the messages the chat's history guard drops into one summary per thread. Switched by `COMPACTION` in `src/lib/v2-flags.ts`, shipped off. Keys (workspace, `wsKey.convSummary`): `convsum:{scope}` (the default thread) and `convsum:{scope}:{id}` (a conversation), json `ThreadSummary` (`v`, `text` at most 1,500 characters, `upTo`, `count`, `at`), no expiry, deleted with the conversation and by the account wipe. The model purpose `compact` (Haiku 5.5) and the usage kind `compact` (global counters only) are new. Flow: `flows.md` section 131.
+
 ## 4. Request lifecycles
 
 ### (a) Marketing page

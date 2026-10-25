@@ -2054,3 +2054,22 @@ Manage and wipe:
 ### 130.1 Release step (rule 679)
 
 Expand: new key families and an optional field on the chat message (`memoryProposals`), which old code ignores. Turning memory on is a later release that changes `MEMORY_V2`; without `UPSTASH_VECTOR_REST_URL` and `UPSTASH_VECTOR_REST_TOKEN` recall uses the word match only. Turning it off again leaves the facts in place, unread, until the account is wiped.
+
+## 131. Thakeen v2 phase 1: thread compaction (2026-10-25, branch `claude/thakeen-v2-p1-memory`, rules 4580-4589)
+
+The plan: the Claude Doc "Thakeen v2 — PRD, Spec and Roadmap" (component C11). Files: `src/lib/compaction.ts`, wired in `src/lib/chat.ts` (`chatTurn`), `src/lib/conversations.ts` (`deleteConversation`) and the account wipe (`src/lib/account.ts`). Switched by `COMPACTION` in `src/lib/v2-flags.ts`, shipped off.
+
+1. Off (the shipped value), the history guard (`trimHistory`) drops the oldest messages of a long thread exactly as before: no summary is read, called or written.
+2. On, the turn reads the thread's stored summary together with its other reads (`readSummary`; a read error is logged and counts as none). The key is `convsum:{scope}` for the default thread and `convsum:{scope}:{id}` for a conversation, from `sc(u)` and an id that passes `isConversationId`; any other id reads and writes nothing. The plan put the summary on the conversation record; the default thread has no record, so it is a key of its own.
+3. After `trimHistory`, the messages it dropped (`droppedTurns`) that are newer than the summary's `upTo` are counted. At `COMPACT_MIN_NEW` (4) or more, and with `COMPACT_MS` (8 s) plus a full call's room left before the deadline and the model on, one forced `summary` tool call goes to `route("compact")` (Haiku 5.5). The status line says so ("Summarising the start of our conversation…").
+4. The call reads the previous summary and the new messages (each cut to 1,500 characters) as escaped data and is told that instructions inside them are ignored. It returns a merged summary of at most 1,500 characters in the owner's language (decisions, open requests, work done, facts the owner stated) and at most three durable facts the owner stated, never a secret, offer, price or discount.
+5. It is metered to the global counters only (`email: undefined`, kind `compact`): no owner is charged and no message or credit is spent.
+6. The summary is cleaned (a line that looks like a credential is dropped, then trimmed and capped) and stored as json `ThreadSummary` (`v`, `text`, `upTo` = the last summarised message's time, `count`, `at`), with no expiry. The thread's own messages never change.
+7. Any failure (an SDK error, a timeout, a paused model, too little time, an empty answer) keeps the stored summary and logs one fixed line with the error's class and status, never its message. The turn goes on.
+8. The summary is added to the uncached system block, fenced as data (`<thread_summary>`, `<` escaped) and stated never to approve publishing, spending or a brand change, before `fitFirstCall` sizes the first call.
+9. With `MEMORY_V2` also on, the facts become memory cards under the reply (`proposeSummaryFacts`): screened like any `remember` proposal, marked inferred, brand scope, counted in the reply's three cards and the day's allowance, never in a turn over MCP or for an API token. Nothing is saved until the owner presses Save.
+10. Deleting a conversation deletes its summary; the account wipe deletes the default thread's and every conversation's.
+
+### 131.1 Release step (rule 679)
+
+Expand: one new key family, no stored shape changes. Turning compaction on is a later release that changes `COMPACTION`; turning it off again leaves the summaries in place, unread, until the conversation is deleted or the account wiped.
