@@ -2073,3 +2073,18 @@ The plan: the Claude Doc "Thakeen v2 — PRD, Spec and Roadmap" (component C11).
 ### 131.1 Release step (rule 679)
 
 Expand: one new key family, no stored shape changes. Turning compaction on is a later release that changes `COMPACTION`; turning it off again leaves the summaries in place, unread, until the conversation is deleted or the account wiped.
+
+## 132. Thakeen v2 phase 1: agents as config (2026-10-25, branch `claude/thakeen-v2-p1-memory`, rules 4600-4605)
+
+The plan: the Claude Doc "Thakeen v2 — PRD, Spec and Roadmap" (component C14). Files: `src/lib/agent-profiles.ts`, read by `src/lib/noor.ts` (`taskSpec`, `reviewerRubric`). A refactor with no switch: nothing a customer sees or an item is written under changes.
+
+1. Each agent has one typed profile (`agentProfile(id)`): its roster entry in `src/lib/agents.ts` (name, role, task types, skills file, playbook slices, persona) and its prompt half in `src/lib/agent-profiles.ts` (the spec of each task type it owns and the reviewer's fit check for its work). The roster stays in `agents.ts` because client components read it; the prompt half never reaches the browser.
+2. A task type's spec sits only under the agent that owns it, so a spec cannot drift to another agent. `taskSpec` reads `TASK_SPECS` and fills `{CURRENCY}` from the brand as before (rule 1473); `reviewerRubric` reads `REVIEW_FOCUS`.
+3. The gate was the prompts themselves: every agent's `fixedPrompt` and `systemPrompt`, every task's spec (with and without a brand), reviewer rubric and prompt, the cross-review prompts, the prompt stamps, `promptHashes`, the tool authority and the tool lists were dumped before and after the change and compared byte for byte (593,390 bytes, identical). The combined code hash of all 26 task types is pinned in `tests/v2-agent-profiles.test.ts`. No golden run was made: no prompt changed, so no result can.
+4. Customers still change an agent's behaviour only through the instruction layers and Governance. A profile is platform code and its changes show in the prompt stamp (`codeHash`).
+5. Not in a profile because no agent differs today: a default tool policy (the policy is `on` until the owner changes it, and `on` is never stored, so a per-agent default other than `on` would first need a stored `on`, an expand release of its own), model purposes (chosen per purpose and task type in `src/lib/models/route.ts`) and caps (the owner's, in `src/lib/governance.ts`). The cross-agent review map (`CROSS_REVIEW`, `CROSS_FOCUS`, `CROSS_PLAYBOOK`) stays in `noor.ts`: it is about pairs of agents, not one.
+
+### 132.1 Release step (rule 679)
+
+None: no stored shape, key or variable changes. The release that carries it changes no item, stamp or golden result.
+
