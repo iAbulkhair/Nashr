@@ -360,7 +360,7 @@ const IMPORTS_COMPOSIO = /(?:from|import\()\s*["'][^"']*\/(?:composio|via-compos
 
 describe("who can reach Composio (rule 652)", () => {
   const files = (dir: string): string[] => readdirSync(dir).flatMap((f) => { const p = join(dir, f); return statSync(p).isDirectory() ? files(p) : /\.tsx?$/.test(f) ? [p] : []; });
-  it("only the connector layer, the connect routes, account deletion and the reference-file import (rule 955) import it; no chat, MCP or agent code does", () => {
+  it("only the connector layer, the connect routes, account deletion, the reference-file import (rule 955) and Reem's calendar read (rule 4260) import it; no chat, MCP or agent code does", () => {
     const importers = files("src").filter((f) => IMPORTS_COMPOSIO.test(readFileSync(f, "utf8"))).sort();
     expect(importers).toEqual([
       "src/app/api/connect/[provider]/callback/route.ts",
@@ -374,6 +374,7 @@ describe("who can reach Composio (rule 652)", () => {
       "src/lib/connectors/via-composio.ts",
       "src/lib/instruction-refs.ts",
       "src/lib/secretary-calendly.ts",
+      "src/lib/secretary-gcal-via.ts",
       "src/lib/site-stats.ts",
       "src/lib/social-read/facebook.ts",
       "src/lib/social-read/tiktok.ts",

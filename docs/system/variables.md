@@ -138,7 +138,7 @@ Read in `src/lib/connectors/composio.ts` (`composioEnabled`, `composioReady`, `g
 | Name | Purpose | Secret |
 |---|---|---|
 | `COMPOSIO_API_KEY` | Server-side key for Composio's API (a project key). Also read, outside `src/`, by `scripts/check-composio-pins.ts` when run by hand (rule 2166); it is never printed | Yes |
-| `COMPOSIO_PROVIDERS` | Comma list of providers routed through Composio (`meta`, `x`, `linkedin`, `tiktok`; drafts only: `whatsapp`, `youtube`; read only: `meta_ads`, `snapchat`, `google_ads`, `tiktok_ads`, `linkedin_ads`, `google`, `google_workspace` for the Docs and Sheets reference files; import and export: `google_drive`, `dropbox`, `onedrive` for the cloud drives, rules 1775-1789; read only: `calendly` for Reem's bookings, rules 4300-4329). Unset: none, and Meta and X keep their direct apps | No |
+| `COMPOSIO_PROVIDERS` | Comma list of providers routed through Composio (`meta`, `x`, `linkedin`, `tiktok`; drafts only: `whatsapp`, `youtube`; read only: `meta_ads`, `snapchat`, `google_ads`, `tiktok_ads`, `linkedin_ads`, `google`, `google_workspace` for the Docs and Sheets reference files; `gcal` for Reem's calendar, rules 4260-4266; import and export: `google_drive`, `dropbox`, `onedrive` for the cloud drives, rules 1775-1789; read only: `calendly` for Reem's bookings, rules 4300-4329). Unset: none, and Meta and X keep their direct apps | No |
 | `COMPOSIO_AUTH_FACEBOOK` | Composio auth config id for the Facebook toolkit | No, keep internal |
 | `COMPOSIO_AUTH_INSTAGRAM` | Composio auth config id for the Instagram toolkit | No, keep internal |
 | `COMPOSIO_AUTH_TWITTER` | Composio auth config id for the X toolkit | No, keep internal |
@@ -158,6 +158,7 @@ Read in `src/lib/connectors/composio.ts` (`composioEnabled`, `composioReady`, `g
 | `COMPOSIO_AUTH_GOOGLEDRIVE` | Composio auth config id for the Google Drive toolkit (cloud drives, rules 1775-1789: search and download a file into the workspace, upload a finished image or clip; 2026-10-13, branch only) | No, keep internal |
 | `COMPOSIO_AUTH_DROPBOX` | Composio auth config id for the Dropbox toolkit (cloud drives: search, read, upload into `/Thakeen` with `mode: add` and `autorename`; 2026-10-13, branch only) | No, keep internal |
 | `COMPOSIO_AUTH_ONEDRIVE` | Composio auth config id for the OneDrive toolkit (`one_drive`; cloud drives: search, download, upload into `/Thakeen` with `conflict_behavior: rename`; 2026-10-13, branch only) | No, keep internal |
+| `COMPOSIO_AUTH_GOOGLECALENDAR` | Composio auth config id for the Google Calendar toolkit (rules 4260-4266: Reem reads the owner's own calendars and the chosen calendar's events, read only, no write tool in the catalog). Set it with Composio-managed auth and read the scopes the consent screen shows before listing `gcal` in `COMPOSIO_PROVIDERS`; the direct path (`GOOGLE_CLIENT_ID`) stays the other way to connect and is used when `gcal` is not listed | No, keep internal |
 | `COMPOSIO_AUTH_CALENDLY` | Composio auth config id for the Calendly toolkit (read only: the owner's profile, scheduled events and their invitees, polled by the secretary tick so Reem sees bookings without a Calendly webhook, rules 4300-4329, flows.md section 42a) | No, keep internal |
 
 ## 5b. Ops agent and Telegram (2026-10-20, branch `claude/thakeen-ops-agent`, rules 2380-2390)

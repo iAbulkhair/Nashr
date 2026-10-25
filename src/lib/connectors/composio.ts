@@ -77,6 +77,9 @@ export const TOOLKIT_VERSION: Readonly<Record<Toolkit, string>> = {
   googledrive: "20261001_00",
   dropbox: "20261001_00",
   one_drive: "20261013_00",
+  // The newest version `composio dev toolkits version googlecalendar` lists (2026-10-25); its schema is the one the
+  // allowlisted argument names were read from. Run scripts/check-composio-pins.ts before naming gcal in COMPOSIO_PROVIDERS.
+  googlecalendar: "20260331_00",
   calendly: "20261018_00",
 };
 
