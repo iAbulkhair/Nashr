@@ -11,6 +11,7 @@ import { adminFetch } from "@/lib/admin-fetch";
 import { adminHref } from "@/lib/admin-gate";
 import { roleLabel } from "@/lib/role-label";
 import type { WorkspaceDetail } from "@/lib/admin-workspaces";
+import type { PeopleView } from "@/lib/admin-people";
 import { EndedNotice, useAdminEnded, type SectionProps } from "./shared";
 import { WSP_COPY } from "./workspaces-copy";
 
@@ -25,7 +26,7 @@ const TH = "p-2 text-start font-medium";
  * open is one read and one audit row on the server. Every value renders as text. The plan, seat, deal and allowance
  * controls stay in the accounts view, which the Billing tab links to.
  */
-export default function WorkspacePage({ lang, keySession, email }: SectionProps & { email: string }) {
+export default function WorkspacePage({ lang, keySession, email, ws }: SectionProps & { email: string; ws?: string }) {
   const ended = useAdminEnded();
   const W = WSP_COPY[lang];
   const [load, setLoad] = useState<Load>({ state: "loading" });
@@ -33,14 +34,14 @@ export default function WorkspacePage({ lang, keySession, email }: SectionProps 
 
   const read = useCallback(async (): Promise<Load> => {
     try {
-      const r = await adminFetch(`/api/admin/workspaces/${encodeURIComponent(email)}`, { cache: "no-store" });
+      const r = await adminFetch(`/api/admin/workspaces/${encodeURIComponent(email)}${ws ? `?ws=${encodeURIComponent(ws)}` : ""}`, { cache: "no-store" });
       const j = (await r.json().catch(() => null)) as ({ ok?: boolean } & Partial<WorkspaceDetail>) | null;
       if (r.ok && j?.ok && j.view) return { state: "ready", detail: j as WorkspaceDetail };
       return { state: "failed", error: r.status === 403 ? "forbidden" : r.status === 404 ? "not_found" : "failed" };
     } catch {
       return { state: "failed", error: "failed" };
     }
-  }, [email]);
+  }, [email, ws]);
 
   useEffect(() => {
     let live = true;
@@ -139,7 +140,7 @@ export default function WorkspacePage({ lang, keySession, email }: SectionProps 
             <tbody>
               {team.map((m) => (
                 <tr key={m.email} className="border-t border-border">
-                  <td className="p-2"><bdi dir="ltr">{m.email}</bdi><div dir="auto" className="text-foreground-muted">{m.name}</div></td>
+                  <td className="p-2"><bdi dir="ltr">{m.email}</bdi><div dir="auto" className="text-foreground-muted">{m.name}</div><PersonWorkspaces lang={lang} email={m.email} /></td>
                   <td className="p-2">{roleLabel(m.role, lang)}</td>
                   <td className="p-2">{m.status === "paused" ? <Badge tone="warning">{W.team.paused}</Badge> : m.status === "owner" ? <Badge tone="info">{W.team.owner}</Badge> : <Badge tone="success">{W.team.active}</Badge>}</td>
                   <td className="p-2"><Time value={m.joinedAt} lang={lang} /></td>
@@ -235,3 +236,36 @@ export default function WorkspacePage({ lang, keySession, email }: SectionProps 
 }
 
 const WSP_BADGE = { en: { suspended: "Suspended" }, ar: { suspended: "موقوف" } } as const;
+
+/**
+ * Every workspace one team member holds (rule 4701), read on demand from GET /api/admin/people/{email} (read only, audited on
+ * the server), so opening the Team tab costs no extra reads. Each line opens that workspace's page by its handle.
+ */
+function PersonWorkspaces({ lang, email }: { lang: SectionProps["lang"]; email: string }) {
+  const P = WSP_COPY[lang].team;
+  const [rows, setRows] = useState<PeopleView["workspaces"] | "loading" | "failed" | null>(null);
+  async function show() {
+    setRows("loading");
+    try {
+      const r = await adminFetch(`/api/admin/people/${encodeURIComponent(email)}`, { cache: "no-store" });
+      const j = (await r.json().catch(() => null)) as ({ ok?: boolean } & Partial<PeopleView>) | null;
+      setRows(r.ok && j?.ok && Array.isArray(j.workspaces) ? j.workspaces : "failed");
+    } catch {
+      setRows("failed");
+    }
+  }
+  if (rows === null) return <button type="button" onClick={() => void show()} className="mt-1 min-h-[var(--hit-min)] text-foreground underline pointer-fine:min-h-6">{P.workspaces}</button>;
+  if (rows === "loading") return <p className="mt-1 text-foreground-muted">{P.wsLoading}</p>;
+  if (rows === "failed") return <p className="mt-1 text-foreground-muted">{P.wsFailed}</p>;
+  return (
+    <ul className="mt-1 grid gap-1">
+      {rows.map((w) => (
+        <li key={w.handle} className="flex flex-wrap items-center gap-1.5">
+          <Link href={`${adminHref(lang, "users")}/${encodeURIComponent(email)}?ws=${encodeURIComponent(w.handle)}`} className="text-foreground underline"><span dir="auto">{w.name}</span></Link>
+          <span className="text-foreground-muted">{roleLabel(w.role, lang)}</span>
+          {w.paused && <Badge tone="warning">{P.paused}</Badge>}
+        </li>
+      ))}
+    </ul>
+  );
+}

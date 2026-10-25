@@ -12,6 +12,7 @@ import { lastActive } from "./track";
 import { recentActivity, type Activity } from "./activity";
 import { globalKey } from "./keys";
 import { accountForChosen, viewOf, type WorkspaceView } from "./admin-workspace";
+import { handlesReady, wsHandle } from "./ws-handle";
 import {
   ACTIVE_DAYS, TASK_DAYS, activeLogins, daySeries, lastActivity, matchRow, memberStats, pageOf, rowFacets, sortRows,
   type MemberStats, type WorkspaceRow, type WsQuery,
@@ -129,7 +130,7 @@ export async function memberHits(text: string): Promise<{ person: { email: strin
 /** The list row of an account: the cached numbers and the live record's plan, state, limits and allowance. */
 export function rowOf(u: User, a: WsAgg, role?: string): WorkspaceRow {
   return {
-    email: u.email, name: a.name, ownerName: a.ownerName, plan: u.plan, suspended: isSuspended(u),
+    email: u.email, ...(handlesReady() ? { handle: wsHandle(acct(u)) } : {}), name: a.name, ownerName: a.ownerName, plan: u.plan, suspended: isSuspended(u),
     seats: { used: a.seatsUsed, limit: seatLimit(u) }, brands: { active: a.brandsActive, cap: brandCapFor(u) },
     active7: a.active7, tasks30: a.tasks30, credits: { used: a.creditsUsed, allowance: allowanceOf(u) },
     lastActivityAt: a.lastActivityAt, createdAt: u.createdAt, ...(role ? { asRole: role } : {}),
@@ -190,8 +191,8 @@ export type WorkspaceDetail = {
  * capped activity log of each of the account's brands (`CAPS.activity` rows), because a member's requests and credits are a sum
  * over the window; `complete` says whether that window was fully inside what the log still holds.
  */
-export async function workspaceDetail(chosen: string, now = Date.now()): Promise<WorkspaceDetail | null> {
-  const found = await accountForChosen(chosen);
+export async function workspaceDetail(chosen: string, now = Date.now(), ws?: string | null): Promise<WorkspaceDetail | null> {
+  const found = await accountForChosen(chosen, ws);
   if (!found) return null;
   const { owner } = found;
   const [view, r] = await Promise.all([viewOf(owner, found.openedFrom), readAccount(owner, now, CAPS.activity)]);

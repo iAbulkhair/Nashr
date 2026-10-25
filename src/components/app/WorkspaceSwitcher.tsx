@@ -12,8 +12,8 @@ import { useWsHandle } from "./WorkspaceContext";
 
 /**
  * The workspace switcher at the top of the rail (multi-workspace M2, spec section 16; rule 2112). It is drawn only in a
- * shell rendered for a workspace handle (`MULTI_ORG` on) and only when the person holds two workspaces or more, so a
- * single workspace shows nothing new. The list is `GET /api/workspaces` (handles, names and roles, never an id);
+ * shell rendered for a workspace handle (`MULTI_ORG` on), with one workspace too (rule 4702): the owner and every member
+ * see which workspace they are in and their role, and reach «All workspaces» and «New workspace» from it. The list is `GET /api/workspaces` (handles, names and roles, never an id);
  * picking one calls the switch route, which re-checks the handle, then a full load of its link at the same page
  * (`switchTarget`) so the whole shell is rendered for it. «New workspace» opens `/{lang}/app/workspaces`.
  */
@@ -45,7 +45,7 @@ export default function WorkspaceSwitcher({ t, lang, onNavigate }: { t: AppDict[
       .catch(() => {});
   }
 
-  if (!handle || !rows || rows.length < 2) return null;
+  if (!handle || !rows || rows.length < 1) return null;
   const current = rows.find((w) => w.handle === handle) ?? rows.find((w) => w.current);
 
   async function open(to: string) {
@@ -64,6 +64,7 @@ export default function WorkspaceSwitcher({ t, lang, onNavigate }: { t: AppDict[
       onSelect: () => void open(w.handle),
     })),
     ...(waiting > 0 ? [{ key: "invites", href: appHref(lang, "/workspaces"), label: t.invites.replace("{n}", String(waiting)), onSelect: onNavigate }] : []),
+    { key: "all", href: appHref(lang, "/workspaces"), label: t.title, onSelect: onNavigate },
     { key: "new", href: appHref(lang, "/workspaces"), label: t.create, onSelect: onNavigate },
   ];
 
