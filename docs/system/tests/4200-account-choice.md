@@ -1,0 +1,16 @@
+# Coverage: choosing and changing the account or Page of a Composio connection (rules 4200-4209)
+
+Status on 2026-10-25 on branch `claude/connect-account-choice-3d2c04` (cut from main 7d4119e7). Flow in `flows.md` section 11a, item 5. No route, permission or stored shape changed (release step: **expand**, nothing to convert). Strings in `src/lib/app-i18n-pages.ts` (`integrations`, Arabic and English with the same keys).
+
+| # | Rule | Verified today | First test to write |
+|---|---|---|---|
+| 4200 | What Composio can force: nothing. The installed `@composio/core` `link()` options have no prompt, re-consent or account-chooser switch, and `composioConnect` sends only `callbackUrl` and `allowMultiple`. If a later SDK adds one the test fails, so someone reads it and replaces step 1 of the dialog | yes (SDK 0.22.0 types), no (not tried against Meta or LinkedIn live) | `tests/account-choice.test.ts` (rule 4200 block) |
+| 4201 | `accountSettingsUrl` returns the platform's own https settings page for `meta` and `linkedin` only, and null for any other name, including names on the object's prototype | yes (the shape), no (the two URLs were not opened) | `tests/account-choice.test.ts` (rule 4201 block) |
+| 4202 | Every new string exists in Arabic and English; the dialog never promises a fresh consent from Reconnect alone, and says removing the app stops the current connection; the Meta note says Instagram does not follow the Page chosen | yes | `tests/account-choice.test.ts` (rule 4202 block) |
+| 4203 | «Change allowed accounts» shows on a connected Composio card of Meta or LinkedIn, inside the `manage` block, and reconnects through the existing `startOAuth` and `/start?toolkit=` (no new route) | yes (source), no (clicked in a browser) | `tests/account-choice.test.ts` (rule 4203 block) |
+| 4204 | The hint under Connect shows only for a provider with a platform picker and only to a role that can connect | yes (source) | `tests/account-choice.test.ts` (rule 4204 block) |
+| 4205 | The platform settings link opens in a new tab with `noopener noreferrer`; a Composio Meta record with one Page says so, and with two or more Pages and an Instagram login says Instagram is separate | yes (source) | `tests/account-choice.test.ts` (rule 4205 block) |
+| 4206 | The start route keeps its `connectors` gate and its 20-an-hour bucket | yes | `tests/account-choice.test.ts` (rule 4206 block) |
+| 4207-4209 | Reserved and unused | | |
+
+Known gaps, for the founder to try on staging: (1) whether removing the app in Facebook Business Integrations and reconnecting now shows the Page and Instagram picker and fills the Page dropdown with all Pages; (2) whether `composioRevoke` of the replaced account at the platform ends the new account's grant too (it is the same Meta app grant for the same person; the old reconnect path already does this and was not changed); (3) the two settings URLs are the platforms' known pages, not opened from here; (4) LinkedIn's company-page list depends on the member's page roles, not on a consent screen.

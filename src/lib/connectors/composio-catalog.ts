@@ -32,15 +32,18 @@
  * creates, moves, edits or deletes an event, shares a calendar or sends an invitation. The events read always carries
  * `fields`, a constant selector with the same event fields the direct path asks Google for (no description, attendee
  * names, place or meeting link). What it returns is untrusted: `keepGoogle` reads each item.
+ * Calendly is Reem's booking source for owners whose plan has no webhooks (rules 4300-4329, src/lib/secretary-calendly.ts):
+ * three reads, `write: {}`, so nothing here books, cancels, reschedules or edits anything in Calendly. What a read returns
+ * (names, event names, times) is untrusted text; it passes `parseCalendly` before an item is made.
  *
  * Not here on purpose: ad writes (money moves need their own spec, evaluation spec C-R1), comments and messages (untrusted
- * input with no feature to use it), Google Business Profile (Composio lists no toolkit for it), Calendly and Cal.com
- * (Reem B2 receives their webhooks directly, evaluation spec C-R4).
+ * input with no feature to use it), Google Business Profile (Composio lists no toolkit for it), Cal.com (Reem B2 receives
+ * its webhooks directly, evaluation spec C-R4; its webhooks need no paid plan).
  */
 export type Toolkit =
   | "facebook" | "instagram" | "twitter" | "linkedin" | "tiktok" | "whatsapp" | "youtube"
   | "metaads" | "snapchat" | "googleads" | "tiktok_ads" | "linkedin_ads" | "google_analytics" | "google_search_console"
-  | "googledocs" | "googlesheets" | "googledrive" | "dropbox" | "one_drive" | "googlecalendar";
+  | "googledocs" | "googlesheets" | "googledrive" | "dropbox" | "one_drive" | "googlecalendar" | "calendly";
 
 type Tools = Readonly<Record<string, readonly string[]>>;
 /**
@@ -234,6 +237,19 @@ export const TOOLKITS: Readonly<Record<Toolkit, ToolkitEntry>> = {
     },
     write: {},
   },
+  // ---------- Reem's bookings for a Calendly owner without webhooks (rules 4300-4329) ----------
+  // Slugs and argument names read with `composio tools info` on 2026-10-25 at version 20261018_00. `CALENDLY_GET_USER`
+  // does not take "me", so the deprecated no-argument `CALENDLY_GET_CURRENT_USER` is the one call that names the owner.
+  calendly: {
+    provider: "calendly",
+    authEnv: "COMPOSIO_AUTH_CALENDLY",
+    read: {
+      CALENDLY_GET_CURRENT_USER: [],
+      CALENDLY_LIST_SCHEDULED_EVENTS: ["user", "status", "min_start_time", "max_start_time", "count", "sort", "page_token"],
+      CALENDLY_LIST_EVENT_INVITEES: ["uuid", "status", "count", "sort"],
+    },
+    write: {},
+  },
 };
 
 /** Which toolkits each provider connects through, in the order the Integrations card offers them. */
@@ -255,6 +271,7 @@ export const PROVIDER_TOOLKITS: Readonly<Record<string, readonly Toolkit[]>> = {
   dropbox: ["dropbox"],
   onedrive: ["one_drive"],
   gcal: ["googlecalendar"],
+  calendly: ["calendly"],
 };
 
 export const isToolkit = (s: string): s is Toolkit => Object.prototype.hasOwnProperty.call(TOOLKITS, s);
