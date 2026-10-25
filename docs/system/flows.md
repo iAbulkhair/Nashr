@@ -2088,3 +2088,44 @@ The plan: the Claude Doc "Thakeen v2 — PRD, Spec and Roadmap" (component C14).
 
 None: no stored shape, key or variable changes. The release that carries it changes no item, stamp or golden result.
 
+
+## 133. Thakeen v2 phase 2: goals and plans (2026-10-25, branch `claude/thakeen-v2-p2-plans`, rules 4620-4649)
+
+The plan: the Claude Doc "Thakeen v2 — PRD, Spec and Roadmap" (component C3). Files: `src/lib/plans.ts` (record, parse, pause, resume, cancel), `src/lib/plan-tool.ts` (Majed's `make_plan`), `src/lib/plan-run.ts` (Approve and the queue tick's step run), `src/app/api/plans/[id]/route.ts`, `src/components/app/GoalPlanCard.tsx`. Switched by `PLANS` in `src/lib/v2-flags.ts`, shipped off; Approve also needs `QUEUE` (section 134).
+
+1. Propose. In Majed's own chat turn (never over MCP or for an API token) the owner states a goal and Majed calls `make_plan` with the goal and 2 to 8 steps (task type, brief, the earlier steps it waits for). `parsePlan` checks it in code: plan types only (Reem owns none), briefs and goal length-capped, hidden characters stripped, `after` only earlier steps (at most 3), so no cycle. Code sets each step's agent (`agentForTask`), cost (`TASK_COST`), the total, the status `proposed` and the scope `sc(u)`. Nothing is charged, queued or run. At most 10 proposals a scope a day; one a reply. The reply carries the card (`ChatMsg.goalPlan`, a checked id).
+2. Approve. The owner's Approve on the card (`POST /api/plans/{id}` `approve`, `generate`) is the only approval. `approvePlan`, under the plan's lock: the queue is on, the plan is this scope's, `proposed`, younger than 7 days, the balance read fresh covers the total, and no agent's monthly cap (`Governance.agentCaps`) would be passed by its steps. Then the steps that wait for nothing are queued (section 134). Nothing is charged at Approve.
+3. Run. The queue tick runs one step of a scope at a time (`tickScope`): the step is charged under its own claim `planstep:{plan}:{n}` (`chargeOnce`), runs `generateBatch` with the goal and the brief as the lead brief (data), `plan` on every task (`Task.plan`), `forcePending` (every item waits in the inbox) and `selfCheck` (section 135). A delivered step writes its receipt; a killed step reuses its hold, and the daily hold sweep refunds it when the step never delivered.
+4. Next steps. A step whose earlier steps are done and whose items the owner approved is queued by the next tick. A rejected item leaves its later steps waiting: the owner cancels the plan or approves a rewrite.
+5. Stop. A refusal before the charge (no credits, an agent cap, a paused model) pauses the plan for the owner; Resume queues it again. A run that fails is tried once more, then the step and the plan are `failed`. Pause takes the waiting jobs out; Cancel ends the plan.
+6. The card (`GoalPlanCard`) reads `GET /api/plans/{id}` (`read`), polls every 15 s while a step is queued or running, and shows Approve, Pause, Resume and Cancel by status. Plain text, both languages.
+
+### 133.1 Release step (rule 679)
+
+Expand: new key families and optional fields (`Task.plan`, `ChatMsg.goalPlan`), no stored shape changes. Switching on is a later release that changes `PLANS` and `QUEUE`; switching off again leaves the records, which expire after 90 days.
+
+## 134. Thakeen v2 phase 2: the durable job queue (2026-10-25, branch `claude/thakeen-v2-p2-plans`, rules 4650-4669)
+
+The plan: component C7. Files: `src/lib/queue.ts`, `src/app/api/cron/queue/route.ts`, the kick in `src/app/api/cron/secretary/route.ts`, `crons.json`, `src/lib/cron-heartbeat.ts`. Switched by `QUEUE`, shipped off: nothing is queued, the route answers `{ ok: true, off: true }` after the bearer check.
+
+1. Enqueue. Today one kind of job: a step of an approved plan of the same scope, every field set in code. `enqueue` writes the jobs, then pushes their ids to the scope's list (oldest first, at most 40, refused whole past it), then adds the scope to the platform set `qscopes`.
+2. Tick. `GET /api/cron/queue` (cron bearer, `sameSecret`) is kicked by Reem's 15-minute tick while `QUEUE` is on, with a daily fallback (`40 6 * * *`). It reads `qscopes`, maps each scope to its account (`accountOfScope`) and runs `runCronBatch`: four scopes at a time, none started after 160 s, each through `runAsAccount` (a deleted, suspended or archived account is skipped before any write). One scope runs at most one job a tick.
+3. Attempts. `startJob` counts the attempt before the work, so a platform kill leaves the count: a job starts at most twice whatever happens. What it charges is bounded by its own claim.
+4. A scope whose account may no longer act leaves the set; its jobs stay until the account's wipe, which deletes every job, the list and the id set.
+
+### 134.1 Release step (rule 679)
+
+Expand: new keys only. Switching on also needs the hPanel cron entry for `/api/cron/queue` (founder step).
+
+## 135. Thakeen v2 phase 2: the self-check before the save (2026-10-25, branch `claude/thakeen-v2-p2-plans`, rules 4670-4689)
+
+The plan: component C6. Files: `src/lib/self-check.ts`, wired in `src/lib/generate-batch.ts` (`BatchOpts.selfCheck`) and asked for by `src/lib/routines.ts` and `src/lib/plan-run.ts` only. Switched by `SELF_CHECK`, shipped off. An owner's own request (generate route, chat tools, handoff runs) never asks for it.
+
+1. After the batch's items are parsed and before the output scope check, the judge scores them once in line (`scoreItems`).
+2. An item under 70 or auto-failed is weak. The weakest 3 of a batch are rewritten once, in parallel, on the batch's model, with the brand system prompt, the task spec, the sources, the draft and the judge's note. The draft and the note are fenced data (`<draft>`, `<reviewer_note>`): the note is never read as the owner's request, so `reviseDraft` is not used. The rewrite is metered as usage (`generate`) and never charged in credits (founder decision 2026-10-25).
+3. An auto-failed item that would be auto-approved goes back to the inbox before its save, rewritten or not. The final score is still `judgeLater`'s after the response, whose veto works as before.
+4. Never a reason to fail a paid batch: under 150 s left, no verdict, a failed or empty rewrite, or past the cap, the item keeps its text and `Task.selfCheck.skipped` says why (`time`, `judge`, `error`, `cap`).
+
+### 135.1 Release step (rule 679)
+
+Expand: the optional field `Task.selfCheck`. Before switching on, run golden with `SELF_CHECK` on to measure the gain and the cost.

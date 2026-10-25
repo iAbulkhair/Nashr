@@ -40,6 +40,7 @@ import type { ToolCtx } from "./chat-gates";
 import { runTool } from "./chat-run-tool";
 import type { MemoryProposal } from "./memory";
 import { REMEMBER_TOOL, runRemember } from "./memory-tool";
+import { PLAN_TOOL, runMakePlan } from "./plan-tool";
 import { recall, recallBlock } from "./recall";
 import { COMPACTION, MEMORY_V2 } from "./v2-flags";
 import { compactThread, droppedTurns, proposeSummaryFacts, readSummary, summaryBlock, type ThreadSummary } from "./compaction";
@@ -224,7 +225,7 @@ async function chatTurn(user: User, text: string, conv: string | undefined, agen
           // Through the action gateway (rules 4500-4509, src/lib/gateway.ts): off in this release; in log mode it records the
           // call and its verdict and never changes the answer. Every gate in runTool still decides.
           const ctx: ToolCtx = { lang, agent: agentId, by, via, proposed, awayProposed, instructionProposed, memoryProposed, spendProposed, fileProposed, ownerMsg: text, conv, modes: scopeModes };
-          out = await gatedTool(user, u.name, ctx, () => (u.name === REMEMBER_TOOL.name ? runRemember(user, u.input as Record<string, unknown>, ctx) : runTool(user, u.name, u.input as Record<string, unknown>, actions, made, deadline, ctx)));
+          out = await gatedTool(user, u.name, ctx, () => (u.name === REMEMBER_TOOL.name ? runRemember(user, u.input as Record<string, unknown>, ctx) : u.name === PLAN_TOOL.name ? runMakePlan(user, u.input as Record<string, unknown>, ctx, actions) : runTool(user, u.name, u.input as Record<string, unknown>, actions, made, deadline, ctx)));
         } catch (e) {
           isError = true;
           out = e instanceof Error ? e.message : "tool_failed";

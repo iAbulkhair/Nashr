@@ -30,3 +30,24 @@ export const MEMORY_V2: boolean = false;
  * thread, which the next turns read as data. Release step: EXPAND.
  */
 export const COMPACTION: boolean = false;
+
+/**
+ * Goals and plans (phase 2, C3, rules 4620-4649; src/lib/plans.ts, src/lib/plan-tool.ts, src/lib/plan-run.ts). `false`: Majed offers no
+ * `make_plan` tool and the plan routes answer 404, exactly as before. `true`: Majed turns a goal into a plan card of up to
+ * eight steps with their agents and costs, which runs only after the owner's Approve. Release step: EXPAND.
+ */
+export const PLANS: boolean = false;
+
+/**
+ * The durable job queue (phase 2, C7, rules 4650-4669; src/lib/queue.ts, GET /api/cron/queue). `false`: nothing is
+ * queued, the tick does nothing and the route answers `{ ok: true, off: true }`. `true`: an approved plan's steps wait
+ * here and run one per workspace per tick, with their attempts counted before the work. Release step: EXPAND.
+ */
+export const QUEUE: boolean = false;
+
+/**
+ * The self-check before an item reaches the inbox (phase 2, C6, rules 4670-4689; src/lib/self-check.ts). `false`: a batch
+ * is judged after it is saved, exactly as before. `true`: a scheduled batch (a routine, a plan step) is judged before it
+ * is saved, and a weak item is rewritten once with the judge's notes, inside the credits already charged. Release step: EXPAND.
+ */
+export const SELF_CHECK: boolean = false;

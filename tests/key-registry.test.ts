@@ -81,6 +81,14 @@ describe("rule 2030: each builder returns the bytes of its old template", () => 
     [wsKey.memPropClaim(S, "ab12"), `memprop-claim:${S}:ab12`],
     [wsKey.memProps(S), `memprops:${S}`],
     [wsKey.memProposalBucket(S), `memprop-day:${S}`],
+    // Goals, plans and the job queue (Thakeen v2 phase 2, rules 4620-4669): new keys, written first under the registry.
+    [wsKey.goalPlan(S, "ab12"), `goalplan:${S}:ab12`],
+    [wsKey.goalPlans(S), `goalplans:${S}`],
+    [wsKey.goalPlanLock(S, "ab12"), `goalplanlock:${S}:ab12`],
+    [wsKey.goalPlanBucket(S), `goalplan-day:${S}`],
+    [wsKey.queueJob(S, "ab12"), `qjob:${S}:ab12`],
+    [wsKey.queue(S), `jobq:${S}`],
+    [wsKey.queueJobs(S), `qjobs:${S}`],
     [wsKey.keyCheckBucket(D, "hour"), `keycheck:hour:${E}`],
     [wsKey.connectStartBucket(D), `connectstart:${E}`],
     [wsKey.storeSyncBucket(D), `storesync:${E}`],
@@ -161,6 +169,7 @@ describe("rule 2030: each builder returns the bytes of its old template", () => 
   ];
   const global: [string, string][] = [
     [globalKey.usersAll(), "users:all"],
+    [globalKey.queueScopes(), "qscopes"],
     [globalKey.runReceipt("routine:a@b.example:dana_weekly_report:2026-10-18"), "runrec:routine:a@b.example:dana_weekly_report:2026-10-18"],
     [globalKey.cronReport("weekly"), "cronreport:weekly"],
     [globalKey.workspaceAgg(), "admin:wsagg"],

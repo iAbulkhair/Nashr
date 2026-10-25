@@ -15,6 +15,10 @@ vi.mock("@/lib/v2-flags", () => ({
   get MEMORY_V2() {
     return flag.on;
   },
+  COMPACTION: false,
+  PLANS: false,
+  QUEUE: false,
+  SELF_CHECK: false,
 }));
 
 import { json, newMember, newUser, params, seedActiveBrand, signIn, signOut } from "./helpers/session";

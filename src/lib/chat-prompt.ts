@@ -137,6 +137,7 @@ export function statusFor(tool: string, lang: "ar" | "en", agentName: string): s
     todo_update: ["أحدّث المهمة…", "Updating the item…"],
     todo_propose_done: ["أرفعها لك لتأكيد إنجازها…", "Asking you to confirm it is done…"],
     propose_handoff: ["أجهّز التسليم للفريق…", "Preparing a handoff for the team…"],
+    make_plan: ["أرتّب الخطة خطوة بخطوة…", "Laying out the plan step by step…"],
     contact_away: ["أجهّز بطاقة الغياب لتحفظها…", "Preparing an away card for you to save…"],
     propose_instruction: ["أجهّز القاعدة لتضيفها إلى تعليمات الوكلاء…", "Preparing the rule for you to add to your agent instructions…"],
     propose_meeting_tasks: ["أجهّز مهام ما بعد الاجتماع لتعتمدها…", "Preparing the meeting's follow-up tasks for your approval…"],
