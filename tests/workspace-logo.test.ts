@@ -152,8 +152,8 @@ describe("rule 3611: owner or admin only, with tickets of its own kind and owner
   });
 
   it("rule 3621: an admin scoped to some brands is refused on every route; an unscoped admin may; the logo stays", async () => {
-    await saveUser({ ...(await getUser(u.email))!, plan: "business" });
-    const o = (await currentUser())!;
+    await saveUser({ ...(await getUser(u.email))!, plan: "pro" });
+    const o = { ...(await currentUser())!, plan: "pro" as const };
     const b = await addBrand(o, "Second");
     if ("error" in b) throw new Error(`addBrand: ${b.error}`);
     const [scoped, open] = await Promise.all([newMember(u, "admin", "wls"), newMember(u, "admin", "wlo")]);
