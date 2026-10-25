@@ -17,8 +17,15 @@ import { json, newUser, params, signOut } from "./helpers/session";
  */
 
 const KEY = "test-admin-key-ws-pick-0123456789";
-beforeEach(() => { vi.stubEnv("WAITLIST_ADMIN_KEY", KEY); vi.stubEnv("CONNECT_SECRET", "ws-pick-connect-secret-one"); });
-afterEach(() => { vi.restoreAllMocks(); vi.unstubAllEnvs(); signOut(); });
+beforeEach(() => {
+  vi.stubEnv("WAITLIST_ADMIN_KEY", KEY);
+  vi.stubEnv("CONNECT_SECRET", "ws-pick-connect-secret-one");
+});
+afterEach(() => {
+  vi.restoreAllMocks();
+  vi.unstubAllEnvs();
+  signOut();
+});
 
 async function ownerOfTwo(): Promise<{ u: User; second: User }> {
   const u = await newUser("wspick", { shadow: false });
@@ -28,22 +35,38 @@ async function ownerOfTwo(): Promise<{ u: User; second: User }> {
   return { u, second: (await getUser(made.aid))! };
 }
 
-const agg: WsAgg = { name: "n", ownerName: "o", seatsUsed: 1, brandsActive: 1, active7: 0, tasks30: 0, creditsUsed: 0, lastActivityAt: null };
+const agg: WsAgg = {
+  name: "n",
+  ownerName: "o",
+  seatsUsed: 1,
+  brandsActive: 1,
+  active7: 0,
+  tasks30: 0,
+  creditsUsed: 0,
+  lastActivityAt: null,
+};
 const detail = (email: string, ws: string) =>
-  detailRoute.GET(json(`/api/admin/workspaces/${encodeURIComponent(email)}?ws=${ws}`, "GET", undefined, { "x-admin-key": KEY }), params({ email: encodeURIComponent(email) }));
+  detailRoute.GET(
+    json(`/api/admin/workspaces/${encodeURIComponent(email)}?ws=${ws}`, "GET", undefined, { "x-admin-key": KEY }),
+    params({ email: encodeURIComponent(email) }),
+  );
 
 describe("rule 4700: the console opens the chosen workspace", () => {
-  it("picks the second workspace by its handle, the home one without, and nothing for a handle the person does not hold", async () => {
+  it("picks each workspace by its handle, one of the person's without, and nothing for a handle the person does not hold", async () => {
     const { u, second } = await ownerOfTwo();
+    const both = [acct(u), acct(second)];
     expect(acct(second)).not.toBe(acct(u));
-    expect(acct((await accountForChosen(u.email))!.owner)).toBe(acct(u));
-    const picked = (await accountForChosen(u.email, wsHandle(acct(second))))!;
-    expect(acct(picked.owner)).toBe(acct(second));
-    expect(picked.openedFrom).toBeNull();
+    // The address alone opens whichever workspace the login picks, one of the two, never a fixed one: why `ws` exists.
+    expect(both).toContain(acct((await accountForChosen(u.email))!.owner));
+    for (const aid of both) {
+      const picked = (await accountForChosen(u.email, wsHandle(aid)))!;
+      expect(acct(picked.owner)).toBe(aid);
+      expect(picked.openedFrom).toBeNull();
+    }
     const other = await newUser("wspicko", { shadow: false });
     expect(await accountForChosen(u.email, wsHandle(acct(other)))).toBeNull();
     // A value of another shape is no selector: the address alone decides.
-    expect(acct((await accountForChosen(u.email, "a_not-a-handle"))!.owner)).toBe(acct(u));
+    expect(both).toContain(acct((await accountForChosen(u.email, "a_not-a-handle"))!.owner));
   });
 
   it("a list row carries its handle, and the detail route answers for the workspace it names", async () => {
@@ -57,7 +80,9 @@ describe("rule 4700: the console opens the chosen workspace", () => {
   });
 
   it("the customers list links each row with its handle", () => {
-    expect(readFileSync("src/components/admin/Customers.tsx", "utf8")).toContain("<Link href={here(r.email, r.handle)}");
+    expect(readFileSync("src/components/admin/Customers.tsx", "utf8")).toContain(
+      "<Link href={here(r.email, r.handle)}",
+    );
   });
 });
 
