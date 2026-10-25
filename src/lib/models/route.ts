@@ -25,7 +25,7 @@ import { TASK_MODELS } from "../task-models";
  * `generate()`; the chat routes to `reserveChatTurn` and to `chat()` (the gate carries it). Do not call `route()` twice
  * for one batch or one turn and use the two answers for the two jobs.
  */
-export type Purpose = "chat" | "generate" | "review" | "xreview" | "judge" | "onboard" | "imagePrompt" | "tool" | "meeting" | "agentScope";
+export type Purpose = "chat" | "generate" | "review" | "xreview" | "judge" | "onboard" | "imagePrompt" | "tool" | "meeting" | "agentScope" | "compact";
 
 /**
  * What each purpose runs on when nobody picked. Since 2026-10-09 (rules 809 and 900, founder: only the three current
@@ -53,6 +53,8 @@ export const DEFAULTS: Readonly<Record<Purpose, string>> = Object.freeze({
   /** Reem B2b: the tasks a meeting's notes or transcript propose (src/lib/secretary-meeting.ts `proposeFromText`). */
   meeting: "claude-sonnet-5-5",
   agentScope: "claude-haiku-5-5",
+  /** Thakeen v2 C11: the summary of a long thread's older messages (src/lib/compaction.ts), one forced tool call. */
+  compact: "claude-haiku-5-5",
 });
 
 /** The purposes a customer's pick may change. Everything else ignores `ctx.stored` completely. */

@@ -73,6 +73,11 @@ export type Task = {
    * and the conversation it was proposed in. Set in code by the run (`runHandoffItem`), never from a request or the model.
    */
   parent?: TaskParent;
+  /**
+   * The plan step this task was made for (v2 C3, rule 4632): the plan's id and the step's position in it (0-based). Set in
+   * code by the step's run (src/lib/plan-run.ts), never from a request or the model. Expand: old code ignores it.
+   */
+  plan?: TaskPlan;
   scheduledFor?: string; // YYYY-MM-DD, set by owner in inbox/calendar
   imageUrl?: string;
   imagePrompt?: string;
@@ -155,6 +160,8 @@ export type Task = {
   };
   /** Automated judge score (src/lib/judge.ts). `autofail` is the judge's automatic-fail code, when one was set. */
   quality?: { score: number; dims: { completeness: number; brand: number; honesty: number; language: number; format: number }; notes: string; model: string; at: string; autofail?: string };
+  /** The self-check before the save (v2 C6, rule 4672, src/lib/self-check.ts): the first score, and whether the item was rewritten with the judge's note. Expand-only (rule 679): absent on older tasks and while `SELF_CHECK` is off. */
+  selfCheck?: SelfCheckMark;
   /**
    * Another agent's second opinion on this item, one verdict per reviewing agent (`crossReview` in noor.ts; Razan checks
    * the arithmetic of growth, deck and strategy work, Majed the strategy of pricing and GTM work). Notes only: the item's
@@ -169,6 +176,10 @@ export type Task = {
  * item, not a login pressing Run; src/lib/handoff-auto.ts). Set in code by the run, never from a request or the model.
  */
 export type TaskParent = { handoff: string; item: number; conv?: string; auto?: true };
+/** Where a plan step's task came from: `Task.plan` (src/lib/plans.ts). */
+export type TaskPlan = { id: string; step: number };
+/** `Task.selfCheck` (rule 4672): `first` is the in-line score; `skipped` says why an item below the bar kept its text. */
+export type SelfCheckMark = { first?: number; autofail?: string; rewritten: boolean; skipped?: "time" | "judge" | "cap" | "error" };
 
 /**
  * Work the product made on its own, with no login asking for it at that moment: the Sunday plan and the routines

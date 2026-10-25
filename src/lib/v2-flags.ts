@@ -16,3 +16,38 @@ export const GATEWAY_MODE: GatewayMode = "off";
 
 /** The run log (src/lib/runs.ts): `false` keeps no run record; `true` keeps one per chat turn, MCP call and batch for 30 days. */
 export const RUN_LOG: boolean = false;
+
+/**
+ * Scoped memory and recall (phase 1, C5, rules 4550-4579; src/lib/memory.ts, src/lib/recall.ts). `false`: the chat offers
+ * no `remember` tool and its prompt gets no recalled facts, exactly as before. `true`: the tool proposes facts as cards the
+ * owner saves, and every chat turn recalls the brand's saved facts that fit the message. Release step: EXPAND.
+ */
+export const MEMORY_V2: boolean = false;
+
+/**
+ * Thread compaction (phase 1, C11, rules 4580-4599; src/lib/compaction.ts). `false`: the history guard drops the oldest
+ * messages of a long thread, exactly as before. `true`: the messages it drops are folded into a stored summary of the
+ * thread, which the next turns read as data. Release step: EXPAND.
+ */
+export const COMPACTION: boolean = false;
+
+/**
+ * Goals and plans (phase 2, C3, rules 4620-4649; src/lib/plans.ts, src/lib/plan-tool.ts, src/lib/plan-run.ts). `false`: Majed offers no
+ * `make_plan` tool and the plan routes answer 404, exactly as before. `true`: Majed turns a goal into a plan card of up to
+ * eight steps with their agents and costs, which runs only after the owner's Approve. Release step: EXPAND.
+ */
+export const PLANS: boolean = false;
+
+/**
+ * The durable job queue (phase 2, C7, rules 4650-4669; src/lib/queue.ts, GET /api/cron/queue). `false`: nothing is
+ * queued, the tick does nothing and the route answers `{ ok: true, off: true }`. `true`: an approved plan's steps wait
+ * here and run one per workspace per tick, with their attempts counted before the work. Release step: EXPAND.
+ */
+export const QUEUE: boolean = false;
+
+/**
+ * The self-check before an item reaches the inbox (phase 2, C6, rules 4670-4689; src/lib/self-check.ts). `false`: a batch
+ * is judged after it is saved, exactly as before. `true`: a scheduled batch (a routine, a plan step) is judged before it
+ * is saved, and a weak item is rewritten once with the judge's notes, inside the credits already charged. Release step: EXPAND.
+ */
+export const SELF_CHECK: boolean = false;

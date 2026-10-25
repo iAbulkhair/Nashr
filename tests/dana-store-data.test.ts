@@ -81,8 +81,9 @@ describe("Dana's STORE DATA (rule 86)", () => {
   });
 
   it("names STORE DATA as a source in the weekly report and deck specs", () => {
-    const noor = readFileSync("src/lib/noor.ts", "utf8");
-    expect(noor).toMatch(/weekly_report: "[^"]*the STORE DATA when present/);
-    expect(noor).toMatch(/board_deck: "[^"]*STORE DATA when present/);
+    // The specs live in each agent's profile since C14 (rule 4600).
+    const specs = readFileSync("src/lib/agent-profiles.ts", "utf8");
+    expect(specs).toMatch(/weekly_report:\s*"[^"]*the STORE DATA when present/);
+    expect(specs).toMatch(/board_deck:\s*"[^"]*STORE DATA when present/);
   });
 });

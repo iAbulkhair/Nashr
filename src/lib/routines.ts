@@ -323,7 +323,7 @@ async function routineFor(user: User, scope: string, brand: Brand, r: Routine, d
   // Charged once per claim (rule 2470). The last-run marker and the receipt are written inside the batch's refund guard
   // (`commit`), with its items: a run killed before them is refunded or held, one killed after them never runs again.
   const b = await generateBatch(user, scope, { ...(deadline !== undefined ? { deadline } : {}),
-    type: r.type, notes: note, brief: r.id, source: "scheduled", via: "routine", gov, brand, settle, once: claim,
+    type: r.type, notes: note, brief: r.id, source: "scheduled", via: "routine", gov, brand, settle, once: claim, selfCheck: true,
     commit: (tasks) => Promise.all([db.set(lastKey(scope, r.id), new Date().toISOString()), deliverRun(claim, ttl, tasks.map((t) => t.id))]),
   });
   if (!b.ok) {

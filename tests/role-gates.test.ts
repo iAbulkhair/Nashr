@@ -197,6 +197,9 @@ const ROUTE_ROLES: Record<string, Gate> = {
   "POST /api/instructions/proposals/[id]": g("admin", "instructions.write"),
   // Core-file rewrite cards (rule 2306): Apply writes a file every agent reads.
   "POST /api/files/proposals/[id]": g("admin", "files.core.write"),
+  // Memory cards (Thakeen v2 phase 1, rules 4557-4558): Save writes a fact every agent reads back; forgetting one is the same role.
+  "POST /api/memory/proposals/[id]": g("admin", "brand.write"),
+  "DELETE /api/memory": g("admin", "brand.write"),
   "POST /api/brands": g("admin", "brands.manage", "brands.switch"),
   "POST /api/catalog": g("admin", "catalog.import"),
   "POST /api/connect/[provider]": g("admin", "connectors", "catalog.import", "read", "generate"),
@@ -300,6 +303,7 @@ const ROUTE_ROLES: Record<string, Gate> = {
   // Majed's handoffs: a run spends credits like a generation; a decline is a draft decision, like rejecting an item.
   "POST /api/handoffs/[id]/run": g("member", "generate"),
   "POST /api/handoffs/[id]/decline": g("member", "drafts"),
+  "POST /api/plans/[id]": g("member", "generate"), // rule 4630: Approve spends credits, like Run on a handoff; 404 while PLANS is off
   // Run on a chat spend card (rule 1512): it spends credits like a generation (a render also checks `images`, also member).
   "POST /api/chat/spend/[id]": g("member", "generate"),
   "POST /api/admin/wishlist": "admin-console",
@@ -355,6 +359,7 @@ const READS: Record<string, Gate> = {
   "GET /api/activity": g("viewer", "read"),
   "GET /api/activity/export": g("viewer", "read"),
   "GET /api/handoffs/[id]": g("viewer", "read"),
+  "GET /api/plans/[id]": g("viewer", "read"), // rule 4631: the plan card; 404 while PLANS is off
   "GET /api/media/[jobId]": "member",
   // Our media files (rules 1754-1758): a signed-in member of the workspace that holds the file, or a short signed link
   // minted at hand-off; both checked inside, everything else is the same 404. Rate limited per IP first, so "public".
@@ -368,6 +373,7 @@ const READS: Record<string, Gate> = {
   "GET /api/cron/media": "cron",
   "GET /api/cron/evening": "cron",
   "GET /api/cron/stores": "cron",
+  "GET /api/cron/queue": "cron",
 
   "GET /api/admin/agent-scope": "admin-console",
   "GET /api/admin/evals": "admin-console",
@@ -408,6 +414,7 @@ const READS: Record<string, Gate> = {
   "GET /api/connect": "member",
   "GET /api/conversations": "member",
   "GET /api/files": "member",
+  "GET /api/memory": "member", // rule 4558: the brand's saved facts, the ones its agents read; 404 while MEMORY_V2 is off
   "GET /api/drives": "member",
   "GET /api/governance": "member",
   "GET /api/instructions": "member",
@@ -473,6 +480,10 @@ const SESSION_RATE_LIMITED = ["POST /api/account/logo", "DELETE /api/account/log
   "PUT /api/instructions", "POST /api/instructions/activate", "POST /api/instructions/refs/search", "POST /api/instructions/refs/import", "POST /api/instructions/discard", "POST /api/instructions/restore", "POST /api/instructions/proposals/[id]", "POST /api/instructions/test",
   // Core-file rewrite cards (rule 2306).
   "POST /api/files/proposals/[id]",
+  // Memory cards and forgetting a fact (rules 4557-4558).
+  "POST /api/memory/proposals/[id]", "DELETE /api/memory",
+  // Plan cards (rules 4630-4631).
+  "POST /api/plans/[id]",
   // UI/UX phase 3 (rules 1145, 1150, 1155); the status poll is a read, limited all the same.
   "POST /api/account/sessions", "PUT /api/notifications/prefs", "GET /api/billing/status",
   // The digest email choice (rule 2355).

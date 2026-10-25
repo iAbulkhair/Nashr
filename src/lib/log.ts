@@ -35,6 +35,8 @@ const SECRET_VALUE = [
   // No slash in the run: a long path such as `/ar/app/settings/…` is not a key.
   /[A-Za-z0-9+_-]{48,}={0,2}/,
 ];
+/** A string holding something that looks like a credential (the patterns above); memory refuses to keep one (rule 4551). */
+export const looksLikeCredential = (s: string): boolean => SECRET_VALUE.some((re) => re.test(s));
 export const MAX_STRING = 300;
 const MAX_DEPTH = 4;
 const MAX_KEYS = 30;
@@ -44,7 +46,7 @@ const REDACTED = "[redacted]";
 export function scrub(v: unknown, depth = 0): unknown {
   if (v instanceof Error) return errorTag(v);
   if (typeof v === "string") {
-    if (SECRET_VALUE.some((re) => re.test(v))) return REDACTED;
+    if (looksLikeCredential(v)) return REDACTED;
     return v.length > MAX_STRING ? `${v.slice(0, MAX_STRING)}…` : v;
   }
   if (v === null || typeof v === "number" || typeof v === "boolean" || v === undefined) return v;

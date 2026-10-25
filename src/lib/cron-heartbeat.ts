@@ -25,6 +25,7 @@ export const CRON_MAX_AGE_SEC = {
   evening: 26 * 3600, // 15:00 UTC
   stores: 14 * 3600, // 02:00 and 14:00 UTC
   secretary: 3600, // every 15 minutes
+  queue: 26 * 3600, // 06:40 UTC fallback; kicked by the 15-minute tick while QUEUE is on (v2 C7, rule 4660)
 } as const;
 export type CronJob = keyof typeof CRON_MAX_AGE_SEC;
 export const CRON_JOBS = Object.keys(CRON_MAX_AGE_SEC) as CronJob[];

@@ -18,6 +18,7 @@ const REVIEWED: Record<string, string> = {
   "src/lib/booking-token.ts carryOne": "lock retry, two locks in sorted order",
   "src/lib/feed-token.ts carryFeedLogin": "lock retry, two locks in sorted order",
   "src/lib/brand-proposals.ts withBrandLock": "lock retry",
+  "src/lib/plans.ts withPlanLock": "lock retry (v2 C3, rule 4633)",
   "src/lib/brand.ts updateTask": "lock retry",
   "src/lib/brands.ts withBrandsLock": "lock retry",
   "src/lib/connectors/fresh.ts getFreshConnection": "lock retry while another request refreshes the token",
