@@ -15,7 +15,7 @@ import Badge, { type BadgeTone } from "@/components/ui/Badge";
 import Button from "@/components/ui/Button";
 import Callout from "@/components/ui/Callout";
 import { Dialog, FormDialog } from "@/components/ui/Dialog";
-import { accountSettingsUrl } from "@/lib/connectors/account-choice";
+import { accountSettingsUrl, hasAccountChoice } from "@/lib/connectors/account-choice";
 import { Field, Input } from "@/components/ui/Field";
 import { Time } from "@/components/ui/Time";
 import { useToast } from "@/components/ui/Toast";
@@ -266,7 +266,7 @@ export default function IntegrationsPanel({ t, lang, items, manage = true, help 
                   {c.needsReconnect && providerById.get(c.provider)?.kind === "oauth" && ((providerById.get(c.provider)!.toolkits?.length ?? 0) > 1 ? providerById.get(c.provider)!.toolkits! : [undefined]).map((tk) => (
                     <Button key={tk ?? "all"} size="sm" onClick={() => startOAuth(providerById.get(c.provider)!, tk)}>{g.reconnectBtn}{tk ? ` · ${partLabel[tk] ?? tk}` : ""}</Button>
                   ))}
-                  {c.meta?.via === "composio" && accountSettingsUrl(c.provider) && providerById.get(c.provider)?.kind === "oauth" && (
+                  {c.meta?.via === "composio" && hasAccountChoice(c.provider) && providerById.get(c.provider)?.kind === "oauth" && (
                     <Button variant="secondary" size="sm" disabled={busy} aria-haspopup="dialog" onClick={() => setChangeFor(providerById.get(c.provider)!)}>{g.changeAccounts}</Button>
                   )}
                   {IMPORTS_PRODUCTS.includes(c.provider) && <Button variant="secondary" size="sm" disabled={busy} onClick={() => importProducts(c.provider)}>{g.importProducts}</Button>}
@@ -300,7 +300,7 @@ export default function IntegrationsPanel({ t, lang, items, manage = true, help 
                     <p className="font-display font-medium">{i.name}</p>
                     {i.note && <p className="mt-1 text-xs text-foreground-muted">{i.note}</p>}
                     <Badge tone={tone(status === "ready" ? "soon" : status)} className="mt-2">{status === "ready" ? g.ready : status === "live" ? g.connected : status === "soon" && p?.kind === "oauth" ? g.waiting : g.status[i.status]}</Badge>
-                    {canConnect && p!.toolkits && accountSettingsUrl(p!.id) && <p className="mt-2 text-xs text-foreground-muted">{g.connectHint}</p>}
+                    {canConnect && p!.toolkits && hasAccountChoice(p!.id) && <p className="mt-2 text-xs text-foreground-muted">{g.connectHint}</p>}
                   </div>
                   {canConnect ? (
                     <Button size="sm" className="shrink-0" onClick={() => (p!.kind === "key" ? setKeyFor(p!) : startOAuth(p!, part))}>{g.connect}</Button>
@@ -339,12 +339,19 @@ export default function IntegrationsPanel({ t, lang, items, manage = true, help 
               <li>{g.changeStep2}</li>
             </ol>
             <p className="text-xs text-foreground-muted">{g.changeNote}</p>
-            <div className="flex flex-wrap gap-2">
-              <a className="btn btn-secondary btn-sm" href={accountSettingsUrl(changeFor.id) ?? undefined} target="_blank" rel="noopener noreferrer">{g.changeOpen}</a>
-              {(changeFor.toolkits?.length ? changeFor.toolkits : [undefined]).map((tk) => (
-                <Button key={tk ?? "all"} size="sm" onClick={() => startOAuth(changeFor, changeFor.toolkits && changeFor.toolkits.length > 1 ? tk : undefined)}>{g.reconnectBtn}{tk && changeFor.toolkits!.length > 1 ? ` · ${partLabel[tk] ?? tk}` : ""}</Button>
-              ))}
-            </div>
+            <ul className="grid gap-2">
+              {(changeFor.toolkits?.length ? changeFor.toolkits : [""]).map((tk) => {
+                const many = (changeFor.toolkits?.length ?? 0) > 1;
+                const url = accountSettingsUrl(changeFor.id, tk);
+                return (
+                  <li key={tk || "all"} className="flex flex-wrap items-center gap-2">
+                    {many && <span className="min-w-24 font-medium">{partLabel[tk] ?? tk}</span>}
+                    {url && <a className="btn btn-secondary btn-sm" href={url} target="_blank" rel="noopener noreferrer">{g.changeOpen}</a>}
+                    <Button size="sm" onClick={() => startOAuth(changeFor, many ? tk : undefined)}>{g.reconnectBtn}</Button>
+                  </li>
+                );
+              })}
+            </ul>
           </div>
         </Dialog>
       )}
