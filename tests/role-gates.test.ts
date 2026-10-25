@@ -142,6 +142,7 @@ const ROUTE_ROLES: Record<string, Gate> = {
   "POST /api/admin/payments/[email]": "admin-console",
   "POST /api/admin/founding": "admin-console", // second factor, reason, audit (rule 1710)
   "POST /api/admin/users/[email]": "admin-console",
+  "POST /api/admin/users/[email]/workspace/edit": "admin-console", // rules 3550-3569: adminActor, staffMay("workspace.edit") (owner only), second factor, reason
   // Credit top-ups, activated by hand while there is no payment gateway (rules 446-447): the founder only.
   "POST /api/admin/topups": "admin-console",
   // Agent scope (rule 1411): the founder releases one held item.

@@ -120,6 +120,10 @@ describe("rule 2030: each builder returns the bytes of its old template", () => 
     [accountKey.mfaPasswordBucket(E), `mfapw:${E}`],
     [accountKey.passwordChangeBucket(E), `pwchange:${E}`],
     [accountKey.accountDeleteBucket(E), `acctdelete:${E}`],
+    // Console workspace edits (rules 3550-3569): the per-address invite bucket keeps the customer route's old bytes.
+    [accountKey.consoleTeamBucket(storedAccountId(E)), `wsedit:acct:${E}`],
+    [accountKey.inviteToBucket("ab12"), `team:invite:to:ab12`],
+    [accountKey.consoleActorBucket("ab12"), `wsedit:ab12`],
     // Agent status and phone notifications (rules 2560-2573): new families, no old template.
     [accountKey.tabSeen(E), `tabseen:${E}`],
     [accountKey.pushLast(E), `pushlast:${E}`],

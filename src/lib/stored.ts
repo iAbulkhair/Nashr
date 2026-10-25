@@ -159,6 +159,9 @@ export const TEAM_LOG_KINDS = [
   "workspace_created",
   // Customer roles M3 (rule 3763): brand scope, the approve toggle or the credit cap of a membership changed.
   "access_changed",
+  // Expand (rule 3554, 2026-10-23): Thakeen support renamed the workspace from the console. Code from before this release
+  // skips a row it cannot parse (`readTeamLog`), so the new kind is safe to write while older code still runs.
+  "workspace_renamed",
 ] as const;
 
 /**

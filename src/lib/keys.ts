@@ -233,6 +233,16 @@ export const accountKey = {
   membership: (a: AccountId, p: PersonId) => `mbr:${a}:${p}`,
   /** capped list (`CAPS.teamLog`): the account's membership events, newest first (`TeamLogRow`). */
   teamLog: (a: AccountId) => `teamlog:${a}`,
+  /** bucket name for `allow` (stored as `rate:wsedit:acct:{aid}`): console team changes to one account, 30 a day (rule 3556). */
+  consoleTeamBucket: (a: AccountId) => `wsedit:acct:${a}`,
+  /**
+   * bucket name for `allow` (stored as `rate:team:invite:to:{sha256}`): invitations to one address per day, keyed by the
+   * SHA-256 hex of the address so the address never becomes part of a key. The customer invite route and the console
+   * share it (rule 3556), so a console invite counts against the same 5 a day.
+   */
+  inviteToBucket: (addressHash: string) => `team:invite:to:${addressHash}`,
+  /** bucket name for `allow` (stored as `rate:wsedit:{sha256}`): console team changes by one console actor, 30 an hour (rule 3556). */
+  consoleActorBucket: (actorHash: string) => `wsedit:${actorHash}`,
   /** json `TransferOffer` (src/lib/transfer.ts): the account's one pending ownership transfer, 7 days (multi-workspace M3, rule 2128). */
   xfer: (a: AccountId) => `xfer:${a}`,
   /** json `User`: the account, under its id (`acct(u)`). */
