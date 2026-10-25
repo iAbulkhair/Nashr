@@ -7,6 +7,9 @@ import { can } from "@/lib/roles";
 import { SETTINGS_COPY } from "@/lib/settings-nav";
 import PageHeader from "@/components/ui/PageHeader";
 import AccountSettings from "@/components/app/settings/AccountSettings";
+import { getBrand } from "@/lib/brand";
+import { acct } from "@/lib/account-id";
+import { workspaceLabel } from "@/lib/workspace-name";
 import AvatarUpload from "@/components/app/settings/AvatarUpload";
 import { getAvatar } from "@/lib/avatar";
 import LogoUpload from "@/components/app/settings/LogoUpload";
@@ -19,7 +22,8 @@ export const generateMetadata = settingsScreenMeta("account");
 /**
  * Settings, Account (rule 1143): rendered from the session, never fetched on mount. The name and language are the acting
  * person's (a member's own record); the phone is the account's and goes to the owner only (`profile.account`), as
- * GET /api/profile already does.
+ * GET /api/profile already does. The workspace name (rules 3115-3118) is the owner's too: the name the switcher shows
+ * (`workspaceLabel`, from the session's account and its default brand), changed through PUT /api/account/workspace.
  */
 export default async function Page({ params }: { params: Promise<{ lang: string }> }) {
   const { lang } = await params;
@@ -29,6 +33,7 @@ export default async function Page({ params }: { params: Promise<{ lang: string 
   const a = u.actor;
   const owner = can(u, "profile.account");
   const S = SETTINGS_COPY[lang].sections.account;
+  const workspaceName = owner ? workspaceLabel(u, await getBrand(acct(u))) : undefined;
   // Rule 3502: the acting person's picture. Only the person themself changes it: a founder impersonating or a token cannot.
   const self = a && (a.kind === "owner" || a.kind === "member");
   // Rule 3610: the workspace's logo, the session's account only; everyone sees it, `workspace.logo` changes it.
@@ -41,7 +46,7 @@ export default async function Page({ params }: { params: Promise<{ lang: string 
       <AccountSettings
         lang={lang}
         forbidden={appDict[lang].team.errors.forbidden}
-        initial={{ name: a?.name ?? u.name, email: a?.email ?? u.email, lang: a?.lang ?? u.lang, owner, canChangeEmail: can(u, "email.change"), ...(owner ? { phone: u.phone ?? "" } : {}) }}
+        initial={{ name: a?.name ?? u.name, email: a?.email ?? u.email, lang: a?.lang ?? u.lang, owner, canChangeEmail: can(u, "email.change"), ...(owner ? { phone: u.phone ?? "", workspaceName } : {}) }}
       />
     </div>
   );

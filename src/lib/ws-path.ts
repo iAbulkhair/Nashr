@@ -92,6 +92,8 @@ export const WORKSPACE_FREE: readonly string[] = [
   "/api/workspaces",
   "/api/workspaces/",
   "/api/team/accept",
+  // Rule 3119: declining an invite is public like accepting; it names its invite by token, never a workspace.
+  "/api/team/decline",
   "/api/account/2fa",
   "/api/account/sessions",
   "/api/account/email",

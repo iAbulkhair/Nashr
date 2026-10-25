@@ -111,8 +111,10 @@ export type User = {
    */
   ownerPid?: string;
   /**
-   * The name a person gave a workspace they created (multi-workspace M2, `POST /api/workspaces`). Shown by the switcher
-   * when the account has no brand name yet. Optional and new (expand): older code ignores it.
+   * The name a person gave a workspace they created (multi-workspace M2, `POST /api/workspaces`), or the owner set in
+   * Settings, Account (PUT /api/account/workspace, rules 3115-3118; `cleanWorkspaceName`, at most 80 characters). Shown
+   * first wherever a workspace is named (`workspaceLabel`, src/lib/workspace-name.ts), before the brand's name. Optional
+   * (expand): older code ignores it, and an account without one is shown by its brand's name as before.
    */
   workspaceName?: string;
   /**

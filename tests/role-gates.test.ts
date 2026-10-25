@@ -91,6 +91,7 @@ const ROUTE_ROLES: Record<string, Gate> = {
   "POST /api/auth/verify/check": "unverified-session",
   "POST /api/auth/verify/email": "unverified-session",
   "POST /api/team/accept": "public",
+  "POST /api/team/decline": "public", // rule 3119: the token is the credential, per-IP bucket
   // Multi-workspace M2: create a workspace and switch the session's workspace (the person, not one account's role).
   "POST /api/workspaces": "person-session",
   "POST /api/workspaces/switch": "person-session",
@@ -250,6 +251,7 @@ const ROUTE_ROLES: Record<string, Gate> = {
   // Notification preferences per type and channel (rule 1145): the account's settings, owner only.
   "PUT /api/notifications/prefs": g("owner", "profile.account"),
   "PUT /api/notifications/digest": g("owner", "profile.account"),
+  "PUT /api/account/workspace": g("owner", "profile.account"), // rule 3115: rename the workspace
   // Phone notifications (rules 2562-2567): a person's own device in the workspace they act in; tokens and founder views get 403 in the route.
   "POST /api/push": "member",
   "DELETE /api/push": "member",
@@ -475,6 +477,8 @@ const SESSION_RATE_LIMITED = ["POST /api/account/logo", "DELETE /api/account/log
   "POST /api/account/sessions", "PUT /api/notifications/prefs", "GET /api/billing/status",
   // The digest email choice (rule 2355).
   "PUT /api/notifications/digest",
+  // Workspace rename (rule 3117).
+  "PUT /api/account/workspace",
   // Phone notifications (rules 2562-2567): per-login hourly buckets.
   "POST /api/push", "DELETE /api/push", "POST /api/push/seen", "GET /api/push/latest",
   // Chat spend cards (rule 1512): each Run is a paid batch or render.

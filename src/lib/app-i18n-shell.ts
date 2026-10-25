@@ -33,7 +33,7 @@ export const arShell = {
   ux: {
     close: "إغلاق", loading: "يُحمَّل…", loadingScreen: "تُحمَّل الصفحة…", retry: "حاول مرة أخرى", errorTitle: "تعذّر التحميل", errorBody: "لم تصل البيانات. تحقق من الاتصال ثم حاول مرة أخرى.",
     copy: "انسخ", copied: "نُسخ", copyFailed: "تعذّر النسخ. حدّد النص وانسخه يدوياً.",
-    nav: { work: "العمل", brand: "العلامة", workspace: "الحساب والفريق", support: "المساعدة", account: "قائمة الحساب" },
+    nav: { work: "العمل", brand: "العلامة", workspace: "الحساب والفريق", support: "المساعدة", account: "قائمة الحساب", collapse: "طيّ القائمة الجانبية", expand: "توسيع القائمة الجانبية" },
     notif: { title: "التنبيهات", none: "لا تنبيهات جديدة.", markAll: "علّم الكل كمقروء", marked: "عُلّمت كلها كمقروءة.", markOne: "علّمه كمقروء", markedOne: "عُلّم كمقروء.", seeAll: "كل التنبيهات", unread: "غير مقروء", unreadN: "{n} غير مقروء", failed: "تعذّر تحميل التنبيهات.", times: "عدد التنبيهات عن هذا الأمر: {n}" },
     chat: {
       stop: "أوقف الانتظار", stopped: "توقفنا عن انتظار الرد في هذه الصفحة. قد يكمل الوكيل ويحفظ رده (ويُحسب)، وستجده حين تفتح المحادثة من جديد.",
@@ -102,7 +102,7 @@ export const enShell: typeof arShell = {
   ux: {
     close: "Close", loading: "Loading…", loadingScreen: "Loading the page…", retry: "Try again", errorTitle: "Could not load", errorBody: "The data did not arrive. Check your connection, then try again.",
     copy: "Copy", copied: "Copied", copyFailed: "Could not copy. Select the text and copy it yourself.",
-    nav: { work: "Work", brand: "Brand", workspace: "Account and team", support: "Help", account: "Account menu" },
+    nav: { work: "Work", brand: "Brand", workspace: "Account and team", support: "Help", account: "Account menu", collapse: "Collapse sidebar", expand: "Expand sidebar" },
     notif: { title: "Notifications", none: "No new notifications.", markAll: "Mark all as read", marked: "All marked as read.", markOne: "Mark as read", markedOne: "Marked as read.", seeAll: "All notifications", unread: "unread", unreadN: "{n} unread", failed: "Could not load notifications.", times: "{n} notices about this" },
     chat: {
       stop: "Stop waiting", stopped: "This page stopped waiting for the reply. The agent may still finish and save it (and it is counted); you will find it when you open the conversation again.",

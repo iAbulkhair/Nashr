@@ -279,6 +279,8 @@ export const accountKey = {
   digestBucket: (login: string) => `digestsave:${login}`,
   /** bucket name for `allow` (stored as `rate:revise:{login}`): line notes revisions sent by the account (rule 2497). */
   reviseBucket: (login: string) => `revise:${login}`,
+  /** bucket name for `allow` (stored as `rate:wsname:{acct}`): the owner's workspace renames, 10 an hour (rule 3117). */
+  workspaceNameBucket: (a: string) => `wsname:${a}`,
   /** set: friends this account referred. */
   referrals: (email: string) => `referrals:${email}`,
   /** string: who referred this account. */
@@ -415,6 +417,8 @@ export const globalKey = {
   invite: (id: string) => `invite:${id}`,
   /** marker: an invite taken. */
   inviteUse: (id: string) => `inviteuse:${id}`,
+  /** bucket name for `allow` (stored as `rate:team:decline:ip:{ip}`): invite declines from one address, 10 per 15 minutes (rule 3120). */
+  inviteDeclineBucket: (ip: string) => `team:decline:ip:${ip}`,
   /** counter: one rate-limit bucket (`allow`, src/lib/rate.ts). */
   rate: (bucket: string) => `rate:${bucket}`,
   /** hash: model spend of everyone in one month. */

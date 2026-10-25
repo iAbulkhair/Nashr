@@ -229,6 +229,7 @@ describe("rule 888: the guarded list is held to the routes on disk", () => {
       "/api/account/logo": "the workspace's logo (accountKey of the session's account), not a brand (rule 3610)",
       "/api/account/logo/upload": "plans the workspace logo upload under the session's account, not a brand (rule 3611)",
       "/api/account/sessions": "the login's sessions",
+      "/api/account/workspace": "the workspace's name on the account record (acct(u), rule 3115), not a brand",
       "/api/auth/verify/check": "the owner's address verification",
       "/api/auth/verify/email": "the owner's address verification",
       "/api/auth/verify/send": "the owner's address verification",

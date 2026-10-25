@@ -162,6 +162,9 @@ export const TEAM_LOG_KINDS = [
   // Expand (rule 3554, 2026-10-23): Thakeen support renamed the workspace from the console. Code from before this release
   // skips a row it cannot parse (`readTeamLog`), so the new kind is safe to write while older code still runs.
   "workspace_renamed",
+  // Rule 3121 (2026-10-23, expand): the invitee said no from the mailed link. A build before it fails the row on its kind
+  // and skips it (`readTeamLog`), so a rollback shows the log without these rows and nothing else changes.
+  "invite_declined",
 ] as const;
 
 /**
@@ -171,7 +174,11 @@ export const TEAM_LOG_KINDS = [
 export const TeamLogRow = z.looseObject({
   at: z.string().min(1),
   kind: z.enum(TEAM_LOG_KINDS),
-  actor: z.looseObject({ pid: z.string(), email: z.string() }),
+  /**
+   * The person who acted. `pid` is absent only on an `invite_declined` row (rule 3121): whoever holds the mailed link may
+   * decline, and an invitee with no login yet has no person id. Older builds required it; they skip such a row by its kind.
+   */
+  actor: z.looseObject({ pid: z.string().optional(), email: z.string() }),
   target: z.looseObject({ pid: z.string().optional(), email: z.string() }),
   /** The role the event gave or concerned (`TeamRole`). Tightened in multi-workspace M1 (2026-10-19): nothing read the log before it. */
   role: z.enum(["admin", "member", "editor", "viewer"]).transform((r) => (r === "editor" ? ("member" as const) : r)).optional(),
