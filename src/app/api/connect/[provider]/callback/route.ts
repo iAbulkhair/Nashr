@@ -1,3 +1,4 @@
+import { scheduleCalendlyPoll } from "@/lib/secretary-calendly";
 import { track } from "@/lib/track";
 import { errorTag } from "@/lib/log-safe";
 import { NextResponse } from "next/server";
@@ -108,6 +109,8 @@ export async function GET(req: Request, ctx: { params: Promise<{ provider: strin
         return made;
       });
       saved = true;
+      // Reem's Calendly bookings are read by the secretary tick from now on (rules 4300-4329): first poll at the next tick.
+      if (p.id === "calendly") await scheduleCalendlyPoll(st.email, Date.now()).catch(() => console.error("calendly poll schedule failed"));
       // A first read so Dana's next report has the site's figures; the daily run retries whatever fails here.
       if (p.id === "google") await syncSite(st.email, conn).catch(() => console.error("site first read failed"));
       // And the social card's first figures, after the redirect: any social record (Instagram or the Facebook Page on Meta,

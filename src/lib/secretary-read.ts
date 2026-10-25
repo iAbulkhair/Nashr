@@ -194,6 +194,8 @@ export async function secretaryKeys(scope: string): Promise<string[]> {
       return i > 0 ? [SEC_KEYS.bookClaim(scope, m.slice(0, i), m.slice(i + 1))] : [];
     }),
     SEC_KEYS.bookIds(scope),
+    // The Calendly poll's memo of applied events (rules 4300-4329).
+    SEC_KEYS.clyMemo(scope),
     // Meeting proposals (Reem B2b): each pending set by the item ids its index holds, and the index. The approve lock
     // (`sec:lock:{scope}:mprop:{id}`, also taken by the pending writes) lives 60 s.
     ...meets.map((id) => SEC_KEYS.mprop(scope, id)), SEC_KEYS.mprops(scope),
@@ -204,7 +206,7 @@ export async function secretaryKeys(scope: string): Promise<string[]> {
 }
 /** Account deletion: the scope leaves the sweep's global index and the calendar sync queue. */
 export const forgetDueScope = async (scope: string): Promise<void> => {
-  await Promise.all([db.zrem(SEC_KEYS.dueScopes, scope), db.zrem(SEC_KEYS.calDue, scope)]);
+  await Promise.all([db.zrem(SEC_KEYS.dueScopes, scope), db.zrem(SEC_KEYS.calDue, scope), db.zrem(SEC_KEYS.clyDue, scope)]);
 };
 
 /**

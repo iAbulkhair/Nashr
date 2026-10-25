@@ -24,6 +24,7 @@ import { syncAds } from "@/lib/perf-store";
 import { saveConnection } from "@/lib/connectors/store";
 import { getProvider } from "@/lib/connectors/registry";
 import { forbid, type Action } from "@/lib/roles";
+import { dropCalendlyPoll } from "@/lib/secretary-calendly";
 
 export const maxDuration = 120;
 
@@ -58,6 +59,7 @@ export async function DELETE(_req: Request, ctx: { params: Promise<{ provider: s
       await Promise.all([
         deleteConnection(sc(u), provider),
         provider === "x" ? dropXStats(sc(u)) : null,
+        provider === "calendly" ? dropCalendlyPoll(sc(u)) : null,
         isSalesProvider(provider) ? dropSalesSnapshot(sc(u), provider) : null,
       ]);
       return NextResponse.json({ ok: true });

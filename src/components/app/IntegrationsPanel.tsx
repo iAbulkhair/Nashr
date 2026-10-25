@@ -14,7 +14,8 @@ import Scribble from "@/components/Scribble";
 import Badge, { type BadgeTone } from "@/components/ui/Badge";
 import Button from "@/components/ui/Button";
 import Callout from "@/components/ui/Callout";
-import { FormDialog } from "@/components/ui/Dialog";
+import { Dialog, FormDialog } from "@/components/ui/Dialog";
+import { accountSettingsUrl } from "@/lib/connectors/account-choice";
 import { Field, Input } from "@/components/ui/Field";
 import { Time } from "@/components/ui/Time";
 import { useToast } from "@/components/ui/Toast";
@@ -48,6 +49,8 @@ export default function IntegrationsPanel({ t, lang, items, manage = true, help 
   const [other, setOther] = useState("");
   const [keyFor, setKeyFor] = useState<P | null>(null);
   const [shopFor, setShopFor] = useState<P | null>(null);
+  // The provider whose allowed accounts the owner is changing (src/lib/connectors/account-choice.ts).
+  const [changeFor, setChangeFor] = useState<P | null>(null);
   const [busy, setBusy] = useState(false);
   // A failed action's message (rule 976), shown on the page instead of `alert()`, from the code the route answered.
   // A finished action's note is a toast (rule 1088); a failure stays on the page until the next action.
@@ -228,6 +231,9 @@ export default function IntegrationsPanel({ t, lang, items, manage = true, help 
                       </select>
                     </label>
                   )}
+                  {c.provider === "meta" && c.meta?.via === "composio" && c.meta?.pageId && (
+                    <p className="mt-1 text-xs text-foreground-muted">{c.meta.pages ? (c.meta.igId ? g.metaIgSeparate : "") : g.metaOnePage}</p>
+                  )}
                   {c.provider === "linkedin" && c.meta?.liOrgs && (
                     <label className="mt-2 grid gap-1 text-xs text-foreground-muted">
                       <span>{g.linkedinPage}</span>
@@ -260,6 +266,9 @@ export default function IntegrationsPanel({ t, lang, items, manage = true, help 
                   {c.needsReconnect && providerById.get(c.provider)?.kind === "oauth" && ((providerById.get(c.provider)!.toolkits?.length ?? 0) > 1 ? providerById.get(c.provider)!.toolkits! : [undefined]).map((tk) => (
                     <Button key={tk ?? "all"} size="sm" onClick={() => startOAuth(providerById.get(c.provider)!, tk)}>{g.reconnectBtn}{tk ? ` · ${partLabel[tk] ?? tk}` : ""}</Button>
                   ))}
+                  {c.meta?.via === "composio" && accountSettingsUrl(c.provider) && providerById.get(c.provider)?.kind === "oauth" && (
+                    <Button variant="secondary" size="sm" disabled={busy} aria-haspopup="dialog" onClick={() => setChangeFor(providerById.get(c.provider)!)}>{g.changeAccounts}</Button>
+                  )}
                   {IMPORTS_PRODUCTS.includes(c.provider) && <Button variant="secondary" size="sm" disabled={busy} onClick={() => importProducts(c.provider)}>{g.importProducts}</Button>}
                   <Button variant="danger" size="sm" disabled={busy} aria-haspopup="dialog" onClick={() => disconnect(c.provider)}>{g.disconnect}</Button>
                 </div>}
@@ -291,6 +300,7 @@ export default function IntegrationsPanel({ t, lang, items, manage = true, help 
                     <p className="font-display font-medium">{i.name}</p>
                     {i.note && <p className="mt-1 text-xs text-foreground-muted">{i.note}</p>}
                     <Badge tone={tone(status === "ready" ? "soon" : status)} className="mt-2">{status === "ready" ? g.ready : status === "live" ? g.connected : status === "soon" && p?.kind === "oauth" ? g.waiting : g.status[i.status]}</Badge>
+                    {canConnect && p!.toolkits && accountSettingsUrl(p!.id) && <p className="mt-2 text-xs text-foreground-muted">{g.connectHint}</p>}
                   </div>
                   {canConnect ? (
                     <Button size="sm" className="shrink-0" onClick={() => (p!.kind === "key" ? setKeyFor(p!) : startOAuth(p!, part))}>{g.connect}</Button>
@@ -319,6 +329,24 @@ export default function IntegrationsPanel({ t, lang, items, manage = true, help 
             </Field>
           ))}
         </FormDialog>
+      )}
+      {changeFor && (
+        <Dialog lang={lang} title={g.changeTitle} onClose={() => setChangeFor(null)}>
+          <div className="grid gap-3 text-sm">
+            <p>{g.changeIntro}</p>
+            <ol className="grid list-decimal gap-1 ps-5">
+              <li>{g.changeStep1}</li>
+              <li>{g.changeStep2}</li>
+            </ol>
+            <p className="text-xs text-foreground-muted">{g.changeNote}</p>
+            <div className="flex flex-wrap gap-2">
+              <a className="btn btn-secondary btn-sm" href={accountSettingsUrl(changeFor.id) ?? undefined} target="_blank" rel="noopener noreferrer">{g.changeOpen}</a>
+              {(changeFor.toolkits?.length ? changeFor.toolkits : [undefined]).map((tk) => (
+                <Button key={tk ?? "all"} size="sm" onClick={() => startOAuth(changeFor, changeFor.toolkits && changeFor.toolkits.length > 1 ? tk : undefined)}>{g.reconnectBtn}{tk && changeFor.toolkits!.length > 1 ? ` · ${partLabel[tk] ?? tk}` : ""}</Button>
+              ))}
+            </div>
+          </div>
+        </Dialog>
       )}
       {shopFor && (
         <FormDialog lang={lang} title={shopFor.name} submitLabel={g.connect} cancelLabel={cancelWord} onClose={() => setShopFor(null)} onSubmit={async (data) => {
