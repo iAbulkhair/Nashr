@@ -62,6 +62,8 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     live: b.live === true,
     // Just above this route's 60 s: a killed function cannot post any more, and the attempt marker still holds a repeat.
     lockS: 70,
+    // The session's own person: publishing a pending item is its approval under the approval policy (rule 3762).
+    by: u.actor?.pid,
     check: (cur) => {
       if (cur.status === "rejected") return { error: "rejected_item" };
       if (taskVersion(cur) !== version) return { error: "changed" };

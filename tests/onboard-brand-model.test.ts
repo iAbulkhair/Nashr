@@ -14,6 +14,7 @@ vi.mock("@/lib/onboard", async (orig) => {
 });
 
 import { getBrand } from "@/lib/brand";
+import { sc } from "@/lib/auth";
 import * as onboardRoute from "@/app/api/onboard/route";
 import * as confirmRoute from "@/app/api/onboard/confirm/route";
 
@@ -26,7 +27,7 @@ describe("onboarding never saves a model pick from the model's output", () => {
     expect((await confirmRoute.POST(json("/api/onboard/confirm", "POST", { url: "roastery.example" }))).status).toBe(200);
     const events = await drain(await onboardRoute.POST(json("/api/onboard", "POST", { url: "roastery.example" })));
     expect(events.at(-1)!.type).toBe("done");
-    const saved = await getBrand(u.email);
+    const saved = await getBrand(sc(u));
     expect(saved).not.toBeNull();
     expect(saved!).not.toHaveProperty("model");
     expect(JSON.stringify(saved)).not.toContain("claude-opus-5-5");

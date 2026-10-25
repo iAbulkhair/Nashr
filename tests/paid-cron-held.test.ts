@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import { json, newOpaqueUser, newUser, signIn } from "./helpers/session";
 import { acct } from "@/lib/account-id";
 import { accountKey } from "@/lib/keys";
-import { getUser, type User } from "@/lib/auth";
+import { currentUser, getUser, type User } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { chargeOnce } from "@/lib/credits";
 import { RUN_STALE_MS, beginRun, deliverRun, oweRun, readRun } from "@/lib/run-receipt";
@@ -27,15 +27,15 @@ import * as scheduleRoute from "@/app/api/schedule/route";
 const COST = 4;
 async function owner(prefix: string): Promise<User> {
   const u = await newUser(prefix);
-  return (await getUser(u.email))!;
+  return (await getUser(acct(u)))!;
 }
-const credits = async (email: string) => (await getUser(email))!.credits;
+const credits = async (id: string) => (await getUser(id))!.credits;
 /** Charge a claim, then age its hold past the sweep's settle time, as a run killed after its charge leaves it. */
 async function held(u: User, claim: string, agent: "dana" | "sami" = "dana") {
-  await chargeOnce(u.email, COST, { scope: u.email, agent }, claim);
-  const rec = (await getUser(u.email))!;
+  await chargeOnce(acct(u), COST, { scope: acct(u), agent }, claim);
+  const rec = (await getUser(acct(u)))!;
   const old = new Date(Date.now() - RUN_STALE_MS - 60e3).toISOString();
-  await db.set(`user:${u.email}`, { ...rec, paidOnce: { ...rec.paidOnce, [claim]: { ...rec.paidOnce![claim], at: old } } });
+  await db.set(`user:${acct(u)}`, { ...rec, paidOnce: { ...rec.paidOnce, [claim]: { ...rec.paidOnce![claim], at: old } } });
 }
 
 describe("rules 2476-2477: the run receipt", () => {
@@ -59,66 +59,66 @@ describe("rules 2470-2471: routines and handoff items are charged under a claim"
     expect(readFileSync("src/lib/routines.ts", "utf8")).toMatch(/generateBatch\(user, scope, \{[^;]*once: claim,/);
     expect(readFileSync("src/lib/handoffs.ts", "utf8")).toContain("once: handoffClaim(scope, id, n)");
     const u = await owner("pc-once");
-    const claim = routineClaim(u.email, "dana_weekly_report", periodOf("weekly"));
-    const before = await credits(u.email);
-    await chargeOnce(u.email, COST, { scope: u.email, agent: "dana" }, claim);
-    await chargeOnce(u.email, COST, { scope: u.email, agent: "dana" }, claim);
-    expect(await credits(u.email)).toBe(before - COST);
+    const claim = routineClaim(acct(u), "dana_weekly_report", periodOf("weekly"));
+    const before = await credits(acct(u));
+    await chargeOnce(acct(u), COST, { scope: acct(u), agent: "dana" }, claim);
+    await chargeOnce(acct(u), COST, { scope: acct(u), agent: "dana" }, claim);
+    expect(await credits(acct(u))).toBe(before - COST);
   });
 });
 
 describe("rules 2473-2475: the daily sweep resolves every scheduled hold", () => {
   it("a routine hold is refunded when its run never delivered, and kept when it did; one row and one notice per refund", async () => {
     const u = await owner("pc-sweep");
-    const start = await credits(u.email);
-    const lost = routineClaim(u.email, "dana_weekly_report", "2026-10-11");
-    const done = routineClaim(u.email, "razan_cash_forecast", "2026-10");
+    const start = await credits(acct(u));
+    const lost = routineClaim(acct(u), "dana_weekly_report", "2026-10-11");
+    const done = routineClaim(acct(u), "razan_cash_forecast", "2026-10");
     await held(u, lost);
     await held(u, done);
     await deliverRun(done, 600, ["t9"]);
-    const r = await sweepHolds((await getUser(u.email))!);
+    const r = await sweepHolds((await getUser(acct(u)))!);
     expect(r?.refunded.map((x) => x.claim)).toEqual([lost]);
     expect(r?.dropped).toEqual([done]);
-    expect(await credits(u.email)).toBe(start - COST);
-    expect((await getUser(u.email))!.paidOnce ?? {}).toEqual({});
-    expect(await sweepHolds((await getUser(u.email))!), "nothing left, nothing given twice").toBeNull();
-    const rows = (await listActivity(u.email)).rows.filter((a) => a.kind === "run_refunded");
+    expect(await credits(acct(u))).toBe(start - COST);
+    expect((await getUser(acct(u)))!.paidOnce ?? {}).toEqual({});
+    expect(await sweepHolds((await getUser(acct(u)))!), "nothing left, nothing given twice").toBeNull();
+    const rows = (await listActivity(acct(u))).rows.filter((a) => a.kind === "run_refunded");
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({ credits: COST, agent: "dana", outcome: "routine" });
-    expect((await listNotifs(u.email)).some((n) => n.title.includes(String(COST)))).toBe(true);
+    expect((await listNotifs(acct(u))).some((n) => n.title.includes(String(COST)))).toBe(true);
   });
 
   it("a handoff item's hold is kept when the item is done and refunded otherwise", async () => {
     const u = await owner("pc-handoff");
-    const start = await credits(u.email);
-    const h = await createHandoff(u.email, { proposal: { items: [{ type: "sales_script", brief: "b" }, { type: "lead_qualifier", brief: "c" }] }, requestedBy: systemBy("cron"), origin: "web_chat", ownerMsg: "m" });
-    const raw = (await db.get<{ items: Record<string, unknown>[] }>(`handoff:${u.email}:${h.id}`))!;
-    await db.set(`handoff:${u.email}:${h.id}`, { ...raw, items: raw.items.map((it, i) => (i === 0 ? { ...it, status: "done", tasks: ["x"] } : { ...it, status: "running" })) });
-    await held(u, handoffClaim(u.email, h.id, 0), "sami");
-    await held(u, handoffClaim(u.email, h.id, 1), "sami");
-    const r = await sweepHolds((await getUser(u.email))!);
-    expect(r?.dropped).toEqual([handoffClaim(u.email, h.id, 0)]);
-    expect(r?.refunded.map((x) => x.claim)).toEqual([handoffClaim(u.email, h.id, 1)]);
-    expect(await credits(u.email)).toBe(start - COST);
+    const start = await credits(acct(u));
+    const h = await createHandoff(acct(u), { proposal: { items: [{ type: "sales_script", brief: "b" }, { type: "lead_qualifier", brief: "c" }] }, requestedBy: systemBy("cron"), origin: "web_chat", ownerMsg: "m" });
+    const raw = (await db.get<{ items: Record<string, unknown>[] }>(`handoff:${acct(u)}:${h.id}`))!;
+    await db.set(`handoff:${acct(u)}:${h.id}`, { ...raw, items: raw.items.map((it, i) => (i === 0 ? { ...it, status: "done", tasks: ["x"] } : { ...it, status: "running" })) });
+    await held(u, handoffClaim(acct(u), h.id, 0), "sami");
+    await held(u, handoffClaim(acct(u), h.id, 1), "sami");
+    const r = await sweepHolds((await getUser(acct(u)))!);
+    expect(r?.dropped).toEqual([handoffClaim(acct(u), h.id, 0)]);
+    expect(r?.refunded.map((x) => x.claim)).toEqual([handoffClaim(acct(u), h.id, 1)]);
+    expect(await credits(acct(u))).toBe(start - COST);
   });
 
   it("this week's Sunday-plan hold is refunded when its run was held, and left alone otherwise (rule 2474)", async () => {
     const { weeklyClaim } = await import("@/lib/schedule");
     const u = await owner("pc-weekheld");
-    const start = await credits(u.email);
-    const c = weeklyClaim(u.email);
+    const start = await credits(acct(u));
+    const c = weeklyClaim(acct(u));
     await held(u, c);
-    expect(await sweepHolds((await getUser(u.email))!), "not held: its week has not ended").toBeNull();
+    expect(await sweepHolds((await getUser(acct(u)))!), "not held: its week has not ended").toBeNull();
     await db.set(`runrec:${c}`, { state: "held", at: new Date().toISOString() });
-    const r = await sweepHolds((await getUser(u.email))!);
+    const r = await sweepHolds((await getUser(acct(u)))!);
     expect(r?.refunded.map((x) => x.claim)).toEqual([c]);
-    expect(await credits(u.email)).toBe(start);
+    expect(await credits(acct(u))).toBe(start);
   });
 
   it("a hold younger than RUN_STALE_MS is left alone: its run may still be going", async () => {
     const u = await owner("pc-young");
-    await chargeOnce(u.email, COST, { scope: u.email, agent: "dana" }, routineClaim(u.email, "dana_weekly_report", "2026-10-18"));
-    expect(await sweepHolds((await getUser(u.email))!)).toBeNull();
+    await chargeOnce(acct(u), COST, { scope: acct(u), agent: "dana" }, routineClaim(acct(u), "dana_weekly_report", "2026-10-18"));
+    expect(await sweepHolds((await getUser(acct(u)))!)).toBeNull();
   });
 
   it("an account with an opaque id is refunded on its own record, where the charge was taken (rule 1980)", async () => {
@@ -142,16 +142,16 @@ describe("rules 2473-2475: the daily sweep resolves every scheduled hold", () =>
 describe("rule 2480: a delivered run's owed share is given back in the sweep's own save", () => {
   it("the owed credits come back and the hold is dropped together; a second sweep gives nothing", async () => {
     const u = await owner("pc-owed");
-    const start = await credits(u.email);
-    const c = routineClaim(u.email, "noor_cart_recovery", "2026-10-11");
+    const start = await credits(acct(u));
+    const c = routineClaim(acct(u), "noor_cart_recovery", "2026-10-11");
     await held(u, c);
     await deliverRun(c, 600, ["a", "b"]);
     await oweRun(c, 1, 600);
-    const r = await sweepHolds((await getUser(u.email))!);
+    const r = await sweepHolds((await getUser(acct(u)))!);
     expect(r?.refunded).toEqual([expect.objectContaining({ claim: c, credits: 1, partial: true })]);
     expect(r?.dropped).toEqual([c]);
-    expect(await credits(u.email)).toBe(start - COST + 1);
-    expect(await sweepHolds((await getUser(u.email))!)).toBeNull();
+    expect(await credits(acct(u))).toBe(start - COST + 1);
+    expect(await sweepHolds((await getUser(acct(u)))!)).toBeNull();
   });
 });
 
@@ -159,6 +159,7 @@ describe("rule 2479: the owner's Run of a held routine", () => {
   it("the route takes only a routine id and asks for a resume; a routine that was not held runs nothing", async () => {
     const u = await owner("pc-route");
     await signIn(u.email);
+    const session = (await currentUser())!; // the session's user carries its scope, as the route hands it to runRoutine
     const res = await scheduleRoute.POST(json("/api/schedule", "POST", { run: "routine", id: "nope" }));
     expect(res.status).toBe(400);
     expect(readFileSync("src/app/api/schedule/route.ts", "utf8")).toContain("runRoutine(u, b.id, deadline, { resume: true })");
@@ -168,10 +169,10 @@ describe("rule 2479: the owner's Run of a held routine", () => {
     claudeOn();
     try {
       const { runRoutine } = await import("@/lib/routines");
-      await db.set(`brand:${u.email}`, { name: "x", languages: ["ar"], channels: [] });
-      const before = await credits(u.email);
-      expect(await runRoutine(u, "dana_weekly_report", undefined, { resume: true })).toBe("not_held");
-      expect(await credits(u.email)).toBe(before);
+      await db.set(`brand:${acct(u)}`, { name: "x", languages: ["ar"], channels: [] });
+      const before = await credits(acct(u));
+      expect(await runRoutine(session, "dana_weekly_report", undefined, { resume: true })).toBe("not_held");
+      expect(await credits(acct(u))).toBe(before);
     } finally {
       vi.doUnmock("@/lib/model");
       vi.unstubAllEnvs();

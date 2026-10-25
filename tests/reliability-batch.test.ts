@@ -8,6 +8,7 @@ import { runDaily, saveSchedule } from "@/lib/schedule";
 import { SEC_KEYS, timedReminders } from "@/lib/secretary";
 import { sweepReminders } from "@/lib/secretary-remind";
 import { newUser } from "./helpers/session";
+import { sc } from "@/lib/auth";
 
 /**
  * Rules 1430-1434 (docs/system/tests/1430-reliability-batch.md): reads of many keys are batched, Reem's tick marks timed
@@ -111,12 +112,14 @@ describe("console counters (rule 1433)", () => {
 describe("the daily reconcile runs with the brief off (rule 1434)", () => {
   it("runDaily answers null with the brief off, yet repairs the pending set and rebuilds a stale index", async () => {
     const u = await newUser("relbriefoff");
-    await saveSchedule(u.email, { dailyBrief: false });
-    await saveTask(u.email, task("w1", { status: "pending" }), true);
-    await db.srem(`pending:${u.email}`, "w1"); // a write that failed half way
-    await db.del(`tidxv:${u.email}`); // never indexed
+    // The account's own scope: a record without `scope` falls back to its id, never its address (rule 3822).
+    const s = sc(u);
+    await saveSchedule(s, { dailyBrief: false });
+    await saveTask(s, task("w1", { status: "pending" }), true);
+    await db.srem(`pending:${s}`, "w1"); // a write that failed half way
+    await db.del(`tidxv:${s}`); // never indexed
     expect(await runDaily(u)).toBeNull();
-    expect(await db.smembers(`pending:${u.email}`)).toContain("w1");
-    expect(await db.get(`tidxv:${u.email}`)).not.toBeNull();
+    expect(await db.smembers(`pending:${s}`)).toContain("w1");
+    expect(await db.get(`tidxv:${s}`)).not.toBeNull();
   });
 });

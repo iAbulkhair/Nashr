@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { saveTask, pendingCount, type Task } from "@/lib/brand";
 import { json, newUser, signIn } from "./helpers/session";
+import { acct } from "@/lib/auth";
 import { saveBrand } from "@/lib/brand";
 
 /**
@@ -25,9 +26,9 @@ const BRAND = { name: "B", website: "", industry: "i", dialect: "saudi" as const
 
 async function workspaceWithBuriedPending(prefix: string, oldPending: number, newerApproved: number) {
   const u = await newUser(prefix);
-  await saveBrand(u.email, BRAND);
-  for (let i = 0; i < oldPending; i++) await saveTask(u.email, task(i, "pending"), true);
-  for (let i = oldPending; i < oldPending + newerApproved; i++) await saveTask(u.email, task(i, "approved"), true);
+  await saveBrand(acct(u), BRAND);
+  for (let i = 0; i < oldPending; i++) await saveTask(acct(u), task(i, "pending"), true);
+  for (let i = oldPending; i < oldPending + newerApproved; i++) await saveTask(acct(u), task(i, "approved"), true);
   return u;
 }
 
@@ -54,7 +55,7 @@ describe("every pending item the badge counts is reachable", () => {
     const body = (await (await route.GET(json("/api/tasks", "GET"))).json()) as { tasks: Task[] };
     expect(body.tasks).toHaveLength(25);
     expect(body.tasks.filter((t) => t.status === "pending")).toHaveLength(5);
-    expect(await pendingCount(u.email)).toBe(5);
+    expect(await pendingCount(acct(u))).toBe(5);
   });
 
   it("a workspace with nothing pending still returns its recent tasks", async () => {
@@ -64,17 +65,17 @@ describe("every pending item the badge counts is reachable", () => {
     const body = (await (await route.GET(json("/api/tasks", "GET"))).json()) as { tasks: Task[] };
     expect(body.tasks).toHaveLength(30);
     expect(body.tasks.filter((t) => t.status === "pending")).toHaveLength(0);
-    expect(await pendingCount(u.email)).toBe(0);
+    expect(await pendingCount(acct(u))).toBe(0);
   });
 
   it("a pending id whose task record is gone does not break the inbox or inflate the badge", async () => {
     const u = await workspaceWithBuriedPending("ghost", 3, 210);
     const { db } = await import("@/lib/db");
-    await db.del(`task:${u.email}:t0001`); // record deleted, id still in pending:{scope}
+    await db.del(`task:${acct(u)}:t0001`); // record deleted, id still in pending:{scope}
     // Mark the set as already built. Without this the badge's lazy rebuild repairs the drift before it is read and
     // the test passes without exercising anything — which is how it passed before the fix existed.
-    await db.set(`pendingidx:${u.email}`, new Date().toISOString());
-    expect(await db.smembers(`pending:${u.email}`), "the stale id must really be in the set").toContain("t0001");
+    await db.set(`pendingidx:${acct(u)}`, new Date().toISOString());
+    expect(await db.smembers(`pending:${acct(u)}`), "the stale id must really be in the set").toContain("t0001");
     await signIn(u.email);
     const route = await import("@/app/api/tasks/route");
 
@@ -93,7 +94,7 @@ describe("every pending item the badge counts is reachable", () => {
     const body = (await (await route.GET(json("/api/tasks", "GET"))).json()) as { tasks: Task[] };
     const titles = new Set(body.tasks.map((t) => t.title));
     expect(titles.size).toBeGreaterThan(0);
-    expect(await pendingCount(theirs.email)).toBe(7);
+    expect(await pendingCount(acct(theirs))).toBe(7);
     expect(body.tasks.filter((t) => t.status === "pending")).toHaveLength(40);
   });
 });
@@ -101,10 +102,10 @@ describe("every pending item the badge counts is reachable", () => {
 describe("the inbox never renders one task twice (React key + optimistic overlay)", () => {
   it("a pending task inside the newest 200 appears exactly once", async () => {
     const u = await newUser("dupe");
-    await saveBrand(u.email, BRAND);
+    await saveBrand(acct(u), BRAND);
     // 201 tasks so the head is full, with the NEWEST one pending: it is in the head AND in the pending set.
-    for (let i = 0; i < 200; i++) await saveTask(u.email, task(i, "approved"), true);
-    await saveTask(u.email, task(200, "pending"), true);
+    for (let i = 0; i < 200; i++) await saveTask(acct(u), task(i, "approved"), true);
+    await saveTask(acct(u), task(200, "pending"), true);
 
     await signIn(u.email);
     const route = await import("@/app/api/tasks/route");
@@ -113,7 +114,7 @@ describe("the inbox never renders one task twice (React key + optimistic overlay
     const ids = body.tasks.map((t) => t.id);
     expect(new Set(ids).size, "a duplicate id gives React duplicate keys and doubles the optimistic overlay").toBe(ids.length);
     expect(ids.filter((id) => id === "t0200")).toHaveLength(1);
-    expect(body.tasks.filter((t) => t.status === "pending")).toHaveLength(await pendingCount(u.email));
+    expect(body.tasks.filter((t) => t.status === "pending")).toHaveLength(await pendingCount(acct(u)));
   });
 
   it("buried pending items come back newest-first and in a stable order", async () => {

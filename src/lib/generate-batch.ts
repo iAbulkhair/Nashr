@@ -16,7 +16,7 @@
  */
 import { randomBytes } from "crypto";
 import { trialOver, type User } from "./auth";
-import { charge, chargeOnce, refund, refundOnce, refundOncePart, renewIfDue, renewalDue, type SpendRef } from "./credits";
+import { charge, chargeOnce, personOf, refund, refundOnce, refundOncePart, renewIfDue, renewalDue, type SpendRef } from "./credits";
 import { fairUseGate } from "./fair-use";
 import { agentForTask, type AgentId } from "./agents";
 import { briefOf, dropTasks, getBrand, listPreferencesFor, saveTask, type Brand, type Task, type TaskParent } from "./brand";
@@ -26,6 +26,9 @@ import { missingData } from "./cart-recovery";
 import { modelState } from "./model";
 import { modelAllowsTask, modelById } from "./models/catalog";
 import { creditsFor } from "./models/credits";
+import { draftCharge } from "./task-costs";
+// Re-exported for chat-run-tool, which drafts through this module and is held under 450 lines (rule 2014).
+export { draftCharge };
 import { type Rejected } from "./models/route";
 import { generateRouteFor } from "./models/overrides";
 import { noteRejectedPick, usageWho } from "./usage";
@@ -366,9 +369,10 @@ async function runBatch(user: User, scope: string, opts: BatchOpts, late: Promis
     } else late.push(check);
   }
   const base = opts.count ? countCost(type, opts.count) : TASK_COST[type];
-  // The batch's price at its model's tier relative to the type's own writer (rule 902), computed once. It is what is charged: `charge`, or `chargeOnce`, which reuses a
+  // The batch's price at its model's tier relative to the type's own writer (rule 902), computed once; a chat draft never
+  // below its type's minimum (`draftCharge`, rules 4030-4034). It is what is charged: `charge`, or `chargeOnce`, which reuses a
   // claim's hold only when it holds exactly this price and otherwise swaps it for this price in one save.
-  const cost = creditsFor(base, model, "generate", type);
+  const cost = opts.count ? draftCharge(type, opts.count, model) : creditsFor(base, model, "generate", type);
   // The agent that owns the type, computed in code: never taken from the request or the model.
   const agent = agentForTask(type).id;
   // A paid account's monthly credits arrive before its first charge of the month, whichever job runs first (rule 332).
@@ -376,7 +380,7 @@ async function runBatch(user: User, scope: string, opts: BatchOpts, late: Promis
   // plan met last month's balance, answered no_credits and marked the week done. `renewIfDue` is the cron's own
   // function, idempotent and under the ledger's lock; the copy in hand only decides whether to take that lock.
   if (renewalDue(user)) await renewIfDue(acct(user));
-  const meta = { scope, agent, cap: gov.agentCaps[agent] };
+  const meta = { scope, agent, cap: gov.agentCaps[agent], person: personOf(user) };
   const paid = opts.once ? await chargeOnce(acct(user), cost, meta, opts.once) : await charge(acct(user), cost, meta);
   // Nothing was charged; the row says what the batch would have cost and, at a cap, what the agent spent of it.
   const refused = async (kind: "cap_reached" | "no_credits", outcome?: string): Promise<Activity> => ({ at: new Date().toISOString(), kind, agent, by: await who(), via: opts.via, type, credits: cost, ...(outcome ? { outcome } : {}) });
@@ -388,8 +392,9 @@ async function runBatch(user: User, scope: string, opts: BatchOpts, late: Promis
   // activity row and `BatchDone.cost` report this, so they always say what the balance lost.
   const charged = "hold" in paid ? paid.hold.credits : cost;
   // A reused hold (a claim this batch paid in an earlier, killed run) was warned about by the run that took it.
-  // The hold keeps the top-up receipt of the run that paid (`from`, rule 442), so the receipt names the same packs.
-  if ("hold" in paid) receipt = { ok: true, credits: paid.credits, scope: paid.hold.scope, agent: paid.hold.agent, month: paid.hold.month, ...(paid.hold.from ? { from: paid.hold.from } : {}) };
+  // The hold keeps the top-up receipt of the run that paid (`from`, rule 442), so the receipt names the same packs, and
+  // the person it was spent for (rule 3774), so a refund lowers that person's spend under their cap.
+  if ("hold" in paid) receipt = { ok: true, credits: paid.credits, scope: paid.hold.scope, agent: paid.hold.agent, month: paid.hold.month, ...(paid.hold.from ? { from: paid.hold.from } : {}), ...(paid.hold.person ? { person: paid.hold.person } : {}) };
   else {
     await warnAgentCap(user, paid);
     receipt = paid;

@@ -3,7 +3,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { readFileSync } from "node:fs";
 import { adminSignIn, jar, json, newUser, signIn, signOut } from "./helpers/session";
-import { getUser, saveUser } from "@/lib/auth";
+import { getUser, saveUser, acct } from "@/lib/auth";
 import { db } from "@/lib/db";
 import type { By } from "@/lib/actor";
 import { AGENT_IDS } from "@/lib/agents";
@@ -98,10 +98,10 @@ const FOUNDER: By = { kind: "founder", email: "a@b.example", imp: "key" };
 /** A workspace with a live set, so the founder's feed names it. Returns its scope. */
 async function workspace(text: string, prefix = "skw") {
   const u = await newUser(prefix);
-  await saveDraft(u.email, [item(text)], FOUNDER, { platform: false });
-  const a = await activate(u.email, FOUNDER, { platform: false, limits: { ...INSTRUCTION_PLAN.agency, chars: 600 } });
+  await saveDraft(acct(u), [item(text)], FOUNDER, { platform: false });
+  const a = await activate(acct(u), FOUNDER, { platform: false, limits: { ...INSTRUCTION_PLAN.agency, chars: 600 } });
   if (!a.ok) throw new Error(a.error);
-  return u.email;
+  return acct(u);
 }
 const LIMITS = { ...INSTRUCTION_PLAN.agency, chars: 600 as const };
 
@@ -117,7 +117,7 @@ describe("rule 958: only the founder reaches /api/admin/skills", () => {
     expect(await attempts()).toEqual([401, 401, 401, 401]);
     // A signed-in customer, even an agency owner, is not the founder.
     const u = await newUser("not-founder");
-    await saveUser({ ...(await getUser(u.email))!, plan: "agency", credits: 100 });
+    await saveUser({ ...(await getUser(acct(u)))!, plan: "agency", credits: 100 });
     await signIn(u.email);
     expect(await attempts()).toEqual([401, 401, 401, 401]);
     expect(await getLayer(PLATFORM)).toMatchObject({ draft: null, active: { v: 0 } });
@@ -272,27 +272,27 @@ describe("rule 958: the feed, and a workspace opened read-only", () => {
 
   it("rule 958: the feed shows the brand's name where the account has one, the id when it is gone, and reads each account's brands once", async () => {
     const u = await newUser("skw-brands");
-    const user = (await getUser(u.email))!;
+    const user = (await getUser(acct(u)))!;
     const b = await addBrand({ ...user, brandCap: 2 }, "Second Roastery");
     if ("error" in b) throw new Error(b.error);
-    const gone = scopeFor(u.email, "ghost1");
-    for (const scope of [scopeFor(u.email, b.id), gone, u.email]) {
+    const gone = scopeFor(acct(u), "ghost1");
+    for (const scope of [scopeFor(acct(u), b.id), gone, acct(u)]) {
       await saveDraft(scope, [item(`w ${scope}`)], FOUNDER, { platform: false });
       const a = await activate(scope, FOUNDER, { platform: false, limits: LIMITS });
       if (!a.ok) throw new Error(a.error);
     }
     const spy = vi.spyOn(db, "get");
     const r = await get();
-    const mine = (r.body.feed as { scope: string; brand: string }[]).filter((f) => f.scope.startsWith(u.email));
-    expect(Object.fromEntries(mine.map((f) => [f.scope, f.brand]))).toEqual({ [scopeFor(u.email, b.id)]: "Second Roastery", [gone]: "ghost1", [u.email]: "" });
+    const mine = (r.body.feed as { scope: string; brand: string }[]).filter((f) => f.scope.startsWith(acct(u)));
+    expect(Object.fromEntries(mine.map((f) => [f.scope, f.brand]))).toEqual({ [scopeFor(acct(u), b.id)]: "Second Roastery", [gone]: "ghost1", [acct(u)]: "" });
     // One read of `brands:{email}` for the account, not one per row.
-    expect(spy.mock.calls.filter(([k]) => k === `brands:${u.email}`)).toHaveLength(1);
+    expect(spy.mock.calls.filter(([k]) => k === `brands:${acct(u)}`)).toHaveLength(1);
     spy.mockRestore();
   });
 
   it("rule 958: ?workspace= with a scope the feed does not name is 404, whatever the key holds", async () => {
     // A real workspace that never changed anything (so it has no feed row) is not readable either.
-    const quiet = (await newUser("quiet")).email;
+    const quiet = acct(await newUser("quiet"));
     await db.set(`skills:${quiet}`, { active: { items: [{ id: "abcdef012345", text: "hidden", agents: "all", on: true, src: "owner", at: new Date().toISOString() }], v: 1 }, draft: null, at: new Date().toISOString(), by: null });
     for (const s of ["", "platform", "nobody@test.example", quiet, "../etc", "a#b", "skills:platform"]) {
       const r = await get(`?workspace=${encodeURIComponent(s)}`);
@@ -380,7 +380,7 @@ describe("rule 959: the admin test runs on the sample brand, free, metered, and 
 
   it("rule 959: it writes twice on the sample brand, once with the live platform set and once with the draft, and never charges", async () => {
     const owner = await newUser("bystander");
-    await saveUser({ ...(await getUser(owner.email))!, plan: "agency", credits: 100 });
+    await saveUser({ ...(await getUser(acct(owner)))!, plan: "agency", credits: 100 });
     await live([item("LIVE standard")]);
     await put([item("DRAFT standard")], { base: await base() });
     const r = await test({ brief: "a short note" });
@@ -398,7 +398,7 @@ describe("rule 959: the admin test runs on the sample brand, free, metered, and 
     }
     // No credit was taken from anyone, and no charging function was even called.
     expect([spies.charge, spies.chargeOnce, spies.refund]).toEqual([0, 0, 0]);
-    expect((await getUser(owner.email))!.credits).toBe(100);
+    expect((await getUser(acct(owner)))!.credits).toBe(100);
     // Logged: who ran it, what, small.
     const l = (await log()).find((x) => x.what === "skills.test")!;
     expect(l).toMatchObject({ actor: "key", what: "skills.test", after: { agent: "noor", type: "social" } });

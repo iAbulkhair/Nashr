@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { acct } from "@/lib/account-id";
 import { randomBytes } from "crypto";
 import { adminSignIn, jar, json, newUser, params, signIn } from "./helpers/session";
 import { getUser, saveUser, type User } from "@/lib/auth";
@@ -78,9 +79,9 @@ const hook = (obj: Record<string, unknown>) =>
 async function owner(prefix = "fd"): Promise<User> {
   jar().clear();
   const u = await newUser(prefix);
-  await saveUser({ ...(await getUser(u.email))!, phone: "+966500000170" });
+  await saveUser({ ...(await getUser(acct(u)))!, phone: "+966500000170" });
   await signIn(u.email);
-  return (await getUser(u.email))!;
+  return (await getUser(acct(u)))!;
 }
 /** Checkout as the signed-in owner, then Paymob's callback for it. */
 async function payAndConfirm(body: Record<string, unknown>) {
@@ -145,7 +146,7 @@ describe("the checkout asks, the server decides (rule 1702)", () => {
     vi.setSystemTime(IN_SALE);
     const u = await owner();
     const billing: Billing = { provider: "paymob", plan: "starter", status: "active", paidThrough: addDays(ksaDay(), 10), anchor: 1, autoRenew: false, failures: 0, txns: [] };
-    await saveUser({ ...(await getUser(u.email))!, billing });
+    await saveUser({ ...(await getUser(acct(u)))!, billing });
     await checkout.POST(json("/api/billing/checkout", "POST", { kind: "plan", plan: "pro", founding: true }));
     expect((await intentOf(fake.intents.at(-1)!.ref))!.founding).toBeUndefined();
   });
@@ -156,22 +157,22 @@ describe("a paid founding first month takes the seat and a 12-month lock (rule 1
     const u = await owner();
     const { obj, it, answer } = await payAndConfirm({ kind: "plan", plan: "pro", founding: true });
     expect(answer.result).toBe("paid");
-    const after = (await getUser(u.email))!;
+    const after = (await getUser(acct(u)))!;
     const day = ksaDay();
     expect(after.founding).toMatchObject({ by: "paymob", paymentId: paymentIdFor(obj.id) });
     expect(after.priceLock).toMatchObject({ plan: "pro", baseHalalas: 49900, from: day, until: addMonths(day, 12), months: 12, founding: true, paidHalalas: it.amount });
     expect(await db.zcard(SEATS_KEY)).toBe(1);
     expect(await db.zcard(LOCKS_KEY)).toBe(1);
-    expect((await logRows(u.email)).some((l) => l.includes("seat:claimed") && l.includes("price_lock_months:12"))).toBe(true);
+    expect((await logRows(acct(u))).some((l) => l.includes("seat:claimed") && l.includes("price_lock_months:12"))).toBe(true);
     await hook(obj);
     expect(await db.zcard(SEATS_KEY)).toBe(1);
-    expect((await getUser(u.email))!.founding!.at).toBe(after.founding!.at);
+    expect((await getUser(acct(u)))!.founding!.at).toBe(after.founding!.at);
   });
   it("before the sale starts a first payment takes neither a seat nor a lock", async () => {
     vi.setSystemTime(BEFORE_SALE);
     const u = await owner();
     await payAndConfirm({ kind: "plan", plan: "starter", founding: true });
-    const after = (await getUser(u.email))!;
+    const after = (await getUser(acct(u)))!;
     expect(after.founding).toBeUndefined();
     expect(after.priceLock).toBeUndefined();
   });
@@ -186,12 +187,12 @@ describe("the last seat (rule 1704)", () => {
     await fill(SEATS_KEY, FOUNDING_SEATS);
     const it = fake.intents.at(-1)!;
     await hook(txnObj({ amount: it.amount, orderId: it.orderId, ref: it.ref }));
-    const after = (await getUser(u.email))!;
+    const after = (await getUser(acct(u)))!;
     expect(after.plan).toBe("starter");
     expect(after.founding).toBeUndefined();
     expect(after.priceLock).toMatchObject({ months: 6, founding: false });
     expect(await db.zcard(SEATS_KEY)).toBe(FOUNDING_SEATS);
-    expect((await logRows(u.email)).some((l) => l.includes("seat:full"))).toBe(true);
+    expect((await logRows(acct(u))).some((l) => l.includes("seat:full"))).toBe(true);
   });
 });
 
@@ -199,14 +200,14 @@ describe("the first 100 paying accounts (rule 1705)", () => {
   it("an ordinary first payment gets 6 months; once 100 places are taken it gets none; a founding seat is never refused its lock", async () => {
     const a = await owner();
     await payAndConfirm({ kind: "plan", plan: "starter" });
-    expect((await getUser(a.email))!.priceLock).toMatchObject({ months: LATER_LOCK_MONTHS, until: addMonths(ksaDay(), 6) });
+    expect((await getUser(acct(a)))!.priceLock).toMatchObject({ months: LATER_LOCK_MONTHS, until: addMonths(ksaDay(), 6) });
     await fill(LOCKS_KEY, PRICE_LOCK_ACCOUNTS);
     const b = await owner();
     await payAndConfirm({ kind: "plan", plan: "starter" });
-    expect((await getUser(b.email))!.priceLock).toBeUndefined();
+    expect((await getUser(acct(b)))!.priceLock).toBeUndefined();
     const c = await owner();
     await payAndConfirm({ kind: "plan", plan: "business", founding: true });
-    expect((await getUser(c.email))!.priceLock).toMatchObject({ months: 12, founding: true, baseHalalas: 99900 });
+    expect((await getUser(acct(c)))!.priceLock).toMatchObject({ months: 12, founding: true, baseHalalas: 99900 });
   });
 });
 
@@ -215,9 +216,9 @@ describe("the renewal charges the locked price (rule 1706)", () => {
     const u = await owner("fdren");
     const billing: Billing = { provider: "paymob", plan: "starter", status: "active", paidThrough, anchor: Number(paidThrough.slice(8, 10)), autoRenew: true, failures: 0, txns: [], card: { brand: "MasterCard", last4: "2346" } };
     const priceLock = { ...newLock({ plan: "starter", from: lock.from, founding: true, by: "test" }), baseHalalas: lock.baseHalalas };
-    await saveUser({ ...(await getUser(u.email))!, plan: "starter", renewedAt: monthKey(), billing, priceLock });
-    await db.set(cardKey(u.email), { token: "tok_" + randomBytes(16).toString("hex"), last4: "2346", brand: "MasterCard", expMonth: "01", expYear: "38", savedAt: new Date().toISOString(), orderId: 1 });
-    return (await getUser(u.email))!;
+    await saveUser({ ...(await getUser(acct(u)))!, plan: "starter", renewedAt: monthKey(), billing, priceLock });
+    await db.set(cardKey(acct(u)), { token: "tok_" + randomBytes(16).toString("hex"), last4: "2346", brand: "MasterCard", expMonth: "01", expYear: "38", savedAt: new Date().toISOString(), orderId: 1 });
+    return (await getUser(acct(u)))!;
   }
   const charged = () => Number(fake.calls.find((c) => c.path === "/v1/intention/")!.body.amount);
 
@@ -227,10 +228,10 @@ describe("the renewal charges the locked price (rule 1706)", () => {
     const u = await lockedSubscriber({ baseHalalas: 25000, from: addMonths(today, -1) }, today);
     fake.calls = [];
     fake.pay = (orderId, ref) => txnObj({ amount: 28750, orderId, ref });
-    expect(await renewPaymob(u.email)).toBe("paymob_renewed");
+    expect(await renewPaymob(acct(u))).toBe("paymob_renewed");
     expect(charged()).toBe(28750);
-    expect((await getUser(u.email))!.billing).toMatchObject({ status: "active" });
-    expect((await getUser(u.email))!.billing!.paidThrough > today).toBe(true);
+    expect((await getUser(acct(u)))!.billing).toMatchObject({ status: "active" });
+    expect((await getUser(acct(u)))!.billing!.paidThrough > today).toBe(true);
     expect((await intentOf(fake.intents.at(-1)!.ref))!.lockedBaseHalalas).toBe(25000);
   });
   it("month 12 after the first payment is charged at the current price", async () => {
@@ -238,7 +239,7 @@ describe("the renewal charges the locked price (rule 1706)", () => {
     const u = await lockedSubscriber({ baseHalalas: 25000, from: addMonths(today, -12) }, today);
     fake.calls = [];
     fake.pay = (orderId, ref) => txnObj({ amount: 34385, orderId, ref });
-    expect(await renewPaymob(u.email)).toBe("paymob_renewed");
+    expect(await renewPaymob(acct(u))).toBe("paymob_renewed");
     expect(charged()).toBe(34385);
   });
   it("a lock on another plan, an ended lock, a bad lock, or a lock above the list price never changes the wrong charge", () => {
@@ -257,12 +258,12 @@ describe("the renewal charges the locked price (rule 1706)", () => {
   it("an account without a lock renews exactly as before (old shape)", async () => {
     const today = ksaDay();
     const u = await lockedSubscriber({ baseHalalas: 25000, from: today }, today);
-    const plain = { ...(await getUser(u.email))! };
+    const plain = { ...(await getUser(acct(u)))! };
     delete plain.priceLock;
     await saveUser(plain);
     fake.calls = [];
     fake.pay = (orderId, ref) => txnObj({ amount: 34385, orderId, ref });
-    expect(await renewPaymob(u.email)).toBe("paymob_renewed");
+    expect(await renewPaymob(acct(u))).toBe("paymob_renewed");
     expect(charged()).toBe(34385);
     expect((await intentOf(fake.intents.at(-1)!.ref))!.lockedBaseHalalas).toBeUndefined();
   });
@@ -293,12 +294,12 @@ describe("a full refund ends the seat and the lock (rule 1708)", () => {
     await adminSignIn();
     const r = await adminPayments.POST(json(`/api/admin/payments/${encodeURIComponent(u.email)}`, "POST", { action: "refund", id: paymentIdFor(obj.id) }), params({ email: encodeURIComponent(u.email) }));
     expect(await r.json()).toMatchObject({ ok: true, planEnded: true });
-    const after = (await getUser(u.email))!;
+    const after = (await getUser(acct(u)))!;
     expect(after.founding!.endedAt).toEqual(expect.any(String));
     expect(after.priceLock!.endedAt).toEqual(expect.any(String));
     expect(await db.zcard(SEATS_KEY)).toBe(0);
     expect(await db.zcard(LOCKS_KEY)).toBe(0);
-    expect((await logRows(u.email)).some((l) => l.includes("founding_ended"))).toBe(true);
+    expect((await logRows(acct(u))).some((l) => l.includes("founding_ended"))).toBe(true);
     // Paying again later is an ordinary subscription: an ended seat or lock is never claimed again automatically.
     jar().clear();
     await signIn(u.email);
@@ -319,7 +320,7 @@ describe("the founder console (rules 1709, 1710)", () => {
     await adminSignIn();
     const j = await (await get()).json();
     expect(j).toMatchObject({ ok: true, paymentsOn: true, started: true, seats: { taken: 1, left: 19 }, locks: { taken: 1 } });
-    expect(j.rows.find((r: { email: string }) => r.email === u.email)).toMatchObject({ seat: { by: "paymob", endedAt: null }, lock: { plan: "starter", sar: 299, months: 12 }, refund: { inWindow: true, usedCredits: 0, amountHalalas: 34385 } });
+    expect(j.rows.find((r: { email: string }) => r.email === acct(u))).toMatchObject({ seat: { by: "paymob", endedAt: null }, lock: { plan: "starter", sar: 299, months: 12 }, refund: { inWindow: true, usedCredits: 0, amountHalalas: 34385 } });
   });
   it("grant and end by hand: a reason, a free seat, one audit row each; ending frees the place", async () => {
     const u = await owner();
@@ -350,7 +351,7 @@ describe("the founder console (rules 1709, 1710)", () => {
     const r = await post({ action: "grant_seat", email: u.email, reason: "one more" });
     expect(r.status).toBe(409);
     expect((await r.json()).error).toBe("seats_full");
-    expect((await getUser(u.email))!.founding).toBeUndefined();
+    expect((await getUser(acct(u)))!.founding).toBeUndefined();
   });
 });
 
@@ -383,9 +384,9 @@ describe("leaving and the data download (rule 1712)", () => {
   it("the download shows the seat and the lock; deleting the account frees both places", async () => {
     const u = await owner();
     await payAndConfirm({ kind: "plan", plan: "starter", founding: true });
-    const exp = await buildExport((await getUser(u.email))!);
+    const exp = await buildExport((await getUser(acct(u)))!);
     expect(exp.plan.founding).toMatchObject({ seat: { by: "paymob" }, lock: { plan: "starter", sar: 299, months: 12 } });
-    await wipeAccount(u.email);
+    await wipeAccount(acct(u));
     expect([await db.zcard(SEATS_KEY), await db.zcard(LOCKS_KEY)]).toEqual([0, 0]);
   });
 });

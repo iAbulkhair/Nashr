@@ -13,7 +13,7 @@ vi.mock("@anthropic-ai/sdk", () => ({ default: class { constructor() { g.sdk++; 
 vi.mock("@/lib/model", async (orig) => ({ ...(await orig<typeof import("@/lib/model")>()), modelState: () => "paused" as const }));
 
 import { db } from "@/lib/db";
-import { getUser, saveUser, type User } from "@/lib/auth";
+import { acct, currentUser, getUser, saveUser, type User } from "@/lib/auth";
 import { getTask, listLite, saveBrand, saveTask, type Brand, type Task } from "@/lib/brand";
 import { runTool } from "@/lib/chat";
 import { availableModels, offModels } from "@/lib/media/config";
@@ -64,19 +64,19 @@ async function owner(over: Partial<User> = {}): Promise<User> {
     Object.assign(u, over);
     await saveUser(u);
   }
-  await saveBrand(u.email, brand);
+  await saveBrand(acct(u), brand);
   return u;
 }
 const paid = () => owner({ plan: "pro" });
 let taskN = 0;
 async function taskFor(u: User, over: Partial<Task> = {}): Promise<Task> {
   const t: Task = { id: `mr${++taskN}${randomBytes(3).toString("hex")}`, type: "social", channel: "instagram", title: "Weekend offer", body: "Two for one this weekend.", status: "pending", createdAt: new Date().toISOString(), lang: "ar", ...over };
-  await saveTask(u.email, t, true);
+  await saveTask(acct(u), t, true);
   return t;
 }
 /** A real generated image on our Blob store: the only reference image a provider may receive (spec A9). */
 const ourImage = () => ({ imageUrl: `https://s1.public.blob.vercel-storage.com/media/${randomBytes(16).toString("hex")}.jpg`, imageProvider: "kie" as const });
-const balance = async (u: User) => (await getUser(u.email))!.credits;
+const balance = async (u: User) => (await getUser(acct(u)))!.credits;
 
 /** kie with a fresh task id per submit, so no pointer left by an earlier test can match. */
 const kieFake = (status?: FakeScript["status"]) => fakeAdapter("kie", { submit: () => ({ state: "pending", providerTaskId: `kie${randomBytes(6).toString("hex")}` }), status });
@@ -121,23 +121,23 @@ describe("starting a render", () => {
     const u = await owner();
     const t = await taskFor(u);
     expect(await balance(u)).toBe(50);
-    const { creditsUsed: used, images } = await kpis(u.email, 7);
+    const { creditsUsed: used, images } = await kpis(acct(u), 7);
     const month = (await overview()).revenue.creditsUsedMonth;
     const r = await start("image", u, t);
     expect(r.status).toBe(200);
     expect(r.body).toMatchObject({ ok: true, provider: "placeholder", credits: 50 });
     expect(await balance(u)).toBe(50);
     expect(fal.submits.length + kie.submits.length, "no adapter call").toBe(0);
-    expect((await getTask(u.email, t.id))!).toMatchObject({ imageProvider: "placeholder", mediaCredits: 0 });
-    expect((await kpis(u.email, 7)).creditsUsed, "the reports count no credit for a card that cost none").toBe(used);
-    expect((await kpis(u.email, 7)).images, "nor count a placeholder card as an image generated").toBe(images);
+    expect((await getTask(acct(u), t.id))!).toMatchObject({ imageProvider: "placeholder", mediaCredits: 0 });
+    expect((await kpis(acct(u), 7)).creditsUsed, "the reports count no credit for a card that cost none").toBe(used);
+    expect((await kpis(acct(u), 7)).images, "nor count a placeholder card as an image generated").toBe(images);
     expect((await overview()).revenue.creditsUsedMonth, "nor does the founder console").toBe(month);
     // A placeholder saved before placeholders wrote mediaCredits (none on it): once re-saved, its row is no image, so the
     // readers' `image ? IMAGE_COST : 0` fallback counts no credit either.
     const legacy = await taskFor(u, { imageUrl: "https://placehold.co/1024x1024/x.png?text=Rose", imageProvider: "placeholder" });
-    const row = (await listLite(u.email)).find((l) => l.id === legacy.id)!;
+    const row = (await listLite(acct(u))).find((l) => l.id === legacy.id)!;
     expect([row.image, row.mediaCredits]).toEqual([false, undefined]);
-    expect((await kpis(u.email, 7)).images).toBe(images);
+    expect((await kpis(acct(u), 7)).images).toBe(images);
   });
 
   it("1c. a placeholder asked for while another image style finishes on the item lands under that image, never over it", async () => {
@@ -149,9 +149,9 @@ describe("starting a render", () => {
     const t = await taskFor(u);
     const first = await start("image", u, t, { model: "img-balanced" });
     expect(first.status).toBe(202);
-    const running = (await getJob(u.email, jobOf(first).id))!;
+    const running = (await getJob(acct(u), jobOf(first).id))!;
     // The kie image finishes inside the placeholder's read of the item: the route's own read is the first, this the second.
-    const key = `task:${u.email}:${t.id}`;
+    const key = `task:${acct(u)}:${t.id}`;
     const get = db.get.bind(db);
     let reads = 0;
     let finishing: Promise<unknown> | undefined;
@@ -169,7 +169,7 @@ describe("starting a render", () => {
     expect(finishing, "the finish ran inside the placeholder's window").toBeDefined();
     expect(await finishing).toMatchObject({ state: "done" });
     vi.mocked(db.get).mockRestore();
-    const after = (await getTask(u.email, t.id))!;
+    const after = (await getTask(acct(u), t.id))!;
     expect(after, "the paid kie image is on the item, not the placeholder card").toMatchObject({ imageProvider: "kie", imageModel: "img-balanced", mediaCredits: running.credits });
     expect(after.mediaJob?.image).toBeUndefined();
   });
@@ -192,7 +192,7 @@ describe("starting a render", () => {
         const r = await start("image", u, t, body);
         expect([r.status, r.body.error], `${what} ${JSON.stringify(body)}`).toEqual([409, "model_unavailable"]);
       }
-      expect((await getTask(u.email, t.id))!, what).toMatchObject(image);
+      expect((await getTask(acct(u), t.id))!, what).toMatchObject(image);
     }
     expect(await balance(u)).toBe(50);
     expect(fal.submits).toHaveLength(0);
@@ -351,11 +351,11 @@ describe("starting a render", () => {
     expect(r.status, "not 502 media_failed: no refund has happened").toBe(202);
     const job = jobOf(r);
     expect(job).toMatchObject({ state: "running", model: "img-balanced", credits: 1 });
-    expect((await getTask(u.email, t.id))!.mediaJob?.image, "the inbox follows the job the task points at").toBe(job.id);
+    expect((await getTask(acct(u), t.id))!.mediaJob?.image, "the inbox follows the job the task points at").toBe(job.id);
     expect(await balance(u), "charged, and not yet refunded").toBe(49);
     expect(kie.submits).toHaveLength(0);
 
-    await age(u.email, job.id, QUEUED_LOST_MS + 60_000);
+    await age(acct(u), job.id, QUEUED_LOST_MS + 60_000);
     const p = await poll(u, job.id);
     expect(p.body.job).toMatchObject({ id: job.id, state: "failed", error: "submit_lost" });
     expect(p.body.credits).toBe(50);
@@ -428,8 +428,8 @@ describe("starting a render", () => {
   async function grantedTrial(days: number): Promise<User> {
     const u = await owner();
     const until = new Date(Date.now() + days * 86400_000).toISOString().slice(0, 10);
-    await saveUser({ ...(await getUser(u.email))!, grants: { video: { value: "all", until, by: "founder@x", at: new Date().toISOString() } } });
-    return (await getUser(u.email))!;
+    await saveUser({ ...(await getUser(acct(u)))!, grants: { video: { value: "all", until, by: "founder@x", at: new Date().toISOString() } } });
+    return (await getUser(acct(u)))!;
   }
 
   it("13b. a founder video grant opens every model to a trial, still one clip", async () => {
@@ -487,7 +487,7 @@ describe("polling a render", () => {
     expect(r.body.job).toMatchObject({ id: job.id, state: "failed", error: "provider_failed" });
     expect(r.body.credits).toBe(50);
     expect(await balance(u)).toBe(50);
-    expect((await getTask(u.email, t.id))!.mediaLast?.image).toMatchObject({ error: "provider_failed", refunded: true });
+    expect((await getTask(acct(u), t.id))!.mediaLast?.image).toMatchObject({ error: "provider_failed", refunded: true });
   });
 
   it("14. a poll runs the opportunistic sweep behind its lock: a stale job of another account is refunded, once per 5 minutes", async () => {
@@ -502,20 +502,20 @@ describe("polling a render", () => {
     await settle();
     await db.unlock(mk.sweepLock());
 
-    await age(A.email, a1.id, 11 * 60_000);
+    await age(acct(A), a1.id, 11 * 60_000);
     expect((await poll(B, b.id)).status).toBe(200);
     await settle();
-    expect(await getJob(A.email, a1.id)).toMatchObject({ state: "failed", error: "timeout", refunded: true });
+    expect(await getJob(acct(A), a1.id)).toMatchObject({ state: "failed", error: "timeout", refunded: true });
     expect(await balance(A)).toBe(50);
     expect(kie.statusCalls).toBe(1);
 
     const a2 = jobOf(await start("image", A, await taskFor(A), { model: "img-balanced" }));
     await settle();
-    await age(A.email, a2.id, 11 * 60_000);
+    await age(acct(A), a2.id, 11 * 60_000);
     await poll(B, b.id);
     await settle();
     expect(kie.statusCalls, "no second sweep within 5 minutes").toBe(1);
-    expect((await getJob(A.email, a2.id))!.state).toBe("running");
+    expect((await getJob(acct(A), a2.id))!.state).toBe("running");
   });
 });
 
@@ -543,15 +543,15 @@ describe("provider callbacks", () => {
     const ja = jobOf(await start("image", A, ta, { model: "img-balanced" }));
     const jb = jobOf(await start("image", B, tb, { model: "img-balanced" }));
     await settle();
-    const aId = (await getJob(A.email, ja.id))!.providerTaskId!;
+    const aId = (await getJob(acct(A), ja.id))!.providerTaskId!;
     // The body offers its own result URL; only the provider's answer to our status call is ever copied.
     expect(await hook("kie", { taskId: aId, resultUrls: [EVIL], data: { resultJson: JSON.stringify({ resultUrls: [EVIL] }) } }, 8)).toBe(200);
     await settle();
-    expect(await getJob(A.email, ja.id)).toMatchObject({ state: "done", url: deps.stored[0].url });
+    expect(await getJob(acct(A), ja.id)).toMatchObject({ state: "done", url: deps.stored[0].url });
     expect(deps.stored.map((s) => s.source)).toEqual([RESULT]);
-    expect((await getTask(A.email, ta.id))!.imageUrl).toBe(deps.stored[0].url);
-    expect((await getJob(B.email, jb.id))!.state, "B's job is untouched").toBe("running");
-    expect((await getTask(B.email, tb.id))!.imageUrl).toBeUndefined();
+    expect((await getTask(acct(A), ta.id))!.imageUrl).toBe(deps.stored[0].url);
+    expect((await getJob(acct(B), jb.id))!.state, "B's job is untouched").toBe("running");
+    expect((await getTask(acct(B), tb.id))!.imageUrl).toBeUndefined();
     expect(kie.statusCalls).toBe(1);
 
     expect(await hook("kie", { taskId: "kie123456", pad: "x".repeat(64 * 1024) }, 9)).toBe(413);
@@ -573,7 +573,7 @@ describe("provider callbacks", () => {
     const u = await paid();
     const job = jobOf(await start("image", u, await taskFor(u), { model: "img-balanced" }));
     await settle();
-    const id = (await getJob(u.email, job.id))!.providerTaskId!;
+    const id = (await getJob(acct(u), job.id))!.providerTaskId!;
     for (let i = 0; i < 5; i++) expect(await hook("kie", { data: { taskId: id } }, 20 + i)).toBe(200);
     await settle();
     expect(kie.statusCalls).toBe(1);
@@ -586,7 +586,7 @@ describe("provider callbacks", () => {
     const u = await paid();
     const job = jobOf(await start("image", u, await taskFor(u), { model: "img-balanced" }));
     await settle();
-    const id = (await getJob(u.email, job.id))!.providerTaskId!;
+    const id = (await getJob(acct(u), job.id))!.providerTaskId!;
     const sign = (ts: number, key = "test-kie_webhook_hmac_key") => ({ "x-webhook-timestamp": String(ts), "x-webhook-signature": createHmac("sha256", key).update(`${id}.${ts}`).digest("base64") });
     const now = Math.floor(Date.now() / 1000);
 
@@ -597,7 +597,7 @@ describe("provider callbacks", () => {
     expect(kie.statusCalls).toBe(0);
     expect(await hook("kie", { taskId: id }, 33, sign(now))).toBe(200);
     await settle();
-    expect((await getJob(u.email, job.id))!.state).toBe("done");
+    expect((await getJob(acct(u), job.id))!.state).toBe("done");
 
     mediaEnv({ kie: true, store: true, models: "all" });
     expect(await hook("kie", { taskId: "kieunknown999" }, 34), "without the key an unsigned hint is a hint").toBe(200);
@@ -610,11 +610,11 @@ describe("provider callbacks", () => {
     const u = await paid();
     const job = jobOf(await start("image", u, await taskFor(u), { model: "img-lifestyle" }));
     await settle();
-    const id = (await getJob(u.email, job.id))!.providerTaskId!;
+    const id = (await getJob(acct(u), job.id))!.providerTaskId!;
     expect(await hook("higgsfield", { request_id: "not-a-uuid" }, 40)).toBe(400);
     expect(await hook("higgsfield", { request_id: id, status: "completed" }, 41)).toBe(200);
     await settle();
-    expect((await getJob(u.email, job.id))!.state).toBe("done");
+    expect((await getJob(acct(u), job.id))!.state).toBe("done");
   });
 });
 
@@ -627,7 +627,7 @@ describe("the cron sweep", () => {
     const u = await paid();
     const job = jobOf(await start("image", u, await taskFor(u), { model: "img-balanced" }));
     await settle();
-    await age(u.email, job.id, 11 * 60_000);
+    await age(acct(u), job.id, 11 * 60_000);
 
     const get = (auth?: string) => cronRoute.GET(new Request("https://nashr.test/api/cron/media", { headers: auth ? { authorization: auth } : {} }));
     expect((await get()).status).toBe(401);
@@ -636,7 +636,7 @@ describe("the cron sweep", () => {
     const res = await get("Bearer test-cron-secret");
     expect(res.status).toBe(200);
     expect(await res.json()).toMatchObject({ ok: true, open: 1, failed: 1 });
-    expect(await getJob(u.email, job.id)).toMatchObject({ state: "failed", error: "timeout", refunded: true });
+    expect(await getJob(acct(u), job.id)).toMatchObject({ state: "failed", error: "timeout", refunded: true });
     expect(await balance(u)).toBe(50);
   });
 });
@@ -649,16 +649,17 @@ describe("the chat tool", () => {
     const u = await owner();
     const t = await taskFor(u);
     const actions: string[] = [];
-    const fresh = (await getUser(u.email))!;
+    await signIn(u.email);
+    const fresh = (await currentUser())!;
     expect(await runTool(fresh, "generate_image", { task_id: t.id }, actions)).toMatch(/^Image generated for "Weekend offer" \(fal\).*Credits left: 49\.$/);
     expect(actions).toContain(`image:${t.id}`);
     expect(fal.submits[0].model, "the chat never picks a dearer model (spec A2)").toBe("img-fast");
     const plan = await taskFor(u, { type: "weekly_plan", channel: "internal" });
-    expect(await runTool((await getUser(u.email))!, "generate_image", { task_id: plan.id }, [])).toMatch(/^Images are only for these item types: social, ads/);
+    expect(await runTool((await currentUser())!, "generate_image", { task_id: plan.id }, [])).toMatch(/^Images are only for these item types: social, ads/);
 
     mediaEnv({});
     const t2 = await taskFor(u);
-    const out = await runTool((await getUser(u.email))!, "generate_image", { task_id: t2.id }, []);
+    const out = await runTool((await currentUser())!, "generate_image", { task_id: t2.id }, []);
     expect(out).toMatch(/placeholder rather than artwork\. No credit was used\./);
     expect(await balance(u)).toBe(49);
     expect(fal.submits).toHaveLength(1);

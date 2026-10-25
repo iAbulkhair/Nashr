@@ -26,7 +26,7 @@ vi.mock("@anthropic-ai/sdk", () => ({
 vi.mock("@/lib/model", async (orig) => ({ ...(await orig<typeof import("@/lib/model")>()), modelState: () => "on" as const }));
 
 import { db } from "@/lib/db";
-import { currentUser, getUser, saveUser, type User } from "@/lib/auth";
+import { acct, currentUser, getUser, saveUser, type User } from "@/lib/auth";
 import { CHAT_ALLOWANCE, CHAT_TURN_MAX_USD, MARGIN_FLOOR, MAX_CHAT_OVERRIDE, chatAllowanceOf, chatOverflowHold, cheapestCreditUsd, maxCostPerCreditUsd } from "@/lib/pricing";
 import { CHAT_FIRST_MIN_OUT, CHAT_HISTORY_MAX_CHARS, CHAT_HISTORY_MAX_MSGS, CHAT_HISTORY_MSG_MAX_CHARS, CHAT_MAX_OUT, CHAT_MIN_OUT, fitFirstCall, inputEstimateUsd, nextMaxTokens, trimHistory } from "@/lib/chat-budget";
 import { CHAT_MODEL, chat, history } from "@/lib/chat";
@@ -56,12 +56,12 @@ const creditMicro = () => Math.round(maxCostPerCreditUsd() * 1e6);
 async function owner(plan: User["plan"] = "starter", used = 0, extra: Partial<User> = {}): Promise<User> {
   const u = await newUser("ca");
   await saveUser({ ...u, plan, credits: 300, ...extra });
-  if (used) await db.set(plan === "trial" ? chatTrialKey(u.email) : chatMsgKey(u.email), used);
+  if (used) await db.set(plan === "trial" ? chatTrialKey(acct(u)) : chatMsgKey(acct(u)), used);
   await signIn(u.email);
   return (await currentUser())!;
 }
 const send = (text = "مرحبا") => chatRoute.POST(json("/api/chat", "POST", { text }));
-const count = async (u: Pick<User, "email" | "plan">) => Number((await db.get<number>(u.plan === "trial" ? chatTrialKey(u.email) : chatMsgKey(u.email))) ?? 0);
+const count = async (u: Pick<User, "id" | "email" | "plan">) => Number((await db.get<number>(u.plan === "trial" ? chatTrialKey(acct(u)) : chatMsgKey(acct(u)))) ?? 0);
 const ask = async (token: string, message: unknown) =>
   (await (await mcpRoute.POST(new Request("https://nashr.test/api/mcp", { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${token}` }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "ask_noor", arguments: { message } } }) }))).json()) as { result: { content: { text: string }[]; isError?: boolean } };
 
@@ -104,7 +104,7 @@ describe("messages are counted per account, before the turn (rule 309)", () => {
     expect(refused.status).toBe(402);
     expect(await refused.json()).toMatchObject({ ok: false, error: "chat_allowance", chat: { left: 0 } });
     expect(h.seen).toHaveLength(1);
-    expect((await history(u.email)).map((m) => m.content)).not.toContain("بعد الحد");
+    expect((await history(acct(u))).map((m) => m.content)).not.toContain("بعد الحد");
     expect(await count(u)).toBe(250);
   });
   it("a turn that failed, or never reached the model, is given back", async () => {
@@ -130,8 +130,8 @@ describe("messages are counted per account, before the turn (rule 309)", () => {
     const u = await owner("trial", 29);
     h.turns.push(reply("ok"));
     expect((await send()).status).toBe(200);
-    expect(await db.get(chatTrialKey(u.email))).toBe(30);
-    expect(await db.get(chatMsgKey(u.email))).toBeNull();
+    expect(await db.get(chatTrialKey(acct(u)))).toBe(30);
+    expect(await db.get(chatMsgKey(acct(u)))).toBeNull();
     const r = await send();
     expect(r.status).toBe(402);
     expect((await r.json()).chat).toMatchObject({ period: "trial", overflow: { available: false } });
@@ -146,7 +146,7 @@ describe("messages are counted per account, before the turn (rule 309)", () => {
   });
   it("MCP ask_noor counts on the same counter, is refused in plain words when it is used up, and an empty message counts nothing", async () => {
     const u = await owner("starter", 249);
-    const token = await createMcpToken(u.email);
+    const token = await createMcpToken(acct(u));
     expect((await ask(token, "   ")).result.isError).toBe(true);
     expect(await count(u)).toBe(249);
     h.turns.push(reply("done"));
@@ -171,12 +171,12 @@ describe("past the allowance: paused, or continued on credits when the owner say
     const r = await overflowRoute.POST(json("/api/billing/chat-overflow", "POST", { on: true }));
     expect(r.status).toBe(200);
     expect((await r.json()).chat.overflow.on).toBe(true);
-    expect((await getUser(u.email))!.chatOverflow).toBe(true);
+    expect((await getUser(acct(u)))!.chatOverflow).toBe(true);
     await overflowRoute.POST(json("/api/billing/chat-overflow", "POST", { on: false }));
-    expect((await getUser(u.email))!.chatOverflow).toBeUndefined();
+    expect((await getUser(acct(u)))!.chatOverflow).toBeUndefined();
     const t = await owner("trial");
     expect((await overflowRoute.POST(json("/api/billing/chat-overflow", "POST", { on: true }))).status).toBe(409);
-    expect((await getUser(t.email))!.chatOverflow).toBeUndefined();
+    expect((await getUser(acct(t)))!.chatOverflow).toBeUndefined();
   });
   it("each message is billed its metered cost at the floor rate, the remainder carried, never a credit each", async () => {
     const u = await owner("starter", 250, { chatOverflow: true });
@@ -194,17 +194,17 @@ describe("past the allowance: paused, or continued on credits when the owner say
       expect(j).toMatchObject({ ok: true, charged, credits });
       expect(j.chat.overflow.used).toBe(i + 1);
     }
-    expect((await getUser(u.email))!).toMatchObject({ credits, chatCarryMicro: carry });
+    expect((await getUser(acct(u)))!).toMatchObject({ credits, chatCarryMicro: carry });
     expect(await count(u)).toBe(250);
-    expect(await db.get(chatOverKey(u.email))).toBe(3);
-    expect(Number((await db.get(chatCredKey(u.email))) ?? 0)).toBe(300 - credits);
+    expect(await db.get(chatOverKey(acct(u)))).toBe(3);
+    expect(Number((await db.get(chatCredKey(acct(u)))) ?? 0)).toBe(300 - credits);
   });
   it("too few credits for the hold: 402 chat_credits, nothing charged or sent", async () => {
     const u = await owner("starter", 250, { chatOverflow: true, credits: chatOverflowHold() - 1 });
     const r = await send();
     expect(r.status).toBe(402);
     expect(await r.json()).toMatchObject({ error: "chat_credits", credits: chatOverflowHold() - 1 });
-    expect((await getUser(u.email))!.credits).toBe(chatOverflowHold() - 1);
+    expect((await getUser(acct(u)))!.credits).toBe(chatOverflowHold() - 1);
     expect(h.seen).toHaveLength(0);
   });
   it("a failed message is neither billed nor counted", async () => {
@@ -212,26 +212,26 @@ describe("past the allowance: paused, or continued on credits when the owner say
     vi.spyOn(console, "error").mockImplementation(() => {});
     h.turns.push(() => { throw new Error("overloaded"); });
     expect((await send()).status).toBe(502);
-    expect((await getUser(u.email))!.credits).toBe(300);
-    expect(await db.get(chatOverKey(u.email))).toBe(0);
+    expect((await getUser(acct(u)))!.credits).toBe(300);
+    expect(await db.get(chatOverKey(acct(u)))).toBe(0);
   });
   it("nothing is held before the turn, so the turn's own tools can spend the whole balance", async () => {
     const u = await owner("starter", 250, { chatOverflow: true, credits: chatOverflowHold() });
     const g = await reserveChatTurn(u, CHAT_MODEL);
     expect(g).toMatchObject({ ok: true, mode: "overflow", hold: chatOverflowHold() });
-    expect((await getUser(u.email))!.credits).toBe(chatOverflowHold());
+    expect((await getUser(acct(u)))!.credits).toBe(chatOverflowHold());
     if (g.ok) await settleChatTurn(u, g, null);
-    expect((await getUser(u.email))!.credits).toBe(chatOverflowHold());
+    expect((await getUser(acct(u)))!.credits).toBe(chatOverflowHold());
   });
   it("a message is billed at most the hold, never more than the balance left, and the carry stays under one credit", async () => {
     const u = await owner("starter");
     const hold = chatOverflowHold();
-    expect(await settleChatOverflow(u.email, hold, 50_000_000, creditMicro())).toEqual({ credits: 300 - hold, charged: hold });
-    expect((await getUser(u.email))!.chatCarryMicro).toBeLessThan(creditMicro());
-    await saveUser({ ...(await getUser(u.email))!, credits: 1, chatCarryMicro: 0 });
-    expect(await settleChatOverflow(u.email, hold, 3 * creditMicro(), creditMicro())).toEqual({ credits: 0, charged: 1 });
-    await expect(settleChatOverflow(u.email, -1, 1, creditMicro())).rejects.toThrow(/invalid_hold/);
-    await expect(settleChatOverflow(u.email, hold, Number.NaN, creditMicro())).rejects.toThrow(/invalid_cost/);
+    expect(await settleChatOverflow(acct(u), hold, 50_000_000, creditMicro())).toEqual({ credits: 300 - hold, charged: hold });
+    expect((await getUser(acct(u)))!.chatCarryMicro).toBeLessThan(creditMicro());
+    await saveUser({ ...(await getUser(acct(u)))!, credits: 1, chatCarryMicro: 0 });
+    expect(await settleChatOverflow(acct(u), hold, 3 * creditMicro(), creditMicro())).toEqual({ credits: 0, charged: 1 });
+    await expect(settleChatOverflow(acct(u), -1, 1, creditMicro())).rejects.toThrow(/invalid_hold/);
+    await expect(settleChatOverflow(acct(u), hold, Number.NaN, creditMicro())).rejects.toThrow(/invalid_cost/);
   });
   it("a founder allowance of 0 stops chat for the account, even with continue-on-credits on", async () => {
     const u = await owner("pro", 0, { chatOverflow: true, chatAllowance: 0 });
@@ -239,17 +239,17 @@ describe("past the allowance: paused, or continued on credits when the owner say
     expect(r.status).toBe(402);
     expect(await r.json()).toMatchObject({ error: "chat_allowance", chat: { allowance: 0, left: 0 } });
     expect(h.seen).toHaveLength(0);
-    expect((await getUser(u.email))!.credits).toBe(300);
+    expect((await getUser(acct(u)))!.credits).toBe(300);
   });
   it("over MCP a message continued on credits says so, with what it was billed", async () => {
     const u = await owner("starter", 250, { chatOverflow: true });
-    const token = await createMcpToken(u.email);
+    const token = await createMcpToken(acct(u));
     const usage: Usage = { input_tokens: 10_000, output_tokens: 2_000 };
     h.turns.push(reply("done", usage));
     const r = await ask(token, "hello");
     const billed = Math.floor(micro(usage) / creditMicro());
     expect(r.result.content[0].text).toContain(`[chat: this month's 250 messages are used; this message continued on credits and was billed ${billed} credit${billed === 1 ? "" : "s"}]`);
-    expect((await getUser(u.email))!.credits).toBe(300 - billed);
+    expect((await getUser(acct(u)))!.credits).toBe(300 - billed);
   });
   it("the switch is rate limited per account", async () => {
     await owner("starter");
@@ -314,7 +314,7 @@ describe("the hard per-message ceiling (rule 311)", () => {
   it("a limit a tool hit still raises its dialog when the loop ends without a closing answer", async () => {
     const u = await owner("starter", 0, { credits: 0 });
     const brand: Brand = { name: "Rose", website: "", industry: "coffee", dialect: "saudi", languages: ["ar"], tone: "warm", products: "coffee", audience: "Riyadh", offers: "", competitors: "", banned: "", preferred: "", channels: ["instagram"], city: "Riyadh", updatedAt: new Date().toISOString() };
-    await saveBrand(u.email, brand);
+    await saveBrand(acct(u), brand);
     h.turns.push(() => ({ content: [{ type: "tool_use", id: `tu${++k}`, name: "draft_items", input: { type: "social", count: 1, brief: "eid" } }], stop_reason: "tool_use", model: CHAT_MODEL, usage: CHEAP }));
     h.turns.push(() => ({ content: [{ type: "text", text: "No cred" }], stop_reason: "max_tokens", model: CHAT_MODEL, usage: CHEAP }));
     const m = await chat(u, "one caption", undefined, "noor", { lang: "en" });
@@ -327,10 +327,10 @@ describe("the hard per-message ceiling (rule 311)", () => {
     const j = await (await send()).json();
     expect(j.message).not.toHaveProperty("usd");
   });
-  it("chat runs on Sonnet 5.5 under a $0.14 ceiling: the same 14,000 output tokens a message had under $0.35 on Opus 5 ($25/M, removed by rule 970), and a 2-credit hold", () => {
+  it("chat runs on Sonnet 5.5 under a $0.14 ceiling: the same 14,000 output tokens a message had under $0.35 on Opus 5 ($25/M, removed by rule 970), and a 3-credit hold (2 before yearly billing lowered the ceiling, rule 4033)", () => {
     expect(CHAT_MODEL).toBe("claude-sonnet-5-5");
     expect(CHAT_TURN_MAX_USD).toBe(0.14);
-    expect(chatOverflowHold()).toBe(2);
+    expect(chatOverflowHold()).toBe(3);
     const tokensUnder = (ceiling: number, model: string) => ceiling / costUsd(model, { output_tokens: 1 });
     expect(tokensUnder(CHAT_TURN_MAX_USD, CHAT_MODEL)).toBeCloseTo(0.35 / 25e-6, 6);
   });
@@ -385,7 +385,7 @@ describe("the history guard (rule 312)", () => {
   });
   it("chat() sends the trimmed thread", async () => {
     const u = await owner("starter");
-    for (let i = 0; i < 30; i++) await db.lpush(`chat:${u.email}`, JSON.stringify({ ...msg(i % 2 ? "assistant" : "user", i), at: new Date().toISOString() }));
+    for (let i = 0; i < 30; i++) await db.lpush(`chat:${acct(u)}`, JSON.stringify({ ...msg(i % 2 ? "assistant" : "user", i), at: new Date().toISOString() }));
     h.turns.push(reply("ok"));
     await chat(u, "latest", undefined, "noor", { lang: "en" });
     const sent = h.seen[0].messages as { content: string }[];
@@ -412,9 +412,9 @@ describe("the counters go with the account (rule 314)", () => {
   it("usageMonthKeys lists the month's chat counters, and wipeAccount deletes them and the trial's", async () => {
     const u = await newUser("cw");
     const m = monthKey();
-    expect(usageMonthKeys(u.email, m)).toEqual(expect.arrayContaining([chatMsgKey(u.email, m), chatOverKey(u.email, m), chatCredKey(u.email, m)]));
-    await Promise.all([db.set(chatMsgKey(u.email), 7), db.set(chatOverKey(u.email), 2), db.set(chatCredKey(u.email), 3), db.set(chatTrialKey(u.email), 30)]);
-    await wipeAccount(u.email);
-    expect(await Promise.all([db.get(chatMsgKey(u.email)), db.get(chatOverKey(u.email)), db.get(chatCredKey(u.email)), db.get(chatTrialKey(u.email))])).toEqual([null, null, null, null]);
+    expect(usageMonthKeys(acct(u), m)).toEqual(expect.arrayContaining([chatMsgKey(acct(u), m), chatOverKey(acct(u), m), chatCredKey(acct(u), m)]));
+    await Promise.all([db.set(chatMsgKey(acct(u)), 7), db.set(chatOverKey(acct(u)), 2), db.set(chatCredKey(acct(u)), 3), db.set(chatTrialKey(acct(u)), 30)]);
+    await wipeAccount(acct(u));
+    expect(await Promise.all([db.get(chatMsgKey(acct(u))), db.get(chatOverKey(acct(u))), db.get(chatCredKey(acct(u))), db.get(chatTrialKey(acct(u)))])).toEqual([null, null, null, null]);
   });
 });

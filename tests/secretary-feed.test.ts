@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeAll, describe, expect, it, vi } from "vitest";
-import { json, markVerified, newMember as helperNewMember, newUser as helperNewUser, params, signIn, signOut } from "./helpers/session";
+import { addShadowMembership, json, markVerified, newMember as helperNewMember, params, signIn, signOut } from "./helpers/session";
 import { createUser, currentUser, getUser, saveUser } from "@/lib/auth";
 import { saveBrands } from "@/lib/brands";
 import { createMember, forceRemoveMember, getMember, leaveTeam, removeMember, saveMember, type Member } from "@/lib/team";
@@ -33,7 +33,17 @@ import { createFeed, FEED_KEYS, FEED_TOKEN, getFeedStatus, hashFeedToken, resolv
 // Pins the legacy shape (multi-org M1): this file pins R1's feed links, made and checked by login (`createFeed(login)`, the
 // `sec:feedof:{login}` pointer, the login's lock, `activebrand:{login}`), so its persons are legacy ones; the links of a
 // `p_` person, per `(pid, aid)`, are pinned in tests/multi-org-links.test.ts (rule 2119). Each still holds a shadow membership.
-const newUser = (prefix?: string, o: Parameters<typeof helperNewUser>[1] = {}) => helperNewUser(prefix, { legacy: true, ...o });
+let fixN = 0;
+/**
+ * An R1 owner: a legacy person at an account made before R2 enable (`opaque: false`, its id is its address, as every account
+ * was in the releases whose links this file pins). With the switches on `helperNewUser` makes an `a_` account, which a
+ * link made by login does not reach (`legacyHolds` compares the scope with the owner's address).
+ */
+const newUser = async (prefix = "u", { verified = true }: { verified?: boolean } = {}) => {
+  const u = await createUser({ email: `${prefix}${++fixN}-${randomBytes(3).toString("hex")}@test.example`, name: "Test", phone: "", password: "abc12345", lang: "ar" }, { opaque: false, person: "legacy" });
+  await addShadowMembership(ownerOf(u), u.createdAt);
+  return verified ? markVerified(u.email) : u;
+};
 const newMember = (owner: Parameters<typeof helperNewMember>[0], role?: Parameters<typeof helperNewMember>[1], prefix?: string, o: Parameters<typeof helperNewMember>[3] = {}) => helperNewMember(owner, role, prefix, { legacy: true, ...o });
 
 const FOUNDER = "founder-feed@test.example";
@@ -150,8 +160,8 @@ describe("feed token (rules 530-533)", () => {
     expect(await resolveFeed(orphan)).toEqual({ hash: hashFeedToken(orphan), rec: expect.objectContaining({ login }) });
   });
 
-  it("rule 533: feed.manage is member-level and blocked while a founder impersonates", async () => {
-    expect(MIN_ROLE["feed.manage"]).toBe("member");
+  it("rule 533: feed.manage is open to every role (Viewer up, rule 3752) and blocked while a founder impersonates", async () => {
+    expect(MIN_ROLE["feed.manage"]).toBe("viewer");
     const owner = await newUser("feedown");
     const admin = await newMember(owner, "admin");
     const member = await newMember(owner, "member");
@@ -479,7 +489,10 @@ describe("public feed route (rules 539, 577-579)", () => {
     expect((await callFeed(oldOwner, ip)).status).toBe(200);
     await db.del(`user:${o2.email}`);
     await later();
-    await markVerified((await createUser({ email: o2.email, name: "Again", phone: "", password: "abc12345", lang: "ar" })).email);
+    // Registered again as an R1 owner, like `newUser` above (a link made before M1 is checked against the account id the address names).
+    const again = await createUser({ email: o2.email, name: "Again", phone: "", password: "abc12345", lang: "ar" }, { opaque: false, person: "legacy" });
+    await addShadowMembership(ownerOf(again), again.createdAt);
+    await markVerified(again.email);
     expect((await callFeed(oldOwner, ip)).status).toBe(404);
     const freshOwner = (await createFeed(o2.email, o2.email, "en")) as string;
     expect((await callFeed(freshOwner, ip)).status).toBe(200);

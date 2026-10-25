@@ -1,6 +1,6 @@
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import { jar, json, markVerified, newUser, params, settle, signIn, signOut } from "./helpers/session";
-import { createUser, currentUser, getUser, sessionRecord, type User } from "@/lib/auth";
+import { acct, createUser, currentUser, getUser, sessionRecord, type User } from "@/lib/auth";
 
 import * as overview from "@/app/api/admin/overview/route";
 import * as plan from "@/app/api/admin/plan/route";
@@ -62,7 +62,7 @@ describe("founder console routes (rule 6)", () => {
     await signIn(customer.email);
     const s = await statuses(adminCalls());
     expect(s).toEqual(s.map(() => 401));
-    const u = await getUser(customer.email);
+    const u = await getUser(acct(customer));
     expect(u!.credits).toBe(50);
     expect(u!.suspended).toBeFalsy();
   });

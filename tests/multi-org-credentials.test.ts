@@ -4,7 +4,7 @@ import { createHash, randomBytes } from "crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { jar, json, markVerified, newMember as helperNewMember, newUser as helperNewUser, params, signIn, signOut } from "./helpers/session";
-import { acct, createUser, currentUser, getUser, verifyPassword, type User } from "@/lib/auth";
+import { acct, createUser, currentUser, getLogin, getUser, verifyPassword, type User } from "@/lib/auth";
 import { loginIndexOf, newAccountId } from "@/lib/account-id";
 import { db } from "@/lib/db";
 import { log } from "@/lib/log";
@@ -25,7 +25,8 @@ import * as verifyCheckRoute from "@/app/api/auth/verify/check/route";
 
 // Pins the legacy shape (multi-org M1): this file reads and writes R1's records by address (`user:`/`member:`, address-shaped
 // person ids and actors), so its persons are legacy ones; each still holds a shadow membership unless it says `shadow: false`.
-const newUser = (prefix?: string, o: Parameters<typeof helperNewUser>[1] = {}) => helperNewUser(prefix, { legacy: true, ...o });
+// Since the enable release (rule 3815) a legacy owner here is also an address-id account, as every account made before it.
+const newUser = (prefix?: string, o: Parameters<typeof helperNewUser>[1] = {}) => helperNewUser(prefix, { legacy: true, addressId: true, ...o });
 const newMember = (owner: Parameters<typeof helperNewMember>[0], role?: Parameters<typeof helperNewMember>[1], prefix?: string, o: Parameters<typeof helperNewMember>[3] = {}) => helperNewMember(owner, role, prefix, { legacy: true, ...o });
 
 /**
@@ -38,7 +39,13 @@ const newMember = (owner: Parameters<typeof helperNewMember>[0], role?: Paramete
  */
 
 const FOUNDER = "founder-credentials@test.example";
-afterEach(() => { vi.restoreAllMocks(); vi.unstubAllEnvs(); signOut(); });
+afterEach(() => { vi.restoreAllMocks(); vi.unstubAllEnvs(); signOut(); flag.on = true; });
+
+// Both switches are on (rule 3810). A test that pins what a legacy sign-up writes (a person at its address, which only a
+// build with them off makes) turns them off: the rollback floor (rule 3814).
+const flag = vi.hoisted(() => ({ on: true }));
+vi.mock("@/lib/multi-org", async (orig) => ({ ...(await orig<typeof import("@/lib/multi-org")>()), get MULTI_ORG() { return flag.on; } }));
+vi.mock("@/lib/account-id", async (orig) => ({ ...(await orig<typeof import("@/lib/account-id")>()), get OPAQUE_IDS() { return flag.on; } }));
 
 let ipN = 0;
 const ip = () => ({ "x-forwarded-for": `198.51.100.${(++ipN % 250) + 1}` });
@@ -254,8 +261,9 @@ describe("rule 2132: a revocation stamp never moves backwards", () => {
     const at = await r1SignOutOthers(accountKey.user(acct(o)));
     const to = address("mvdto");
     expect(await moveUnverifiedAccount((await getUser(o.email))!, to)).toBe("ok");
-    expect((await db.get<User>(accountKey.user(to)))!.devicesAfter).toBe(at);
-    await expectAgree(to, "owner");
+    // With `OPAQUE_IDS` on the move is in place (rule 2746): the account keeps its id and holds the new address.
+    expect((await db.get<User>(accountKey.user(acct(o))))!).toMatchObject({ email: to, devicesAfter: at });
+    await expectAgree(acct(o), "owner");
   });
 });
 
@@ -273,7 +281,8 @@ describe("plan reconciliation 6: a new login's row is written under lock:person"
     expect((await db.get<{ name: string }>(personKey.person(pid)))!.name).toBe("N");
   });
 
-  it("signup with the person lock held past the wait answers 409 busy and writes nothing", async () => {
+  it("signup with the person lock held past the wait answers 409 busy and writes nothing (switches off: a person at its address)", async () => {
+    flag.on = false;
     const e = address("cps");
     const pid = storedPersonId(e);
     await db.lock(personKey.lock(pid), 10);
@@ -288,7 +297,8 @@ describe("plan reconciliation 6: a new login's row is written under lock:person"
     expect(await db.get(personKey.person(pid))).toBeNull();
   }, 30_000);
 
-  it("a Google sign-up with the person lock held past the wait throws person_lock_timeout and writes nothing", async () => {
+  it("a Google sign-up with the person lock held past the wait throws person_lock_timeout and writes nothing (switches off)", async () => {
+    flag.on = false;
     const e = address("ggl");
     await db.lock(personKey.lock(storedPersonId(e)), 10);
     try {
@@ -355,7 +365,9 @@ describe("rule 2132 (credential part): a p_ person writes person: only", () => {
 });
 
 describe("plan reconciliation 6: a new login's person row is written whole", () => {
-  it("signup overwrites a leftover person:{email} row: the leftover password does not sign in", async () => {
+  it("signup overwrites a leftover person:{email} row: the leftover password does not sign in (switches off)", async () => {
+    // Only a build with the switches off writes a person at its address; with them on a sign-up's person is a new `p_`.
+    flag.on = false;
     const e = address("lo");
     await db.set(personKey.person(storedPersonId(e)), { pid: e, email: e, name: "Leftover", lang: "ar", passHash: await bcrypt.hash("leftover-pass-1", 4), createdAt: T0, sessionsAfter: T0, suspended: true });
     expect((await signupRoute.POST(json("/api/auth/signup", "POST", { email: e, password: "abc12345", name: "New", lang: "en" }, ip()))).status).toBe(200);
@@ -368,7 +380,9 @@ describe("plan reconciliation 6: a new login's person row is written whole", () 
     await expectAgree(e, "owner");
   });
 
-  it("an owner's address move writes the person at the new address whole, with the moved password and birth", async () => {
+  it("an owner's address move writes the person at the new address whole, with the moved password and birth (switches off)", async () => {
+    // With `OPAQUE_IDS` on the move is in place and the person keeps its id (tests/account-id-r2.test.ts).
+    flag.on = false;
     // No shadow memberships: the persons here hold nothing else, so the person and the login go with the last membership (multi-org M1).
     const o = await newUser("mv", { verified: false, shadow: false });
     const to = address("mvto");
@@ -386,14 +400,16 @@ describe("plan reconciliation 6: a new login's person row is written whole", () 
     const e = address("gg");
     const r = await resolveGoogle({ sub: `sub-${randomBytes(6).toString("hex")}`, email: e, name: "Google Person" }, "signup", "en");
     expect(r.kind).toBe("created");
-    const p = (await getPerson(storedPersonId(e)))!;
+    const l = (await getLogin(e))!;
+    expect(l).toMatchObject({ kind: "owner", acct: expect.stringMatching(/^a_/), pid: expect.stringMatching(/^p_/) });
+    const p = (await getPerson(storedPersonId(l.pid)))!;
     expect(p).not.toHaveProperty("passHash");
     expect(p.emailVerifiedAt).toBeTruthy();
     expect(await verifyPassword(p, "anything-at-all")).toBe(false);
-    const account = (await db.get<User>(accountKey.user(e)))!;
+    const account = (await db.get<User>(accountKey.user(l.acct!)))!;
     expect(account.emailVerifiedAt).toBe(p.emailVerifiedAt);
-    // A build rolled back to R1 compares `user.passHash`: the account keeps a hash nobody knows.
-    expect(typeof account.passHash).toBe("string");
+    // A `p_` person's credentials live on the person only (rule 2132); the rollback floor (M1) reads them there.
+    expect(account).not.toHaveProperty("passHash");
   });
 });
 
@@ -563,7 +579,9 @@ describe("source scans (rule 2132, credential part)", () => {
     const libWriters = files(join("src", "lib")).filter((f) => /\b(updatePerson|createUser|withPersonLock|withMovePersonLock|forgetPassword)\(/.test(readFileSync(f, "utf8")) && !/src\/lib\/(person|auth)\.ts$/.test(f));
     // The library files that call a person writer, so a new one fails here until its routes are listed above.
     // src/lib/email-move.ts (account-id R2): reached from the email change route, the verify route and the revert route.
-    expect(libWriters.map((f) => f.replace(/\\/g, "/")).sort()).toEqual(["src/lib/email-move.ts", "src/lib/google-signin.ts", "src/lib/passkeys.ts", "src/lib/person-delete.ts", "src/lib/team.ts", "src/lib/transfer.ts", "src/lib/verify-email.ts", "src/lib/workspaces.ts"]);
+    // src/lib/conversions/multi-org-index.ts (S1, rule 4100): its apply takes the person lock, but only the terminal
+    // script applies it; the console route runs it dry only and refuses an apply before any lock (rule 4104).
+    expect(libWriters.map((f) => f.replace(/\\/g, "/")).sort()).toEqual(["src/lib/conversions/multi-org-index.ts", "src/lib/email-move.ts", "src/lib/google-signin.ts", "src/lib/passkeys.ts", "src/lib/person-delete.ts", "src/lib/team.ts", "src/lib/transfer.ts", "src/lib/verify-email.ts", "src/lib/workspaces.ts"]);
     // src/lib/passkeys.ts: every route that imports the store is listed, so a new one (the sign-in verify route) fails
     // here until it is, and then must answer the lock timeout (Task 3 review minor 7).
     const passkeyRoutes = files(join("src", "app")).filter((f) => /from "@\/lib\/passkeys"/.test(readFileSync(f, "utf8")));

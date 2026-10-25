@@ -59,6 +59,7 @@ vi.mock("@anthropic-ai/sdk", () => {
   };
 });
 
+import { acct } from "@/lib/account-id";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { db } from "@/lib/db";
@@ -115,9 +116,9 @@ describe("meter records calls and money per model", () => {
   it("two models: calls and micro-dollars per model match costUsd, and getUsage('_all') returns them", async () => {
     pin("2031-01-15T12:00:00Z");
     const u = await newUser("um-two");
-    await meter(u.email, OPUS, "generate", U_OPUS);
-    await meter(u.email, SONNET, "judge", U_SONNET);
-    await meter(u.email, OPUS, "chat", U_SMALL, "sami");
+    await meter(acct(u), OPUS, "generate", U_OPUS);
+    await meter(acct(u), SONNET, "judge", U_SONNET);
+    await meter(acct(u), OPUS, "chat", U_SMALL, "sami");
     expect(await db.get("usage:_all:2031-01:model:claude-opus-5-5:calls")).toBe(2);
     expect(await db.get("usage:_all:2031-01:model:claude-opus-5-5:usd_micro")).toBe(micro(OPUS, U_OPUS) + micro(OPUS, U_SMALL));
     expect(await db.get("usage:_all:2031-01:model:claude-sonnet-5-5:calls")).toBe(1);
@@ -151,21 +152,21 @@ describe("meter records the provider", () => {
     pin("2031-02-10T12:00:00Z");
     const u = await newUser("um-prov-default");
     // 1. Unset, and a typo even with a Straitly key lying around: Anthropic.
-    await meter(u.email, OPUS, "generate", U_OPUS);
+    await meter(acct(u), OPUS, "generate", U_OPUS);
     vi.stubEnv("LLM_PROVIDER", "openai");
     vi.stubEnv("STRAITLY_API_KEY", "gw-test-key");
-    await meter(u.email, OPUS, "generate", U_OPUS);
+    await meter(acct(u), OPUS, "generate", U_OPUS);
     expect((await getUsage("_all", "2031-02")).providers).toEqual({ anthropic: { calls: 2, usd: usdOf(48000) } });
     // 2. Straitly with its key: the gateway.
     vi.stubEnv("LLM_PROVIDER", "straitly");
-    await meter(u.email, SONNET, "judge", U_SONNET);
+    await meter(acct(u), SONNET, "judge", U_SONNET);
     expect(await db.get("usage:_all:2031-02:provider:straitly:calls")).toBe(1);
     expect(await db.get("usage:_all:2031-02:provider:straitly:usd_micro")).toBe(9600);
     expect((await getUsage("_all", "2031-02")).providers).toEqual({ anthropic: { calls: 2, usd: usdOf(48000) }, straitly: { calls: 1, usd: usdOf(9600) } });
     // 3. Straitly without its key but with ANTHROPIC_API_KEY (a supported setup): anthropic() builds the plain Anthropic
     // client, every call goes direct, so it is counted under anthropic and not under the gateway.
     vi.stubEnv("STRAITLY_API_KEY", "");
-    await meter(u.email, SONNET, "judge", U_SONNET);
+    await meter(acct(u), SONNET, "judge", U_SONNET);
     expect((await getUsage("_all", "2031-02")).providers).toEqual({ anthropic: { calls: 3, usd: usdOf(57600) }, straitly: { calls: 1, usd: usdOf(9600) } });
     expect(allKeys().filter((k) => k.startsWith("usage:_all:2031-02:provider:")).sort()).toEqual([
       "usage:_all:2031-02:provider:anthropic:calls", "usage:_all:2031-02:provider:anthropic:usd_micro",
@@ -177,10 +178,10 @@ describe("meter records the provider", () => {
     pin("2031-11-11T12:00:00Z");
     const u = await newUser("um-prov-explicit");
     vi.stubEnv("LLM_PROVIDER", "anthropic");
-    await meter(u.email, SONNET, "judge", U_SONNET, undefined, "straitly");
+    await meter(acct(u), SONNET, "judge", U_SONNET, undefined, "straitly");
     vi.stubEnv("LLM_PROVIDER", "straitly");
     vi.stubEnv("STRAITLY_API_KEY", "gw-test-key");
-    await meter(u.email, OPUS, "generate", U_OPUS, "faris", "anthropic");
+    await meter(acct(u), OPUS, "generate", U_OPUS, "faris", "anthropic");
     expect((await getUsage("_all", "2031-11")).providers).toEqual({ straitly: { calls: 1, usd: usdOf(9600) }, anthropic: { calls: 1, usd: usdOf(24000) } });
   });
 
@@ -190,7 +191,7 @@ describe("meter records the provider", () => {
     vi.stubEnv("LLM_PROVIDER", "straitly");
     vi.stubEnv("STRAITLY_API_KEY", "gw-test-key"); // so the effective default is straitly, not the other value
     const bogus: unknown[] = ["openai", "constructor", "__proto__", "straitly:calls", "evil\nusage:x", "", "ANTHROPIC", 7, null, {}, ["anthropic"]];
-    for (const p of bogus) await meter(u.email, OPUS, "generate", U_SMALL, undefined, p as never);
+    for (const p of bogus) await meter(acct(u), OPUS, "generate", U_SMALL, undefined, p as never);
     expect((await getUsage("_all", "2031-12")).providers).toEqual({ straitly: { calls: bogus.length, usd: usdOf(240 * bogus.length) } });
     const keys = allKeys().filter((k) => k.startsWith("usage:_all:2031-12:provider:"));
     expect(keys.sort()).toEqual(["usage:_all:2031-12:provider:straitly:calls", "usage:_all:2031-12:provider:straitly:usd_micro"]);
@@ -205,7 +206,7 @@ describe("requests the gateway sent direct", () => {
     expect(all.fallbacks).toBe(3);
     expect(all.providers).toEqual({});
     const u = await newUser("um-fallback");
-    expect((await getUsage(u.email, "2032-02")).fallbacks).toBe(0);
+    expect((await getUsage(acct(u), "2032-02")).fallbacks).toBe(0);
     expect((await getUsage("_all", "2032-03")).fallbacks).toBe(0);
   });
 });
@@ -216,7 +217,7 @@ describe("the model key is never a free string", () => {
     const u = await newUser("um-hostile");
     const hostile: unknown[] = ["constructor", "__proto__", "toString", "hasOwnProperty", "claude-opus-5:calls", "claude-opus-5 ", " claude-opus-5", "CLAUDE-OPUS-5", "claude opus 5", "x\nusage:evil@test.example:2031-03:calls", "", "claude-unknown-9", "anthropic/claude-opus-5", "claude-opus-5-20261001", "claude-opus-5", "claude-sonnet-5", 5, null, undefined, {}];
     const before = new Set(allKeys());
-    for (const model of hostile) await meter(u.email, model as string, "generate", U_SMALL);
+    for (const model of hostile) await meter(acct(u), model as string, "generate", U_SMALL);
     await meter(undefined, "a:b", "tool", U_SMALL);
     const modelKeys = allKeys().filter((k) => k.startsWith("usage:_all:2031-03:model:")).sort();
     expect(modelKeys).toEqual(["usage:_all:2031-03:model:other:calls", "usage:_all:2031-03:model:other:usd_micro"]);
@@ -266,11 +267,11 @@ describe("getUsage for one account", () => {
   it("returns empty models, providers and rejected picks, and reads none of the global counters", async () => {
     pin("2031-06-10T12:00:00Z");
     const u = await newUser("um-account");
-    await meter(u.email, OPUS, "generate", U_OPUS);
+    await meter(acct(u), OPUS, "generate", U_OPUS);
     await noteRejectedPick("chat", "unknown");
     const mget = vi.spyOn(db, "mget");
     const get = vi.spyOn(db, "get");
-    const mine = await getUsage(u.email, "2031-06");
+    const mine = await getUsage(acct(u), "2031-06");
     expect(mine.calls).toBe(1);
     expect(mine.models).toEqual({});
     expect(mine.providers).toEqual({});
@@ -340,22 +341,22 @@ describe("no account-linked key gains model, provider or pickreject", () => {
     pin("2031-08-10T12:00:00Z");
     // No shadow membership: this pins a person who holds nothing else, so the deletion takes the login too (multi-org M1).
     const u = await newUser("um-keys", { shadow: false });
-    await meter(u.email, OPUS, "generate", U_OPUS, "faris", "straitly");
-    await meter(u.email, "mystery-model", "chat", U_SMALL, "sami");
+    await meter(acct(u), OPUS, "generate", U_OPUS, "faris", "straitly");
+    await meter(acct(u), "mystery-model", "chat", U_SMALL, "sami");
     await noteRejectedPick("chat", "unknown");
-    const list = usageMonthKeys(u.email, "2031-08");
+    const list = usageMonthKeys(acct(u), "2031-08");
     // Rule 2902 adds the account's own per-model breakdown (`:by:model:calls|usd_micro`, two hashes on this list); the
     // global per-model, provider and pick counters still never carry an account.
     const notOwn = /(?<!by:)model:|provider:|pickreject:/;
     expect(list.filter((k) => notOwn.test(k))).toEqual([]);
-    expect(list).toContain(`usage:${u.email}:2031-08:calls`);
-    const mine = allKeys().filter((k) => k.includes(u.email));
+    expect(list).toContain(`usage:${acct(u)}:2031-08:calls`);
+    const mine = allKeys().filter((k) => k.includes(acct(u)));
     expect(mine.length).toBeGreaterThan(0);
     expect(mine.filter((k) => notOwn.test(k))).toEqual([]);
     // Every account counter of the month is on the list `wipeAccount` deletes.
     expect(mine.filter((k) => k.startsWith("usage:") && !list.includes(k))).toEqual([]);
-    await wipeAccount(u.email);
-    expect(allKeys().filter((k) => k.includes(u.email) && mem().kv.get(k) !== null)).toEqual([]);
+    await wipeAccount(acct(u));
+    expect(allKeys().filter((k) => k.includes(acct(u)) && mem().kv.get(k) !== null)).toEqual([]);
     const after = await getUsage("_all", "2031-08");
     expect(after.models[OPUS]).toEqual({ calls: 1, usd: 0.024 });
     expect(after.models.other?.calls).toBe(1);
@@ -370,7 +371,7 @@ const brand: Brand = { name: "مقهى الفنجان", website: "", industry: "
 async function owner(prefix: string): Promise<{ u: User; conv: string }> {
   const n = await newUser(prefix);
   await saveUser({ ...n, plan: "starter", credits: 500 });
-  await db.set(`brand:${n.email}`, brand);
+  await db.set(`brand:${acct(n)}`, brand);
   await signIn(n.email);
   const u = (await currentUser())!;
   const c = await createConversation(sc(u), "t");
@@ -440,7 +441,7 @@ describe("generateBatch counts a rejected pick", () => {
     const { u } = await owner("um-gen");
     const base = await picks();
     const run = async (type: "social" | "ads") => {
-      const r = await generateBatch((await getUser(u.email))!, sc(u), { type, source: "manual", via: "app" });
+      const r = await generateBatch((await getUser(acct(u)))!, sc(u), { type, source: "manual", via: "app" });
       await settle();
       return r;
     };
@@ -460,7 +461,7 @@ describe("generateBatch counts a rejected pick", () => {
     expect(gone.ok && gone.modelRejected).toBe("unknown");
     expect((await picks())["generate:unknown"] ?? 0).toBe((base["generate:unknown"] ?? 0) + 1);
     // A caller that names its own model asks route() nothing, so nothing is counted.
-    const named = await generateBatch((await getUser(u.email))!, sc(u), { type: "social", source: "manual", via: "app", model: DEFAULTS.generate });
+    const named = await generateBatch((await getUser(acct(u)))!, sc(u), { type: "social", source: "manual", via: "app", model: DEFAULTS.generate });
     await settle();
     expect(named.ok).toBe(true);
     expect((await picks())["generate:unknown"] ?? 0).toBe((base["generate:unknown"] ?? 0) + 1);
@@ -471,21 +472,21 @@ describe("generateBatch counts a rejected pick", () => {
   it("a failing counter changes nothing about the batch: same result, same charge, same items", async () => {
     const { u } = await owner("um-gen-fail");
     await db.set(`brand:${sc(u)}`, { ...brand, model: "claude-retired-1" });
-    const before = (await getUser(u.email))!.credits;
+    const before = (await getUser(acct(u)))!.credits;
     const okRun = await generateBatch(u, sc(u), { type: "social", source: "manual", via: "app" });
     await settle();
-    const spent = before - (await getUser(u.email))!.credits;
+    const spent = before - (await getUser(acct(u)))!.credits;
     const base = await picks();
     const incr = failPickCounter();
     const err = vi.spyOn(console, "error").mockImplementation(() => {});
-    const mid = (await getUser(u.email))!.credits;
-    const failRun = await generateBatch((await getUser(u.email))!, sc(u), { type: "social", source: "manual", via: "app" });
+    const mid = (await getUser(acct(u)))!.credits;
+    const failRun = await generateBatch((await getUser(acct(u)))!, sc(u), { type: "social", source: "manual", via: "app" });
     await settle();
     expect(okRun.ok).toBe(true);
     expect(failRun.ok).toBe(true);
     expect(failRun.ok && failRun.modelRejected).toBe("unknown");
     expect(failRun.ok && failRun.tasks.length).toBe(okRun.ok ? okRun.tasks.length : -1);
-    expect(mid - (await getUser(u.email))!.credits).toBe(spent);
+    expect(mid - (await getUser(acct(u)))!.credits).toBe(spent);
     expect(incr.mock.calls.some((c) => String(c[0]).includes(":pickreject:"))).toBe(true);
     expect(JSON.stringify(err.mock.calls)).not.toContain("counter store down");
     incr.mockRestore();

@@ -38,6 +38,80 @@ export const planFromStore = (v: unknown): Plan => (v === "enterprise" ? "agency
 // through allowanceOf / priceOf / seatLimit, the helpers that know what an Agency account gets.
 /** Monthly list price in SAR, excluding VAT (the site's wording, pending the accountant: see PRICES_INCLUDE_VAT). */
 export const PLAN_PRICE_SAR: Readonly<Record<FixedPlan, number>> = { trial: 0, starter: 299, pro: 499, business: 999 };
+
+// ---- Yearly billing (rules 3530-3549, flows.md section 110) ----
+
+/** How often a self-serve plan is charged. A stored record without one is monthly (`readInterval`). */
+export type BillingInterval = "month" | "year";
+export const BILLING_INTERVALS: readonly BillingInterval[] = ["month", "year"];
+/** Calendar months one paid period of each interval covers: `paidThrough` moves by this much per payment. */
+export const INTERVAL_MONTHS: Readonly<Record<BillingInterval, number>> = { month: 1, year: 12 };
+/**
+ * An interval from a request body or a stored record: absent (undefined or null) reads as "month", the only interval that
+ * existed before rule 3530, so an old subscription or intent is monthly; "month" and "year" read as themselves; anything
+ * else is null, which every caller refuses (never guessed).
+ */
+export const readInterval = (v: unknown): BillingInterval | null =>
+  v === undefined || v === null || v === "month" ? "month" : v === "year" ? "year" : null;
+
+/*
+ * >>> FOUNDER: FILL IN THE YEARLY PRICES HERE. <<<
+ *
+ * The yearly list price per self-serve plan, in whole SAR excluding VAT (like PLAN_PRICE_SAR), or null for "yearly is not
+ * offered for this plan". Set 2026-10-24 by the founder: 2 months free on every plan (2,990 / 4,990 / 9,990 SAR a year,
+ * rule 4035). That moved the cheapest credit to Business yearly ($0.148) and the ceiling to $0.0592, so the social and ads
+ * chat drafts have a 2-credit minimum, an X refresh costs 2 credits and the chat hold rose (rules 4030-4039, task-costs.ts
+ * `DRAFT_MIN_CREDITS`). With every entry null, nothing changes anywhere:
+ * the pricing page shows no monthly/yearly switch, the billing page shows no yearly button, and the checkout refuses
+ * `interval: "year"` (409 `yearly_not_offered`). Set EITHER the price (PLAN_YEARLY_PRICE_SAR) OR the months free
+ * (PLAN_YEARLY_MONTHS_FREE) for a plan, never both: a plan with both is refused as not offered, so a typo never sells.
+ * A price must be a whole number from 1 to 12 × the monthly price. Months free must be a whole number from 0 to
+ * MAX_YEARLY_MONTHS_FREE; the yearly price is then the monthly price × (12 − months free). There is no default discount.
+ * Setting one tightens the margin floor (`cheapestCreditUsd` counts the yearly credit) and makes tests/yearly-pricing.test.ts
+ * rule 3530 fail on purpose: update that test in the same commit.
+ */
+export const PLAN_YEARLY_PRICE_SAR: Readonly<Record<SelfServePlan, number | null>> = { starter: null, pro: null, business: null };
+/** The alternative input: months of the year given free. Null = not set. Read the FOUNDER note above. */
+export const PLAN_YEARLY_MONTHS_FREE: Readonly<Record<SelfServePlan, number | null>> = { starter: 2, pro: 2, business: 2 };
+/** The most months free a yearly price may give: only a guard against a typo, never a default. */
+export const MAX_YEARLY_MONTHS_FREE = 6;
+
+/**
+ * The plan's yearly list price in SAR excluding VAT, or null when yearly is not offered for it: the founder's price, else
+ * the monthly price × (12 − the founder's months free). Null for both set, a value that is not a whole number in range, a
+ * price above twelve months, or a plan that is not self-serve. Every yearly amount on a page, at checkout and in a
+ * renewal comes from here.
+ */
+export function yearlyPriceSar(plan: unknown): number | null {
+  if (typeof plan !== "string" || !(SELF_SERVE_PLANS as readonly string[]).includes(plan)) return null;
+  const p = plan as SelfServePlan;
+  const set = PLAN_YEARLY_PRICE_SAR[p];
+  const free = PLAN_YEARLY_MONTHS_FREE[p];
+  if (set !== null && free !== null) return null;
+  const max = PLAN_PRICE_SAR[p] * 12;
+  if (set !== null) return Number.isSafeInteger(set) && set >= 1 && set <= max ? set : null;
+  if (free !== null) return Number.isSafeInteger(free) && free >= 0 && free <= MAX_YEARLY_MONTHS_FREE ? PLAN_PRICE_SAR[p] * (12 - free) : null;
+  return null;
+}
+
+/** Yearly billing is offered for this plan (its yearly price is set and valid). */
+export const yearlyOffered = (plan: unknown): boolean => yearlyPriceSar(plan) !== null;
+/** Any self-serve plan offers yearly: only then does the pricing page draw the monthly/yearly switch. */
+export const anyYearlyOffered = (): boolean => SELF_SERVE_PLANS.some(yearlyOffered);
+
+/** The list price of one period of `interval`, in SAR excluding VAT; null when that interval is not offered for the plan. */
+export function intervalPriceSar(plan: SelfServePlan, interval: BillingInterval): number | null {
+  return interval === "year" ? yearlyPriceSar(plan) : PLAN_PRICE_SAR[plan];
+}
+
+/**
+ * A yearly price shown per month: the yearly price ÷ 12, rounded to the halala (2,990 → 249.17). Display only: nothing is
+ * charged monthly on a yearly plan. Null when yearly is not offered.
+ */
+export function yearlyPerMonthSar(plan: unknown): number | null {
+  const y = yearlyPriceSar(plan);
+  return y === null ? null : Math.round((y * 100) / 12) / 100;
+}
 /** Credits granted each month (unused credits do not roll over). The trial's are granted once, at signup. */
 export const PLAN_CREDITS: Readonly<Record<FixedPlan, number>> = { trial: 50, starter: 300, pro: 700, business: 1500 };
 /** Seats per plan, the owner included (docs/superpowers/specs/2026-09-29-teams-design.md §5). `User.seats` overrides. */
@@ -102,7 +176,8 @@ const isAgency = (v: unknown): boolean => v === "agency" || v === "enterprise";
 const validDeal = (d: unknown): d is AgencyDeal =>
   typeof d === "object" && d !== null && dealRespectsFloor((d as AgencyDeal).priceSar, (d as AgencyDeal).credits);
 
-type PlanOf = { plan: Plan; deal?: AgencyDeal | null };
+/** `billing.interval` is read by `priceOf` only (rule 3537); a record without it is monthly. */
+type PlanOf = { plan: Plan; deal?: AgencyDeal | null; billing?: { interval?: unknown } | null };
 
 /**
  * Monthly allowance. Fixed plans: PLAN_CREDITS[plan]. Agency: the deal's credits when the deal respects the floor, else
@@ -115,21 +190,75 @@ export function allowanceOf(u: PlanOf): number {
 
 /**
  * Monthly list price in SAR (MRR, margin, the users CSV). Fixed plans: PLAN_PRICE_SAR[plan]. Agency: the deal's price
- * when the deal respects the floor, else Business's 999. An unknown plan counts as 0.
+ * when the deal respects the floor, else Business's 999. An unknown plan counts as 0. A yearly online subscription
+ * (`billing.interval` "year", rule 3537) counts its yearly price per month (`yearlyPerMonthSar`) while that price is set.
  */
 export function priceOf(u: PlanOf): number {
   if (isAgency(u.plan)) return validDeal(u.deal) ? u.deal.priceSar : PLAN_PRICE_SAR.business;
-  return isFixedPlan(u.plan) ? PLAN_PRICE_SAR[u.plan] : 0;
+  if (!isFixedPlan(u.plan)) return 0;
+  if (readInterval(u.billing?.interval) === "year") {
+    const perMonth = yearlyPerMonthSar(u.plan);
+    if (perMonth !== null) return perMonth;
+  }
+  return PLAN_PRICE_SAR[u.plan];
 }
 
 /**
- * The account's seat limit, owner included: the founder override when it is a positive number (floored); then Agency
- * → Business's 7; a fixed plan → PLAN_SEATS[plan]; anything else → 1.
+ * The account's included seats, owner included: the founder override when it is a positive number (floored); then
+ * Agency → Business's 7; a fixed plan → PLAN_SEATS[plan]; anything else → 1. The override sets the included seats for
+ * free; paid extra seats sit on top of it (rule 3361).
  */
-export function seatLimit(u: { plan: Plan; seats?: number }): number {
+export function includedSeats(u: { plan: Plan; seats?: number }): number {
   if (typeof u.seats === "number" && Number.isFinite(u.seats) && u.seats >= 1) return Math.floor(u.seats);
   if (isAgency(u.plan)) return PLAN_SEATS.business;
   return isFixedPlan(u.plan) ? PLAN_SEATS[u.plan] : 1;
+}
+
+/**
+ * The account's seat limit, owner included (rule 3361): the included seats plus the paid extra seats. A record with no
+ * `extraSeats` reads as the included seats alone, exactly as before (expand, rule 3362).
+ */
+export function seatLimit(u: { plan: Plan; seats?: number; extraSeats?: number }): number {
+  return includedSeats(u) + paidExtraSeats(u);
+}
+
+// ---- Paid extra seats (rules 3360-3379, docs/superpowers/specs/2026-10-23-paid-seats.md) ----
+
+/**
+ * One seat above the plan's included seats, per month, in SAR excluding VAT (founder decision 2026-10-23). VAT is added
+ * the same way as on a plan (`vatHalalasOf`). No other file may hold this number (rule 3360).
+ *
+ * Yearly: 12 × this monthly price unless the founder sets otherwise. There is no yearly interval on main; a yearly
+ * branch must derive its seat price from this constant, never copy the number.
+ */
+export const EXTRA_SEAT_MONTHLY_SAR = 25;
+
+/**
+ * Plans that may buy extra seats (rule 3363): the self-serve paid plans. Never the trial (its included seats are its
+ * limit, with no purchase) and never Agency (a contract: the founder sizes it through `User.seats`).
+ */
+export const extraSeatsSold = (plan: Plan): boolean => (SELF_SERVE_PLANS as readonly string[]).includes(plan);
+
+/**
+ * The paid extra seats this period, read safely (rule 3362): 0 when absent, not a number, below 1, or when the plan
+ * does not sell seats (a trial or Agency account never carries paid seats into its limit). Floored and capped at
+ * MAX_SEAT_OVERRIDE like the founder override.
+ */
+export function paidExtraSeats(u: { plan: Plan; extraSeats?: number }): number {
+  if (!extraSeatsSold(u.plan)) return 0;
+  const n = u.extraSeats;
+  if (typeof n !== "number" || !Number.isFinite(n) || n < 1) return 0;
+  return Math.min(MAX_SEAT_OVERRIDE, Math.floor(n));
+}
+
+/**
+ * Seats in use above the included ones (rule 3366): max(0, used − included), where used = `seatCount` in src/lib/team.ts
+ * (free Viewers excluded, rule 3753; an invite already holds its seat; accepting it never buys another).
+ */
+export function billableExtraSeats(used: number, included: number): number {
+  const u = Number.isFinite(used) ? Math.floor(used) : 0;
+  const i = Number.isFinite(included) ? Math.floor(included) : 0;
+  return Math.max(0, u - i);
 }
 
 /**
@@ -168,6 +297,36 @@ export const MARGIN_FLOOR = 0.6;
 
 type Prices = Readonly<Record<SelfServePlan, number>>;
 
+/**
+ * VAT on an amount in halalas, rounded to the halala (rule 3364). The one VAT formula: billing.ts charges plans,
+ * renewals and extra seats with it, so a seat line and a plan line round the same way.
+ */
+export function vatHalalasOf(baseHalalas: number): number {
+  return Math.round(baseHalalas * VAT_RATE);
+}
+
+/** The extra-seat line for `n` seats for one month: unit price, base, VAT and total in halalas (rule 3364). */
+export function extraSeatsLine(n: number): { seats: number; unitSar: number; baseHalalas: number; vatHalalas: number; totalHalalas: number } {
+  const seats = Number.isFinite(n) && n > 0 ? Math.min(MAX_SEAT_OVERRIDE, Math.floor(n)) : 0;
+  const baseHalalas = seats * EXTRA_SEAT_MONTHLY_SAR * 100;
+  const vatHalalas = vatHalalasOf(baseHalalas);
+  return { seats, unitSar: EXTRA_SEAT_MONTHLY_SAR, baseHalalas, vatHalalas, totalHalalas: baseHalalas + vatHalalas };
+}
+
+/**
+ * The monthly bill at list price (rule 3365, the billing page): the plan plus the paid extra seats, VAT on the sum. A
+ * price lock or an offer can lower what a renewal actually charges; `priceFor` in billing.ts is the charge.
+ */
+export function monthlyTotal(u: { plan: Plan; extraSeats?: number; deal?: AgencyDeal | null }): {
+  planHalalas: number; seatsHalalas: number; baseHalalas: number; vatHalalas: number; totalHalalas: number;
+} {
+  const planHalalas = Math.round(priceOf(u) * 100);
+  const seatsHalalas = extraSeatsLine(paidExtraSeats(u)).baseHalalas;
+  const baseHalalas = planHalalas + seatsHalalas;
+  const vatHalalas = vatHalalasOf(baseHalalas);
+  return { planHalalas, seatsHalalas, baseHalalas, vatHalalas, totalHalalas: baseHalalas + vatHalalas };
+}
+
 /** A list price net of VAT when prices include it. */
 export function netPriceSar(listSar: number, includesVat: boolean = PRICES_INCLUDE_VAT): number {
   return includesVat ? listSar / (1 + VAT_RATE) : listSar;
@@ -178,14 +337,26 @@ export function creditRevenueUsd(plan: SelfServePlan, prices: Prices = PLAN_PRIC
   return netPriceSar(prices[plan], includesVat) / SAR_PER_USD / credits[plan];
 }
 
-/** The cheapest self-serve credit in USD: min over SELF_SERVE_PLANS of creditRevenueUsd (Business, ≈ $0.1776, today). */
-export function cheapestCreditUsd(prices: Prices = PLAN_PRICE_SAR, credits: Prices = PLAN_CREDITS, includesVat: boolean = PRICES_INCLUDE_VAT): number {
-  return Math.min(...SELF_SERVE_PLANS.map((p) => creditRevenueUsd(p, prices, credits, includesVat)));
+type YearlyPrices = Readonly<Record<SelfServePlan, number | null>>;
+/** Each self-serve plan's yearly price as offered now (`yearlyPriceSar`), null where yearly is not offered. */
+export const yearlyPrices = (): YearlyPrices => ({ starter: yearlyPriceSar("starter"), pro: yearlyPriceSar("pro"), business: yearlyPriceSar("business") });
+
+/**
+ * The cheapest self-serve credit in USD: min over SELF_SERVE_PLANS of creditRevenueUsd (Business, ≈ $0.1776, today). A
+ * plan with a yearly price also counts its yearly credit, the yearly net price ÷ 12 ÷ its monthly credits (rule 3538), so
+ * a yearly discount lowers the floor instead of slipping under it. With no yearly price set this is unchanged.
+ */
+export function cheapestCreditUsd(prices: Prices = PLAN_PRICE_SAR, credits: Prices = PLAN_CREDITS, includesVat: boolean = PRICES_INCLUDE_VAT, yearly: YearlyPrices = yearlyPrices()): number {
+  return Math.min(...SELF_SERVE_PLANS.flatMap((p) => {
+    const monthly = creditRevenueUsd(p, prices, credits, includesVat);
+    const y = yearly[p];
+    return y === null ? [monthly] : [monthly, netPriceSar(y, includesVat) / 12 / SAR_PER_USD / credits[p]];
+  }));
 }
 
 /** The most one credit may cost us: (1 − MARGIN_FLOOR) × cheapestCreditUsd() ≈ $0.07104 today ($0.0618 VAT-inclusive). */
-export function maxCostPerCreditUsd(prices: Prices = PLAN_PRICE_SAR, credits: Prices = PLAN_CREDITS, includesVat: boolean = PRICES_INCLUDE_VAT): number {
-  return (1 - MARGIN_FLOOR) * cheapestCreditUsd(prices, credits, includesVat);
+export function maxCostPerCreditUsd(prices: Prices = PLAN_PRICE_SAR, credits: Prices = PLAN_CREDITS, includesVat: boolean = PRICES_INCLUDE_VAT, yearly: YearlyPrices = yearlyPrices()): number {
+  return (1 - MARGIN_FLOOR) * cheapestCreditUsd(prices, credits, includesVat, yearly);
 }
 
 // ---- Chat (pricing phase 2, rules 308-316) ----
@@ -221,16 +392,17 @@ export function chatAllowanceOf(u: { plan: Plan; chatAllowance?: number }): numb
  *
  * $0.35 on Opus 5 (founder decision 2026-10-01); $0.14 since chat moved to Sonnet 5.5 (founder decision 2026-10-02).
  * Sonnet 5.5's rates are Opus 5's divided by 2.5 and so is this ceiling, so a message gets the same tokens as before and
- * the worst full allowance costs 2.5 times less (docs/system/costs.md section 4.1). `chatOverflowHold()` follows: 2.
+ * the worst full allowance costs 2.5 times less (docs/system/costs.md section 4.1). `chatOverflowHold()` follows: 3 since
+ * yearly billing lowered the ceiling to $0.0592 (2 before, rule 4033).
  */
 export const CHAT_TURN_MAX_USD = 0.14;
 
 /**
  * The most a message past the allowance can cost the owner, when they turned "continue on credits" on: the ceiling above
- * at the floor rate, rounded up (2 today). The balance must cover it before the turn (nothing is taken then); after the
+ * at the floor rate, rounded up (3 today, 2 before yearly billing at 2 months free, rule 4033). The balance must cover it before the turn (nothing is taken then); after the
  * reply the message is billed its metered cost at the floor rate, never more than this (src/lib/credits.ts
  * `settleChatOverflow`). `ceilingUsd` is a chat model's own ceiling when it is not the default's (src/lib/models/credits.ts
- * `chatHoldFor`: Opus 5's $0.28 gives 4); without it, the default chat model's.
+ * `chatHoldFor`: Opus 5.5's $0.28 gives 5); without it, the default chat model's.
  */
 export const chatOverflowHold = (maxCostUsd: number = maxCostPerCreditUsd(), ceilingUsd: number = CHAT_TURN_MAX_USD): number => Math.ceil(ceilingUsd / maxCostUsd);
 

@@ -6,9 +6,9 @@ import { AGENT_IDS, type AgentId } from "./agents";
 import { lastSignIn } from "./devices";
 import { listOrgs } from "./membership";
 import { pmap } from "./parallel";
-import { brandCapFor, seatLimit } from "./pricing";
+import { brandCapFor, includedSeats, paidExtraSeats, seatLimit } from "./pricing";
 import { isSuspended, suspensionEnd } from "./suspension";
-import { inviterAddress, listMembers, peekInvites } from "./team";
+import { inviterAddress, listMembers, peekInvites, seatCount } from "./team";
 import { lastActive } from "./track";
 
 /**
@@ -30,8 +30,8 @@ import { lastActive } from "./track";
  * the brand files, tasks and conversations (the account's sheet already shows those to staff with the same gate).
  */
 
-export type WorkspaceMember = { email: string; name: string; role: "admin" | "member"; invitedBy: string; acceptedAt: string; paused: boolean; lastSignInAt: string | null; alsoIn: number };
-export type WorkspaceInvite = { email: string; role: "admin" | "member"; invitedBy: string; createdAt: string; expiresAt: string };
+export type WorkspaceMember = { email: string; name: string; role: "admin" | "member" | "viewer"; invitedBy: string; acceptedAt: string; paused: boolean; lastSignInAt: string | null; alsoIn: number };
+export type WorkspaceInvite = { email: string; role: "admin" | "member" | "viewer"; invitedBy: string; createdAt: string; expiresAt: string };
 /**
  * `limits` (rule 2460): the brand's agent tool authority (src/lib/tool-authority.ts) as its restrictions only, each agent
  * and capability that is `ask` or `off`; empty means every agent may do everything. Read from the brand's own stored
@@ -41,7 +41,7 @@ export type WorkspaceLimit = { agent: AgentId; cap: ToolCap; mode: StoredMode };
 export type WorkspaceBrand = { id: string; name: string; status: "active" | "archived"; createdAt: string; limits: WorkspaceLimit[] };
 export type WorkspaceView = {
   owner: { email: string; name: string; lang: "ar" | "en"; createdAt: string; verified: boolean; suspended: boolean; suspendedUntil: string | null; lastSignInAt: string | null; lastActiveAt: string | null };
-  plan: { plan: User["plan"]; trialEnds: string; credits: number; seats: { used: number; limit: number }; brands: { active: number; cap: number } };
+  plan: { plan: User["plan"]; trialEnds: string; credits: number; seats: { used: number; limit: number; included: number; extra: number }; brands: { active: number; cap: number } };
   members: WorkspaceMember[];
   invites: WorkspaceInvite[];
   brands: WorkspaceBrand[];
@@ -55,7 +55,7 @@ const iso = (ms: number | null) => (ms === null ? null : new Date(ms).toISOStrin
  * The account a chosen address belongs to: the account it owns, else the account its login stands for (`login.acct`),
  * read back with `getAccount`; `openedFrom` names the member's address. An address that signs in nowhere opens nothing.
  */
-async function accountForChosen(chosen: string): Promise<{ owner: User; openedFrom: string | null } | null> {
+export async function accountForChosen(chosen: string): Promise<{ owner: User; openedFrom: string | null } | null> {
   const email = normalizeEmail(chosen);
   if (!email) return null;
   const login = await getLogin(email);
@@ -70,7 +70,14 @@ async function accountForChosen(chosen: string): Promise<{ owner: User; openedFr
 export async function workspaceView(chosen: string): Promise<WorkspaceView | null> {
   const found = await accountForChosen(chosen);
   if (!found) return null;
-  const { owner, openedFrom } = found;
+  return viewOf(found.owner, found.openedFrom);
+}
+
+/**
+ * The view of an account already found by `accountForChosen` (rules 3720-3749: the workspace page reads the same view and
+ * adds its numbers, without finding the account twice). The key still comes from the stored record, never from a request.
+ */
+export async function viewOf(owner: User, openedFrom: string | null): Promise<WorkspaceView> {
   // The account id, from the stored record (an owner's address is its id while `OPAQUE_IDS` is off).
   const key = acct(owner);
   const [members, invites, brands, ownerSignIn, active] = await Promise.all([listMembers(key), peekInvites(key), listBrands(key), lastSignIn(owner.email), lastActive(owner.email)]);
@@ -86,7 +93,8 @@ export async function workspaceView(chosen: string): Promise<WorkspaceView | nul
     },
     plan: {
       plan: owner.plan, trialEnds: owner.trialEnds, credits: owner.credits,
-      seats: { used: 1 + members.filter((m) => !m.disabled).length + invites.length, limit: seatLimit(owner) },
+      // `included` and `extra` (paid seats, rule 3375): read only; staff cannot add a paid seat from the console.
+      seats: { used: seatCount(members, invites), limit: seatLimit(owner), included: includedSeats(owner), extra: paidExtraSeats(owner) },
       brands: { active: brands.filter((b) => b.status === "active").length, cap: brandCapFor(owner) },
     },
     members: members.map((m, i) => {

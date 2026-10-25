@@ -44,6 +44,8 @@ export default function PlanCard({ plan, lang, level, shown }: { plan: Plan; lan
           <span className={styles.priceN} dir={plan.id === "agency" ? undefined : "ltr"}>{plan.price}</span> {plan.period}
         </span>
       </p>
+      {/* Only a yearly card has a note: the same price per month (rule 3541). */}
+      {plan.note && <p className={styles.planTag} data-yearly-note="">{plan.note}</p>}
       <div className={styles.planCredits}>
         <p className={styles.planCr}>{plan.credits}</p>
         <p className={styles.planOut}>{plan.output}</p>

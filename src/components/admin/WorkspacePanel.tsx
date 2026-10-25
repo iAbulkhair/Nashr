@@ -83,6 +83,7 @@ export default function WorkspacePanel({ lang, email }: { lang: Lang; email: str
           <h3 id="ws-plan" className="font-display font-bold text-foreground">{W.plan}</h3>
           <p className="font-mono">{plan.plan}</p>
           <p className="tabular-nums">{W.seats(plan.seats.used, plan.seats.limit)}</p>
+          <p className="text-xs text-foreground-muted tabular-nums" data-ws-extra-seats>{W.extraSeats(plan.seats.included, plan.seats.extra)}</p>
           <p className="tabular-nums">{W.brandCap(plan.brands.active, plan.brands.cap)}</p>
           <p className="text-xs text-foreground-muted">{W.credits}: <span className="tabular-nums">{formatCount(plan.credits)}</span></p>
           <p className="text-xs text-foreground-muted">{W.trialEnds}: <Time value={plan.trialEnds} lang={lang} /></p>

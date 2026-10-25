@@ -3,6 +3,7 @@ import { IMAGE_COST, listLite, TASK_COST, TASK_COUNT, type TaskType } from "./br
 import { listBrands, scopeFor } from "./brands";
 import { pmap } from "./parallel";
 import { acct } from "./account-id";
+import { brandAllowed } from "./membership";
 
 /** This month's usage on the account: per task type (items and credits), the items with a render, and what renders charged. */
 export type MonthUsage = { usage: Record<string, { count: number; credits: number }>; images: number; mediaCredits: number; nextReset: string };
@@ -12,11 +13,11 @@ export type MonthUsage = { usage: Record<string, { count: number; credits: numbe
  * shows it (rule 1153). Every brand this account owns, not just the active one: credits are charged against the ACCOUNT,
  * so usage read from one brand scope beside the account balance disagreed with it (an agency with three brands saw
  * "10 / 2000 used" above "1970 left"). Scopes come from the account's own brand list (`u.email` from the session), never
- * from a request. Moved here from /api/profile unchanged.
+ * from a request. Moved here from /api/profile unchanged. A member narrowed to some brands sees only theirs (rule 3773).
  */
-export async function monthUsage(u: Pick<User, "email">, now = new Date()): Promise<MonthUsage> {
+export async function monthUsage(u: Pick<User, "email" | "actor">, now = new Date()): Promise<MonthUsage> {
   const monthStart = new Date(now); monthStart.setUTCDate(1); monthStart.setUTCHours(0, 0, 0, 0);
-  const scopes = (await listBrands(acct(u))).map((b) => scopeFor(acct(u), b.id));
+  const scopes = (await listBrands(acct(u))).filter((b) => brandAllowed(u, b.id)).map((b) => scopeFor(acct(u), b.id));
   const lists = await pmap(scopes, (s) => listLite(s, monthStart));
   const tasks = lists.flat();
   const usage: Record<string, { count: number; credits: number }> = {};

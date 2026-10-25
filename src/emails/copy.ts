@@ -52,7 +52,7 @@ export const COPY: Record<Lang, EmailCopy> = {
       expiry: "افتح الرابط خلال 7 أيام لتختار اسمك وكلمة مرورك.",
       only: "الدعوة لهذا البريد وحده. إذا لم تتوقعها فتجاهل هذه الرسالة، ولن يتغير شيء.",
       preheader: "دعوة للانضمام إلى فريق في ذكين، صالحة 7 أيام.",
-      roles: { admin: "مدير", member: "عضو" },
+      roles: { admin: "مدير", member: "محرر", viewer: "مشاهد" },
     },
     notice: { open: "افتح ذكين", todo: "افتح مهامي", billing: "افتح صفحة الاشتراك" },
     verify: {
@@ -92,7 +92,7 @@ export const COPY: Record<Lang, EmailCopy> = {
       expiry: "Open the link within 7 days to choose your name and password.",
       only: "The invitation is for this email address only. If you did not expect it, ignore this email and nothing changes.",
       preheader: "An invitation to join a team on Thakeen. It works for 7 days.",
-      roles: { admin: "an admin", member: "a member" },
+      roles: { admin: "an admin", member: "an editor", viewer: "a viewer" },
     },
     notice: { open: "Open Thakeen", todo: "Open To-dos", billing: "Open Subscription" },
     verify: {

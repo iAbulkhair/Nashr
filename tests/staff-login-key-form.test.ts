@@ -49,13 +49,14 @@ describe("the key form at ?login=1 (rules 2230-2232)", () => {
     expect(showKeyForm("0", none)).toBe(false);
   });
 
-  it("the founder banner links to ?login=1 while no owner exists, and that page now renders the key form (rule 2231)", async () => {
+  it("the founder banner no longer links to ?login=1 (rule 3704, replacing 2231); that address still renders the key form", async () => {
     await founder();
     for (const lang of ["ar", "en"] as const) {
       const shell = await layoutHtml(lang);
       expect(shell).toContain(CB[lang].founderBanner);
-      expect(shell).toContain(`href="/${lang}/admin?login=1"`);
-      expect(shell).toContain(CB[lang].toKey);
+      expect(shell).not.toContain("login=1");
+      // No authenticator and no passkey yet: the banner says how to get one instead of offering the create button.
+      expect(shell).toContain(CB[lang].noFactor);
       const page = (await AdminHome({ params: P(lang), searchParams: Q({ login: "1" }) })) as ReactElement;
       expect(page.type, "the founder's link must not loop back to the overview").toBe(AdminLogin);
       expect(renderToStaticMarkup(page)).toMatch(/type="password"/);

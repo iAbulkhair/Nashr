@@ -18,7 +18,7 @@ import LangToggle from "@/components/LangToggle";
 import Wordmark from "@/components/Wordmark";
 import LimitModal from "@/components/app/LimitModal";
 import { getBrand, pendingCount } from "@/lib/brand";
-import { listNotifs } from "@/lib/notifications";
+import { listNotifs, visibleNotifs } from "@/lib/notifications";
 import { WorkspaceProvider } from "@/components/app/WorkspaceContext";
 import { sc } from "@/lib/auth";
 import { can } from "@/lib/roles";
@@ -88,7 +88,7 @@ export default async function AppLayout({ children, params }: { children: React.
   // Rule 1119: the shell's first numbers (bell, approvals badge) are read here, in one round of parallel reads with the
   // brand, so the rail paints with them instead of fetching them again on every navigation. Scope and email are the
   // session's, never the request's.
-  const [brand, notifs, toApprove] = await Promise.all([getBrand(sc(user)), listNotifs(acct(user)), pendingCount(sc(user))]);
+  const [brand, notifs, toApprove] = await Promise.all([getBrand(sc(user)), listNotifs(acct(user)).then((all) => visibleNotifs(all, user)), pendingCount(sc(user))]);
   // Rule 3124: the desktop rail's width from this browser's own cookie (no Redis read), so the first paint is already folded or open.
   const railFolded = railCollapsed((await cookies()).get(RAIL_COOKIE)?.value);
   const unread = notifs.filter((n) => !n.read).length;

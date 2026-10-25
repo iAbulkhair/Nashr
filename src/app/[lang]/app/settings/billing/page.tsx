@@ -4,7 +4,8 @@ import { notFound, redirect } from "next/navigation";
 import { SUPPORT_EMAIL, dict, isLang } from "@/lib/i18n";
 import { appDict } from "@/lib/app-i18n";
 import { currentUser, seatLimit } from "@/lib/auth";
-import { FIRST_MONTH_DISCOUNT_PCT, PLAN_PRICE_SAR, SELF_SERVE_PLANS, allowanceOf, firstMonthPriceSar, formatCount, type SelfServePlan } from "@/lib/pricing";
+import { FIRST_MONTH_DISCOUNT_PCT, PLAN_PRICE_SAR, SELF_SERVE_PLANS, allowanceOf, extraSeatsSold, firstMonthPriceSar, formatCount, yearlyPriceSar, type SelfServePlan } from "@/lib/pricing";
+import SeatsBillingCard from "@/components/app/settings/SeatsBillingCard";
 import { openLots, topupBalance, topupCredits, topupView } from "@/lib/topups";
 import { can } from "@/lib/roles";
 import { entitlementView } from "@/lib/entitlements";
@@ -49,7 +50,9 @@ export default async function Page({ params, searchParams }: { params: Promise<{
   // stay the way to pay, exactly as before.
   const online = can(u, "billing.pay") && paymentsEnabled();
   const sub = online ? billingView(u.billing) : null;
-  const returned = (await searchParams)?.paymob === "return";
+  // `?paymob=return` from Paymob's page, `?pay=return` from Geidea's (rule 3909).
+  const sp = await searchParams;
+  const returned = sp?.paymob === "return" || sp?.pay === "return";
   // One pay link per self-serve tier, keyed by plan id: each card finds its own copy by id, never by position, so a card
   // can never show one tier's price with another tier's link. Agency has no pay link (PAY_LINK_AGENCY is not read): it is
   // sold by contract, through the contact card below.
@@ -110,6 +113,8 @@ export default async function Page({ params, searchParams }: { params: Promise<{
       {returned && online && <PaymobReturnStatus lang={lang} />}
       {sub && <PaymobPlanCard lang={lang} billing={sub} />}
       <PlanIncludesCard view={{ ent: view.ent, used: view.used }} lang={lang} />
+      {/* Paid extra seats (rule 3365): included, extra, price per seat and the monthly total, on a plan that sells seats. */}
+      {extraSeatsSold(u.plan) && <SeatsBillingCard lang={lang} user={u} used={used} />}
       <ChatAllowanceCard lang={lang} status={chat} owner={owner} nextReset={nextReset} trialEnds={u.trialEnds.slice(0, 10)} runway={chatRunway} credits={u.credits} premiumHold={chatPremiumHold()} />
       <CreditUsageCard t={t} lang={lang} user={{ plan: u.plan, credits: u.credits, trialEnds: u.trialEnds, createdAt: u.createdAt, topups: openLots(u).map(topupBalance) }} month={month} allowance={allowanceOf(u)} chat={chat} chatBar={false} creditsReset={view.resetsAt} />
       <TopupCard lang={lang} plan={u.plan} owner={owner} email={owner ? u.email : undefined} whatsapp={owner && waNumber ? waNumber : null} lots={lots} topupCredits={fromTopups} payOnline={online} />
@@ -136,8 +141,16 @@ export default async function Page({ params, searchParams }: { params: Promise<{
               current={u.plan === k} highlight={"highlight" in plan && !!plan.highlight}
               offerLine={offer ? <p data-offer-price className="text-sm font-semibold text-foreground">{O.card(firstMonthPriceSar(k), PLAN_PRICE_SAR[k])}</p> : undefined}>
               {!owner ? null : online ? (
-                // The same plan already active is renewed from the subscription card above, not bought again here.
-                sub?.status === "active" && sub.plan === k ? null : <PaymobPayButton lang={lang} kind="plan" plan={k} label={offer ? O.activate : t.billing.pay} />
+                <>
+                  {/* The same plan already active is renewed from the subscription card above, not bought again here. */}
+                  {sub?.status === "active" && sub.plan === k ? null : <PaymobPayButton lang={lang} kind="plan" plan={k} label={offer ? O.activate : t.billing.pay} />}
+                  {/* Rule 3536: a yearly button only for a plan the founder priced yearly (none today), and not for the yearly
+                      plan already running. On the same plan paid monthly it moves the subscription to yearly once the paid month ends. */}
+                  {yearlyPriceSar(k) !== null && !(sub?.status === "active" && sub.plan === k && sub.interval === "year") && (
+                    <PaymobPayButton lang={lang} kind="plan" plan={k} interval="year"
+                      label={ar ? `ادفع سنوياً: ${formatCount(yearlyPriceSar(k)!)} ريال / سنة` : `Pay yearly: ${formatCount(yearlyPriceSar(k)!)} SAR / year`} />
+                  )}
+                </>
               ) : href ? (
                 <a href={href} target="_blank" rel="noreferrer" className="mt-4 inline-flex min-h-[var(--hit-min)] items-center justify-center rounded-full bg-inverse px-4 py-2 text-center text-sm font-semibold text-inverse-muted">{offer ? O.activate : links[k] ? t.billing.pay : t.billing.contact}</a>
               ) : (

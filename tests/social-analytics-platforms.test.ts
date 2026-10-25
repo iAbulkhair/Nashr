@@ -13,6 +13,7 @@ import * as connRoute from "@/app/api/connect/[provider]/route";
 import * as callbackRoute from "@/app/api/connect/[provider]/callback/route";
 import { fakeComposio, ok, type Answer, type Call, type Result } from "./helpers/composio-fake";
 
+import { acct, sc } from "@/lib/auth";
 /**
  * Rule 739 (spec docs/superpowers/specs/2026-10-08-social-analytics-reports-design.md, B1): the Facebook Page chosen for
  * publishing, read through Composio with constant metrics and fields: 56 days of daily insights split into the window and
@@ -97,15 +98,15 @@ const clean = (v: unknown) => v === null || (typeof v === "number" && Number.isF
 describe("Facebook Page results (rule 739)", () => {
   it("reads the chosen page with constant metrics and fields, never access_token (739)", async () => {
     const u = await newUser("fbread");
-    await db.sadd(SOCIAL_PUB_KEY(u.email), "123_1");
+    await db.sadd(SOCIAL_PUB_KEY(acct(u)), "123_1");
     fbAnswers();
-    const snap = await syncSocial(u.email, { meta: fbConn() }, NOW);
+    const snap = await syncSocial(acct(u), { meta: fbConn() }, NOW);
     expect(calls.find((c) => c.slug === "FACEBOOK_GET_PAGE_INSIGHTS")?.args).toEqual({ page_id: "123", metrics: METRICS, period: "day", since: "2026-08-13", until: "2026-10-08" });
     expect(calls.find((c) => c.slug === "FACEBOOK_GET_PAGE_POSTS")?.args).toEqual({ page_id: "123", fields: FIELDS, limit: 30 });
     expect(calls.find((c) => c.slug === "FACEBOOK_GET_POST_INSIGHTS")?.args).toEqual({ post_id: "123_1", metrics: "post_media_view,post_total_media_view_unique", period: "lifetime" });
     expect(calls).toHaveLength(3);
     for (const c of calls) expect(JSON.stringify(c.args)).not.toContain("access_token");
-    expect(JSON.stringify(await getSocialSnapshot(u.email))).not.toContain("access_token");
+    expect(JSON.stringify(await getSocialSnapshot(acct(u)))).not.toContain("access_token");
 
     const fb = snap.parts.facebook!;
     expect(fb).toMatchObject({ platform: "facebook", account: "عود الشرق", range: { from: "2026-09-10", to: "2026-10-07" }, followers: 512 });
@@ -116,7 +117,7 @@ describe("Facebook Page results (rule 739)", () => {
     expect(snap.errors).toEqual({});
     expect(snap.history).toEqual([{ month: "2026-10", platform: "facebook", followers: 512, totals: fb.totals }]);
     // Dana is told how the Page's reach adds up, beside the figures.
-    const block = await socialDataBlock(u.email, NOW);
+    const block = await socialDataBlock(acct(u), NOW);
     expect(block).toContain('"facebook":{"account":"عود الشرق"');
     expect(block).toContain("On the Facebook Page, reach adds up each day's unique viewers");
   });
@@ -136,7 +137,7 @@ describe("Facebook Page results (rule 739)", () => {
     ], { "123_2": ["40", {}] });
     const base = answers.FACEBOOK_GET_POST_INSIGHTS as (a: Record<string, unknown>) => Result;
     answers.FACEBOOK_GET_POST_INSIGHTS = (a) => (a.post_id === "123_6" ? { successful: false, error: "(#100) Unsupported get request" } : base(a));
-    const fb = (await syncSocial(u.email, { meta: fbConn() }, NOW)).parts.facebook!;
+    const fb = (await syncSocial(acct(u), { meta: fbConn() }, NOW)).parts.facebook!;
     expect(fb.posts.map((p) => p.id)).toEqual(["123_1", "123_6", "123_2", "123_10"]);
     expect(calls.filter((c) => c.slug === "FACEBOOK_GET_POST_INSIGHTS").map((c) => c.args.post_id)).toEqual(["123_1", "123_6", "123_2", "123_10"]);
     const [p1, p6, p2, p10] = fb.posts;
@@ -167,7 +168,7 @@ describe("Facebook Page results (rule 739)", () => {
       metric("page_daily_follows_unique", [at("2026-10-07", -3)]),
       metric("page_daily_unfollows_unique", [at("2026-10-07", [1])]),
     );
-    const fb = (await syncSocial(u.email, { meta: fbConn() }, NOW)).parts.facebook!;
+    const fb = (await syncSocial(acct(u), { meta: fbConn() }, NOW)).parts.facebook!;
     expect(fb.totals).toEqual({ ...EMPTY_TOTALS, views: 1234, engagements: 10.5 });
     expect(fb.followers).toBe(800);
     expect(fb).not.toHaveProperty("prev");
@@ -178,12 +179,12 @@ describe("Facebook Page results (rule 739)", () => {
 
   it("a Facebook-only Meta record is read daily (673)", async () => {
     const u = await newUser("fbdaily");
-    await saveConnection(u.email, fbConn());
+    await saveConnection(acct(u), fbConn());
     fbAnswers();
-    expect(await syncSocialIfDue(u.email, NOW)).toBe(true);
-    const s = await getSocialSnapshot(u.email);
+    expect(await syncSocialIfDue(acct(u), NOW)).toBe(true);
+    const s = await getSocialSnapshot(acct(u));
     expect(s?.v === 2 && s.parts.facebook?.totals.views).toBe(155);
-    expect(await syncSocialIfDue(u.email, new Date(NOW.getTime() + 19 * 3600e3))).toBe(false);
+    expect(await syncSocialIfDue(acct(u), new Date(NOW.getTime() + 19 * 3600e3))).toBe(false);
     // The owner's refresh on the Meta path reads it too (rule 735: the path answers once a reader holds the record).
     expect(holdsSocial("meta", fbConn())).toBe(true);
     await signIn(u.email);
@@ -196,15 +197,15 @@ describe("Facebook Page results (rule 739)", () => {
     fbAnswers();
     igAnswers();
     answers.FACEBOOK_GET_PAGE_INSIGHTS = { successful: false, error: "(#10) This endpoint requires the 'read_insights' permission to manage the object" };
-    const snap = await syncSocial(u.email, { meta: both() }, NOW);
+    const snap = await syncSocial(acct(u), { meta: both() }, NOW);
     expect(snap.errors).toEqual({ facebook: "fb_no_insights" });
     expect(snap.parts.facebook).toBeUndefined();
     expect(snap.parts.instagram?.account).toBe("oud");
     // Alone, it is written and not thrown: the daily run adds no failure line for a permission the owner cannot fix by reconnecting.
     const alone = await newUser("fbnoins2");
-    await saveConnection(alone.email, fbConn());
-    expect(await syncSocialIfDue(alone.email, NOW)).toBe(true);
-    expect(await getSocialSnapshot(alone.email)).toMatchObject({ v: 2, parts: {}, errors: { facebook: "fb_no_insights" } });
+    await saveConnection(acct(alone), fbConn());
+    expect(await syncSocialIfDue(acct(alone), NOW)).toBe(true);
+    expect(await getSocialSnapshot(acct(alone))).toMatchObject({ v: 2, parts: {}, errors: { facebook: "fb_no_insights" } });
   });
 
   it("a refused token ends the read for its provider; one failed side keeps the other; both failing is a failed read", async () => {
@@ -213,32 +214,32 @@ describe("Facebook Page results (rule 739)", () => {
     fbAnswers();
     // A refused token on the post list: thrown with Meta as its provider, after Instagram is written.
     answers.FACEBOOK_GET_PAGE_POSTS = { successful: false, error: "Error validating access token: session has expired" };
-    await expect(syncSocial(u.email, { meta: both() }, NOW)).rejects.toMatchObject({ provider: "meta", message: expect.stringMatching(/ 401:/) });
-    expect(await getSocialSnapshot(u.email)).toMatchObject({ parts: { instagram: { account: "oud" } }, errors: { facebook: "read_failed" } });
+    await expect(syncSocial(acct(u), { meta: both() }, NOW)).rejects.toMatchObject({ provider: "meta", message: expect.stringMatching(/ 401:/) });
+    expect(await getSocialSnapshot(acct(u))).toMatchObject({ parts: { instagram: { account: "oud" } }, errors: { facebook: "read_failed" } });
 
     // A failed post list keeps the Page's figures; failed insights keep its posts.
     answers.FACEBOOK_GET_PAGE_POSTS = { successful: false, error: "Service temporarily unavailable" };
-    const noPosts = (await syncSocial(u.email, { meta: fbConn() }, NOW)).parts.facebook!;
+    const noPosts = (await syncSocial(acct(u), { meta: fbConn() }, NOW)).parts.facebook!;
     expect(noPosts).toMatchObject({ followers: 512, totals: { views: 155 }, posts: [] });
     fbAnswers();
     answers.FACEBOOK_GET_PAGE_INSIGHTS = { successful: false, error: "(#100) Invalid metric" };
-    const noTotals = (await syncSocial(u.email, { meta: fbConn() }, NOW)).parts.facebook!;
+    const noTotals = (await syncSocial(acct(u), { meta: fbConn() }, NOW)).parts.facebook!;
     expect(noTotals).toMatchObject({ followers: null, totals: EMPTY_TOTALS, posts: [{ id: "123_1", views: 900 }] });
     expect(noTotals).not.toHaveProperty("prev");
 
     // Both failing: the Page is not read, and Instagram stands.
     answers.FACEBOOK_GET_PAGE_POSTS = { successful: false, error: "Service temporarily unavailable" };
-    const s = await syncSocial(u.email, { meta: both() }, NOW);
+    const s = await syncSocial(acct(u), { meta: both() }, NOW);
     expect(s.errors).toEqual({ facebook: "read_failed" });
     expect(s.parts.instagram).toBeDefined();
-    await expect(syncSocial(u.email, { meta: fbConn() }, NOW)).rejects.toMatchObject({ provider: "meta" });
+    await expect(syncSocial(acct(u), { meta: fbConn() }, NOW)).rejects.toMatchObject({ provider: "meta" });
   });
 
   it("a refused token on a post's insights stops the other post reads", async () => {
     const u = await newUser("fbpost401");
     fbAnswers(Array.from({ length: 12 }, (_, i) => fbPost(String(i + 1), "2026-10-01")));
     answers.FACEBOOK_GET_POST_INSIGHTS = { successful: false, error: "Unauthorized: token revoked" };
-    await expect(syncSocial(u.email, { meta: fbConn() }, NOW)).rejects.toMatchObject({ provider: "meta", message: expect.stringMatching(/ 401:/) });
+    await expect(syncSocial(acct(u), { meta: fbConn() }, NOW)).rejects.toMatchObject({ provider: "meta", message: expect.stringMatching(/ 401:/) });
     expect(calls.filter((c) => c.slug === "FACEBOOK_GET_POST_INSIGHTS").length).toBeLessThanOrEqual(4);
   });
 
@@ -247,7 +248,7 @@ describe("Facebook Page results (rule 739)", () => {
     fbAnswers(Array.from({ length: 40 }, (_, i) => fbPost(String(i + 1), "2026-10-01")));
     const base = answers.FACEBOOK_GET_POST_INSIGHTS as (a: Record<string, unknown>) => Result;
     answers.FACEBOOK_GET_POST_INSIGHTS = (a) => { vi.setSystemTime(NOW.getTime() + 31_000); return base(a); };
-    const fb = (await syncSocial(u.email, { meta: fbConn() }, NOW)).parts.facebook!;
+    const fb = (await syncSocial(acct(u), { meta: fbConn() }, NOW)).parts.facebook!;
     // Posts are capped at 30; the four asked before the clock passed 30 s land, the rest stay unread.
     expect(fb.posts).toHaveLength(30);
     expect(calls.filter((c) => c.slug === "FACEBOOK_GET_POST_INSIGHTS")).toHaveLength(4);
@@ -260,7 +261,7 @@ describe("Facebook Page results (rule 739)", () => {
     fbAnswers();
     answers.FACEBOOK_GET_PAGE_INSIGHTS = insights(metric("page_media_view", [{ value: 10 }, { value: 20, end_time: "yesterday" }, at("2025-01-01", 30)]));
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    const fb = (await syncSocial(u.email, { meta: fbConn() }, NOW)).parts.facebook!;
+    const fb = (await syncSocial(acct(u), { meta: fbConn() }, NOW)).parts.facebook!;
     expect(fb.totals).toEqual(EMPTY_TOTALS);
     expect(warn.mock.calls.filter((c) => c[0] === "fb_no_day_rows")).toHaveLength(1);
   });
@@ -271,10 +272,10 @@ describe("Facebook Page results (rule 739)", () => {
     vi.spyOn(console, "warn").mockImplementation(() => {});
     // A row with no stamp, and one whose stamp is not a date: no day, so neither is the Page's count on a day.
     answers.FACEBOOK_GET_PAGE_INSIGHTS = insights(metric("page_media_view", [at("2026-10-07", 100)]), metric("page_follows", [{ value: 999 }, { value: 998, end_time: "yesterday" }]));
-    expect((await syncSocial(u.email, { meta: fbConn() }, NOW)).parts.facebook!.followers).toBeNull();
+    expect((await syncSocial(acct(u), { meta: fbConn() }, NOW)).parts.facebook!.followers).toBeNull();
     // Beside a dated row, the dated one stands.
     answers.FACEBOOK_GET_PAGE_INSIGHTS = insights(metric("page_follows", [at("2026-10-06", 510), { value: 999 }]));
-    expect((await syncSocial(u.email, { meta: fbConn() }, NOW)).parts.facebook!.followers).toBe(510);
+    expect((await syncSocial(acct(u), { meta: fbConn() }, NOW)).parts.facebook!.followers).toBe(510);
   });
 
   it("an earlier period in which every figure read is 0 gives no prev (733)", async () => {
@@ -284,7 +285,7 @@ describe("Facebook Page results (rule 739)", () => {
       metric("page_media_view", [at("2026-10-07", 100), at("2026-09-01", 0), at("2026-08-20", 0)]),
       metric("page_daily_follows_unique", [at("2026-10-07", 4), at("2026-09-02", 0)]),
     );
-    const fb = (await syncSocial(u.email, { meta: fbConn() }, NOW)).parts.facebook!;
+    const fb = (await syncSocial(acct(u), { meta: fbConn() }, NOW)).parts.facebook!;
     expect(fb.totals).toMatchObject({ views: 100, followsGained: 4 });
     expect(fb).not.toHaveProperty("prev");
   });
@@ -294,13 +295,13 @@ describe("Facebook Page results (rule 739)", () => {
     fbAnswers();
     for (const error of ["(#10) Application does not have permission for this action", "(#200) Requires pages_read_engagement permission to manage the object"]) {
       answers.FACEBOOK_GET_PAGE_INSIGHTS = { successful: false, error };
-      const snap = await syncSocial(u.email, { meta: fbConn() }, NOW);
+      const snap = await syncSocial(acct(u), { meta: fbConn() }, NOW);
       expect(snap.errors, error).toEqual({ facebook: "fb_no_insights" });
       expect(snap.parts.facebook, error).toBeUndefined();
     }
     // Another code is not a permission: the posts stand and the figures are unread.
     answers.FACEBOOK_GET_PAGE_INSIGHTS = { successful: false, error: "(#100) Invalid metric" };
-    expect((await syncSocial(u.email, { meta: fbConn() }, NOW)).errors).toEqual({});
+    expect((await syncSocial(acct(u), { meta: fbConn() }, NOW)).errors).toEqual({});
   });
 
   it("holds a Composio Meta record with the Facebook part and a chosen Page, and the account falls back to the Page id", async () => {
@@ -326,12 +327,12 @@ describe("Facebook Page results (rule 739)", () => {
     fbAnswers();
     const conn = fbConn();
     delete conn.meta!.pageName;
-    expect((await syncSocial(u.email, { meta: conn }, NOW)).parts.facebook?.account).toBe("Page 123");
+    expect((await syncSocial(acct(u), { meta: conn }, NOW)).parts.facebook?.account).toBe("Page 123");
     // The id fallback goes through `clean` too: the longest id makes one line of 35 characters.
     const longest = "9".repeat(30);
     fbAnswers([fbPost("1", "2026-10-05", { id: `${longest}_1`, from: { id: longest } })]);
-    expect((await syncSocial(u.email, { meta: fbConn({ pageId: longest, pageName: "<>" }) }, NOW)).parts.facebook?.account).toBe(`Page ${longest}`);
-    const marked = await syncSocial(u.email, { meta: fbConn({ pageName: "<b>Oud</b>\n" + "y".repeat(120) }) }, NOW);
+    expect((await syncSocial(acct(u), { meta: fbConn({ pageId: longest, pageName: "<>" }) }, NOW)).parts.facebook?.account).toBe(`Page ${longest}`);
+    const marked = await syncSocial(acct(u), { meta: fbConn({ pageName: "<b>Oud</b>\n" + "y".repeat(120) }) }, NOW);
     expect(marked.parts.facebook!.account).not.toMatch(/[<>\n]/);
     expect(marked.parts.facebook!.account.length).toBeLessThanOrEqual(80);
   });
@@ -381,9 +382,9 @@ const YT_TOTALS = { ...EMPTY_TOTALS, views: 155, watchMinutes: 380, likes: 14, c
 describe("YouTube channel results (rule 740)", () => {
   it("reads the connected channel with constant metrics and parts, never a channel id (740)", async () => {
     const u = await newUser("ytread");
-    await db.sadd(SOCIAL_PUB_KEY(u.email), vid(1));
+    await db.sadd(SOCIAL_PUB_KEY(acct(u)), vid(1));
     ytAnswers();
-    const snap = await syncSocial(u.email, { youtube: ytConn() }, NOW);
+    const snap = await syncSocial(acct(u), { youtube: ytConn() }, NOW);
     const args = (slug: string) => calls.find((c) => c.slug === slug)?.args;
     expect(args("YOUTUBE_LIST_CHANNELS")).toEqual({ part: "statistics", mine: true, maxResults: 1 });
     expect(args("YOUTUBE_QUERY_ANALYTICS")).toEqual({ ids: "channel==MINE", startDate: "2026-08-13", endDate: "2026-10-07", metrics: YT_METRICS, dimensions: "day" });
@@ -402,7 +403,7 @@ describe("YouTube channel results (rule 740)", () => {
     expect(snap.errors).toEqual({});
     expect(snap.history).toEqual([{ month: "2026-10", platform: "youtube", followers: 5000, totals: yt.totals }]);
     // Dana is told what YouTube's figures are, beside them.
-    const block = await socialDataBlock(u.email, NOW);
+    const block = await socialDataBlock(acct(u), NOW);
     expect(block).toContain('"youtube":{"account":"Ward TV"');
     expect(block).toContain("On the YouTube channel, followers are subscribers");
   });
@@ -425,7 +426,7 @@ describe("YouTube channel results (rule 740)", () => {
       const r = base(a) as { data: { data: { items: unknown[] } } };
       return ok({ data: { items: [...r.data.data.items, ytVideo("zzzzzzzzzzz", "2026-10-01")] } });
     };
-    const yt = (await syncSocial(u.email, { youtube: ytConn() }, NOW)).parts.youtube!;
+    const yt = (await syncSocial(acct(u), { youtube: ytConn() }, NOW)).parts.youtube!;
     const asked = calls.find((c) => c.slug === "YOUTUBE_GET_VIDEO_DETAILS_BATCH")!.args.id as string[];
     expect(asked).toEqual(Array.from({ length: 30 }, (_, i) => vid(i + 1)));
     expect(calls.filter((c) => c.slug === "YOUTUBE_GET_VIDEO_DETAILS_BATCH")).toHaveLength(1);
@@ -443,7 +444,7 @@ describe("YouTube channel results (rule 740)", () => {
     const u = await newUser("ytnoana");
     ytAnswers();
     answers.YOUTUBE_QUERY_ANALYTICS = { successful: false, error: "Request had insufficient authentication scopes." };
-    const snap = await syncSocial(u.email, { youtube: ytConn() }, NOW);
+    const snap = await syncSocial(acct(u), { youtube: ytConn() }, NOW);
     expect(snap.errors).toEqual({ youtube: "yt_no_analytics" });
     const yt = snap.parts.youtube!;
     expect(yt).toMatchObject({ followers: 5000, totals: EMPTY_TOTALS, posts: [{ id: vid(1), views: 1500 }] });
@@ -451,19 +452,19 @@ describe("YouTube channel results (rule 740)", () => {
     expect(yt).not.toHaveProperty("prev");
     expect(yt).not.toHaveProperty("known");
     // The stored part carries no state of its own, and the daily run writes it without a failure line.
-    expect(JSON.stringify(await getSocialSnapshot(u.email))).not.toContain('"known"');
+    expect(JSON.stringify(await getSocialSnapshot(acct(u)))).not.toContain('"known"');
     const alone = await newUser("ytnoana2");
-    await saveConnection(alone.email, ytConn());
-    expect(await syncSocialIfDue(alone.email, NOW)).toBe(true);
-    expect(await getSocialSnapshot(alone.email)).toMatchObject({ v: 2, parts: { youtube: { followers: 5000 } }, errors: { youtube: "yt_no_analytics" } });
+    await saveConnection(acct(alone), ytConn());
+    expect(await syncSocialIfDue(acct(alone), NOW)).toBe(true);
+    expect(await getSocialSnapshot(acct(alone))).toMatchObject({ v: 2, parts: { youtube: { followers: 5000 } }, errors: { youtube: "yt_no_analytics" } });
     // Google's other refusal texts for the same cause.
     for (const error of ["The caller does not have permission (403)", "Forbidden", "YouTube Analytics API has not been used in project 1 before or it is disabled."]) {
       answers.YOUTUBE_QUERY_ANALYTICS = { successful: false, error };
-      expect((await syncSocial(u.email, { youtube: ytConn() }, NOW)).errors, error).toEqual({ youtube: "yt_no_analytics" });
+      expect((await syncSocial(acct(u), { youtube: ytConn() }, NOW)).errors, error).toEqual({ youtube: "yt_no_analytics" });
     }
     // Any other failure leaves the figures unread with no code: not a state the owner can act on.
     answers.YOUTUBE_QUERY_ANALYTICS = { successful: false, error: "Backend Error" };
-    const other = await syncSocial(u.email, { youtube: ytConn() }, NOW);
+    const other = await syncSocial(acct(u), { youtube: ytConn() }, NOW);
     expect(other.errors).toEqual({});
     expect(other.parts.youtube).toMatchObject({ followers: 5000, totals: EMPTY_TOTALS });
   });
@@ -472,28 +473,28 @@ describe("YouTube channel results (rule 740)", () => {
     const u = await newUser("ytfail");
     ytAnswers();
     answers.YOUTUBE_LIST_CHANNEL_VIDEOS = { successful: false, error: "Token has been expired or revoked." };
-    await expect(syncSocial(u.email, { youtube: ytConn() }, NOW)).rejects.toMatchObject({ provider: "youtube", message: expect.stringMatching(/ 401:/) });
+    await expect(syncSocial(acct(u), { youtube: ytConn() }, NOW)).rejects.toMatchObject({ provider: "youtube", message: expect.stringMatching(/ 401:/) });
     // The only part not read: nothing is written over the last read.
-    expect(await getSocialSnapshot(u.email)).toBeNull();
+    expect(await getSocialSnapshot(acct(u))).toBeNull();
 
     // A refused token on the video details too.
     ytAnswers();
     answers.YOUTUBE_GET_VIDEO_DETAILS_BATCH = { successful: false, error: "Unauthorized" };
-    await expect(syncSocial(u.email, { youtube: ytConn() }, NOW)).rejects.toMatchObject({ provider: "youtube", message: expect.stringMatching(/ 401:/) });
+    await expect(syncSocial(acct(u), { youtube: ytConn() }, NOW)).rejects.toMatchObject({ provider: "youtube", message: expect.stringMatching(/ 401:/) });
 
     // Failed details keep the channel's figures; a failed channel list keeps the analytics and the videos.
     answers.YOUTUBE_GET_VIDEO_DETAILS_BATCH = { successful: false, error: "Backend Error" };
-    expect((await syncSocial(u.email, { youtube: ytConn() }, NOW)).parts.youtube).toMatchObject({ followers: 5000, totals: YT_TOTALS, posts: [] });
+    expect((await syncSocial(acct(u), { youtube: ytConn() }, NOW)).parts.youtube).toMatchObject({ followers: 5000, totals: YT_TOTALS, posts: [] });
     ytAnswers();
     answers.YOUTUBE_LIST_CHANNELS = { successful: false, error: "Backend Error" };
-    expect((await syncSocial(u.email, { youtube: ytConn() }, NOW)).parts.youtube).toMatchObject({ followers: null, totals: YT_TOTALS, posts: [{ id: vid(1) }] });
+    expect((await syncSocial(acct(u), { youtube: ytConn() }, NOW)).parts.youtube).toMatchObject({ followers: null, totals: YT_TOTALS, posts: [{ id: vid(1) }] });
 
     // All three failing: the channel is not read.
     answers.YOUTUBE_QUERY_ANALYTICS = { successful: false, error: "Backend Error" };
     answers.YOUTUBE_LIST_CHANNEL_VIDEOS = { successful: false, error: "Backend Error" };
-    const kept = await getSocialSnapshot(u.email);
-    await expect(syncSocial(u.email, { youtube: ytConn() }, NOW)).rejects.toMatchObject({ provider: "youtube", message: expect.stringMatching(/ 502:/) });
-    expect(await getSocialSnapshot(u.email)).toEqual(kept);
+    const kept = await getSocialSnapshot(acct(u));
+    await expect(syncSocial(acct(u), { youtube: ytConn() }, NOW)).rejects.toMatchObject({ provider: "youtube", message: expect.stringMatching(/ 502:/) });
+    expect(await getSocialSnapshot(acct(u))).toEqual(kept);
   });
 
   it("analytics are read by their column names, and junk is never a figure (Review Focus 5)", async () => {
@@ -507,7 +508,7 @@ describe("YouTube channel results (rule 740)", () => {
       [-5, "2026-10-05", [1], "-3", 4, 2, 1, 6],
     ], order);
     answers.YOUTUBE_LIST_CHANNELS = ok({ data: { items: [{ id: CH, statistics: { subscriberCount: "N/A" } }] } });
-    const yt = (await syncSocial(u.email, { youtube: ytConn() }, NOW)).parts.youtube!;
+    const yt = (await syncSocial(acct(u), { youtube: ytConn() }, NOW)).parts.youtube!;
     expect(yt.totals).toEqual({ ...EMPTY_TOTALS, views: 1234, watchMinutes: 6.5, likes: 8, comments: 2, shares: 1, followsGained: 6, followsLost: 1 });
     expect(yt.followers).toBeNull();
     expect(yt).not.toHaveProperty("prev");
@@ -517,9 +518,9 @@ describe("YouTube channel results (rule 740)", () => {
 
     // Without column headers, rows are read in the order asked; rows sent as objects are read by name.
     answers.YOUTUBE_QUERY_ANALYTICS = report([["2026-10-07", 100, 250, 10, 2, 1, 5, 1]], null);
-    expect((await syncSocial(u.email, { youtube: ytConn() }, NOW)).parts.youtube!.totals).toMatchObject({ views: 100, watchMinutes: 250, followsGained: 5, followsLost: 1 });
+    expect((await syncSocial(acct(u), { youtube: ytConn() }, NOW)).parts.youtube!.totals).toMatchObject({ views: 100, watchMinutes: 250, followsGained: 5, followsLost: 1 });
     answers.YOUTUBE_QUERY_ANALYTICS = report([{ day: "2026-10-07", views: 30, estimatedMinutesWatched: "45" }], null);
-    expect((await syncSocial(u.email, { youtube: ytConn() }, NOW)).parts.youtube!.totals).toEqual({ ...EMPTY_TOTALS, views: 30, watchMinutes: 45 });
+    expect((await syncSocial(acct(u), { youtube: ytConn() }, NOW)).parts.youtube!.totals).toEqual({ ...EMPTY_TOTALS, views: 30, watchMinutes: 45 });
   });
 
   it("subscribers come only from the connected channel, and a hidden count is not read", async () => {
@@ -527,29 +528,29 @@ describe("YouTube channel results (rule 740)", () => {
     ytAnswers();
     // A channel list with no row: no subscriber count, and the rest of the read stands.
     answers.YOUTUBE_LIST_CHANNELS = ok({ data: { items: [] } });
-    expect((await syncSocial(u.email, { youtube: ytConn() }, NOW)).parts.youtube!.followers).toBeNull();
+    expect((await syncSocial(acct(u), { youtube: ytConn() }, NOW)).parts.youtube!.followers).toBeNull();
     answers.YOUTUBE_LIST_CHANNELS = ok({ data: { items: [{ id: CH, statistics: { subscriberCount: "0", hiddenSubscriberCount: true } }] } });
-    expect((await syncSocial(u.email, { youtube: ytConn() }, NOW)).parts.youtube!.followers).toBeNull();
+    expect((await syncSocial(acct(u), { youtube: ytConn() }, NOW)).parts.youtube!.followers).toBeNull();
     answers.YOUTUBE_LIST_CHANNELS = ok({ data: { items: [{ id: CH, statistics: { subscriberCount: "0", hiddenSubscriberCount: false } }] } });
-    expect((await syncSocial(u.email, { youtube: ytConn() }, NOW)).parts.youtube!.followers).toBe(0);
+    expect((await syncSocial(acct(u), { youtube: ytConn() }, NOW)).parts.youtube!.followers).toBe(0);
   });
 
   it("a login whose channel is not the stored one is a failed read, yt_other_channel, and the last read stands (740)", async () => {
     const u = await newUser("ytother");
-    await saveConnection(u.email, ytConn());
+    await saveConnection(acct(u), ytConn());
     ytAnswers();
-    await syncSocial(u.email, { youtube: ytConn() }, NOW);
-    const kept = await getSocialSnapshot(u.email);
+    await syncSocial(acct(u), { youtube: ytConn() }, NOW);
+    const kept = await getSocialSnapshot(acct(u));
     // The login now answers for another channel (channel==MINE): its analytics and uploads are that channel's, not the stored one's.
     answers.YOUTUBE_LIST_CHANNELS = ok({ data: { items: [{ id: "UCanotherchannel000000", statistics: { subscriberCount: "777" } }] } });
-    await expect(syncSocial(u.email, { youtube: ytConn() }, NOW)).rejects.toMatchObject({ provider: "youtube", message: "yt_other_channel" });
-    expect(await getSocialSnapshot(u.email), "the last good part stands").toEqual(kept);
+    await expect(syncSocial(acct(u), { youtube: ytConn() }, NOW)).rejects.toMatchObject({ provider: "youtube", message: "yt_other_channel" });
+    expect(await getSocialSnapshot(acct(u)), "the last good part stands").toEqual(kept);
     // The daily run's line names the code; it is no known state and asks no reconnect.
-    await expect(syncSocialIfDue(u.email, NOW, true)).rejects.toThrow(/^yt_other_channel$/);
-    expect((await getConnection(u.email, "youtube"))?.needsReconnect).toBeFalsy();
+    await expect(syncSocialIfDue(acct(u), NOW, true)).rejects.toThrow(/^yt_other_channel$/);
+    expect((await getConnection(acct(u), "youtube"))?.needsReconnect).toBeFalsy();
     // Beside another part, the channel is not read and its code is written.
     ttAnswers();
-    const both = await syncSocial(u.email, { youtube: ytConn(), tiktok: ttConn() }, NOW);
+    const both = await syncSocial(acct(u), { youtube: ytConn(), tiktok: ttConn() }, NOW);
     expect(both.errors).toEqual({ youtube: "yt_other_channel" });
     expect(both.parts.youtube).toBeUndefined();
     expect(both.parts.tiktok).toBeDefined();
@@ -558,7 +559,7 @@ describe("YouTube channel results (rule 740)", () => {
   it("an earlier period in which every figure read is 0 gives no prev (733)", async () => {
     const u = await newUser("ytprevzero");
     ytAnswers(undefined, [["2026-10-07", 100, 250, 10, 2, 1, 5, 1], ["2026-09-09", 0, 0, 0, 0, 0, 0, 0], ["2026-08-20", 0, 0, 0, 0, 0, 0, 0]]);
-    const yt = (await syncSocial(u.email, { youtube: ytConn() }, NOW)).parts.youtube!;
+    const yt = (await syncSocial(acct(u), { youtube: ytConn() }, NOW)).parts.youtube!;
     expect(yt.totals).toMatchObject({ views: 100, watchMinutes: 250 });
     expect(yt).not.toHaveProperty("prev");
   });
@@ -580,7 +581,7 @@ describe("YouTube channel results (rule 740)", () => {
     answers.YOUTUBE_LIST_CHANNELS = ok({ data: { items: [{ id: longest, statistics: { subscriberCount: "5" } }] } });
     const conn = ytConn({ channelId: longest });
     delete conn.meta!.account;
-    const account = (await syncSocial(u.email, { youtube: conn }, NOW)).parts.youtube!.account;
+    const account = (await syncSocial(acct(u), { youtube: conn }, NOW)).parts.youtube!.account;
     expect(account).toBe(`Channel ${longest}`);
     expect(account.length).toBeLessThanOrEqual(80);
   });
@@ -590,7 +591,7 @@ describe("YouTube channel results (rule 740)", () => {
     ytAnswers();
     const list = answers.YOUTUBE_LIST_CHANNEL_VIDEOS as Result;
     answers.YOUTUBE_LIST_CHANNEL_VIDEOS = () => { vi.setSystemTime(NOW.getTime() + 31_000); return list; };
-    const yt = (await syncSocial(u.email, { youtube: ytConn() }, NOW)).parts.youtube!;
+    const yt = (await syncSocial(acct(u), { youtube: ytConn() }, NOW)).parts.youtube!;
     expect(calls.filter((c) => c.slug === "YOUTUBE_GET_VIDEO_DETAILS_BATCH")).toHaveLength(0);
     expect(yt).toMatchObject({ followers: 5000, totals: YT_TOTALS, posts: [] });
   });
@@ -600,19 +601,19 @@ describe("YouTube channel results (rule 740)", () => {
     ytAnswers();
     answers.YOUTUBE_QUERY_ANALYTICS = report([["", 10, 1, 1, 1, 1, 1, 1], ["yesterday", 20, 1, 1, 1, 1, 1, 1], ["2025-01-01", 30, 1, 1, 1, 1, 1, 1], [null, 40]]);
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    const yt = (await syncSocial(u.email, { youtube: ytConn() }, NOW)).parts.youtube!;
+    const yt = (await syncSocial(acct(u), { youtube: ytConn() }, NOW)).parts.youtube!;
     expect(yt.totals).toEqual(EMPTY_TOTALS);
     expect(warn.mock.calls.filter((c) => c[0] === "yt_no_day_rows")).toHaveLength(1);
   });
 
   it("a YouTube record is read daily, and the owner's refresh on the YouTube path reads it (673, 735)", async () => {
     const u = await newUser("ytdaily");
-    await saveConnection(u.email, ytConn());
+    await saveConnection(acct(u), ytConn());
     ytAnswers();
-    expect(await syncSocialIfDue(u.email, NOW)).toBe(true);
-    const s = await getSocialSnapshot(u.email);
+    expect(await syncSocialIfDue(acct(u), NOW)).toBe(true);
+    const s = await getSocialSnapshot(acct(u));
     expect(s?.v === 2 && s.parts.youtube?.totals.views).toBe(155);
-    expect(await syncSocialIfDue(u.email, new Date(NOW.getTime() + 19 * 3600e3))).toBe(false);
+    expect(await syncSocialIfDue(acct(u), new Date(NOW.getTime() + 19 * 3600e3))).toBe(false);
     // holdsSocial derives from READERS: the YouTube path answers sync_social, never 404 not_connected.
     expect(holdsSocial("youtube", ytConn())).toBe(true);
     await signIn(u.email);
@@ -635,8 +636,8 @@ describe("YouTube channel results (rule 740)", () => {
     ytAnswers();
     const conn = ytConn();
     delete conn.meta!.account;
-    expect((await syncSocial(u.email, { youtube: conn }, NOW)).parts.youtube?.account).toBe(`Channel ${CH}`);
-    const marked = await syncSocial(u.email, { youtube: ytConn({ account: "<b>Ward</b>\n" + "y".repeat(120) }) }, NOW);
+    expect((await syncSocial(acct(u), { youtube: conn }, NOW)).parts.youtube?.account).toBe(`Channel ${CH}`);
+    const marked = await syncSocial(acct(u), { youtube: ytConn({ account: "<b>Ward</b>\n" + "y".repeat(120) }) }, NOW);
     expect(marked.parts.youtube!.account).not.toMatch(/[<>\n]/);
     expect(marked.parts.youtube!.account.length).toBeLessThanOrEqual(80);
   });
@@ -670,11 +671,11 @@ const listCalls = () => calls.filter((c) => c.slug === "TIKTOK_LIST_VIDEOS").map
 describe("TikTok account results (rule 742)", () => {
   it("reads stats with constant fields and at most two pages of videos (742)", async () => {
     const u = await newUser("ttread");
-    await db.sadd(SOCIAL_PUB_KEY(u.email), ttId(1));
+    await db.sadd(SOCIAL_PUB_KEY(acct(u)), ttId(1));
     // 35 videos inside the window, two a day, newest first; TikTok says there are more after the second page.
     const vids = Array.from({ length: 35 }, (_, i) => ttVideo(i + 1, back(1 + Math.floor(i / 2))));
     ttAnswers([page(vids.slice(0, 20), true, 1700000000000), page(vids.slice(20), true, 1690000000000)]);
-    const snap = await syncSocial(u.email, { tiktok: ttConn() }, NOW);
+    const snap = await syncSocial(acct(u), { tiktok: ttConn() }, NOW);
     expect(calls.find((c) => c.slug === "TIKTOK_GET_USER_STATS")?.args).toEqual({ fields: TT_FIELDS });
     expect(listCalls()).toEqual([{ max_count: 20 }, { max_count: 20, cursor: 1700000000000 }]);
     expect(calls).toHaveLength(3);
@@ -692,7 +693,7 @@ describe("TikTok account results (rule 742)", () => {
     expect(snap.errors).toEqual({});
     expect(snap.history).toEqual([{ month: "2026-10", platform: "tiktok", followers: 1000, totals: EMPTY_TOTALS }]);
     // Dana is told what TikTok's figures are, beside them.
-    const block = await socialDataBlock(u.email, NOW);
+    const block = await socialDataBlock(acct(u), NOW);
     expect(block).toContain('"tiktok":{"account":"TikTok"');
     expect(block).toContain("On the TikTok account, only followers and posts are read");
   });
@@ -700,14 +701,14 @@ describe("TikTok account results (rule 742)", () => {
   it("an account with no public videos is read, with no posts (742)", async () => {
     const u = await newUser("ttnone");
     ttAnswers([page([], false, 0)]);
-    const snap = await syncSocial(u.email, { tiktok: ttConn() }, NOW);
+    const snap = await syncSocial(acct(u), { tiktok: ttConn() }, NOW);
     expect(snap.parts.tiktok).toMatchObject({ followers: 1000, totals: EMPTY_TOTALS, posts: [] });
     expect(snap.errors).toEqual({});
     expect(listCalls()).toEqual([{ max_count: 20 }]);
     // An empty first page that says there is more is not paged: nothing on it shows the next page is in the window.
     ttAnswers([page([], true, 1700000000000)]);
     calls.length = 0;
-    expect((await syncSocial(u.email, { tiktok: ttConn() }, NOW)).parts.tiktok?.posts).toEqual([]);
+    expect((await syncSocial(acct(u), { tiktok: ttConn() }, NOW)).parts.tiktok?.posts).toEqual([]);
     expect(listCalls()).toEqual([{ max_count: 20 }]);
   });
 
@@ -715,9 +716,9 @@ describe("TikTok account results (rule 742)", () => {
     const u = await newUser("tthist");
     ttAnswers(undefined, 900);
     const sept = new Date("2026-09-08T09:00:00Z");
-    expect((await syncSocial(u.email, { tiktok: ttConn() }, sept)).parts.tiktok).toMatchObject({ range: { from: "2026-08-11", to: "2026-09-07" }, followers: 900 });
+    expect((await syncSocial(acct(u), { tiktok: ttConn() }, sept)).parts.tiktok).toMatchObject({ range: { from: "2026-08-11", to: "2026-09-07" }, followers: 900 });
     ttAnswers(undefined, 1000);
-    const snap = await syncSocial(u.email, { tiktok: ttConn() }, NOW);
+    const snap = await syncSocial(acct(u), { tiktok: ttConn() }, NOW);
     expect(snap.parts.tiktok).not.toHaveProperty("prev");
     expect(snap.history).toEqual([
       { month: "2026-09", platform: "tiktok", followers: 900, totals: EMPTY_TOTALS },
@@ -740,7 +741,7 @@ describe("TikTok account results (rule 742)", () => {
       ttVideo(9, back(28), { title: "   ", video_description: "last day of the window" }),
       ttVideo(10, back(29)), // older than the window
     ], true, 1700000000000)]);
-    const tt = (await syncSocial(u.email, { tiktok: ttConn() }, NOW)).parts.tiktok!;
+    const tt = (await syncSocial(acct(u), { tiktok: ttConn() }, NOW)).parts.tiktok!;
     // A video older than the window is on this page, so the next page is older still: it is never asked for.
     expect(listCalls()).toEqual([{ max_count: 20 }]);
     expect(tt.posts.map((p) => p.id)).toEqual([ttId(2), ttId(3), ttId(4), ttId(5), ttId(9)]);
@@ -761,19 +762,19 @@ describe("TikTok account results (rule 742)", () => {
     const full = Array.from({ length: 20 }, (_, i) => ttVideo(i + 1, back(1)));
     for (const [followers, want] of [["1234", 1234], [{}, null], ["N/A", null], [-3, null], [Infinity, null], [0, 0]] as [unknown, number | null][]) {
       ttAnswers([page(full, false)], followers);
-      expect((await syncSocial(u.email, { tiktok: ttConn() }, NOW)).parts.tiktok!.followers, String(followers)).toBe(want);
+      expect((await syncSocial(acct(u), { tiktok: ttConn() }, NOW)).parts.tiktok!.followers, String(followers)).toBe(want);
     }
     // A cursor that is not a whole number above zero is never sent: the read stops at the first page.
     for (const cursor of ["abc", -5, 1.5, "9".repeat(30), {}, 0, null]) {
       calls.length = 0;
       ttAnswers([page(full, true, cursor)]);
-      expect((await syncSocial(u.email, { tiktok: ttConn() }, NOW)).parts.tiktok!.posts, String(cursor)).toHaveLength(20);
+      expect((await syncSocial(acct(u), { tiktok: ttConn() }, NOW)).parts.tiktok!.posts, String(cursor)).toHaveLength(20);
       expect(listCalls(), String(cursor)).toEqual([{ max_count: 20 }]);
     }
     // A cursor written in digits is sent as the number it is.
     calls.length = 0;
     ttAnswers([page(full, true, "1700000000000")]);
-    await syncSocial(u.email, { tiktok: ttConn() }, NOW);
+    await syncSocial(acct(u), { tiktok: ttConn() }, NOW);
     expect(listCalls()).toEqual([{ max_count: 20 }, { max_count: 20, cursor: 1700000000000 }]);
   });
 
@@ -781,97 +782,97 @@ describe("TikTok account results (rule 742)", () => {
     const u = await newUser("ttfail");
     ttAnswers();
     answers.TIKTOK_GET_USER_STATS = { successful: false, error: "Token has been expired or revoked." };
-    await expect(syncSocial(u.email, { tiktok: ttConn() }, NOW)).rejects.toMatchObject({ provider: "tiktok", message: expect.stringMatching(/ 401:/) });
-    expect(await getSocialSnapshot(u.email)).toBeNull();
+    await expect(syncSocial(acct(u), { tiktok: ttConn() }, NOW)).rejects.toMatchObject({ provider: "tiktok", message: expect.stringMatching(/ 401:/) });
+    expect(await getSocialSnapshot(acct(u))).toBeNull();
 
     // A refused token on the second page too.
     const full = Array.from({ length: 20 }, (_, i) => ttVideo(i + 1, back(1)));
     ttAnswers([page(full, true, 1700000000000), { successful: false, error: "Unauthorized" }]);
-    await expect(syncSocial(u.email, { tiktok: ttConn() }, NOW)).rejects.toMatchObject({ provider: "tiktok", message: expect.stringMatching(/ 401:/) });
+    await expect(syncSocial(acct(u), { tiktok: ttConn() }, NOW)).rejects.toMatchObject({ provider: "tiktok", message: expect.stringMatching(/ 401:/) });
     // Any other failure of the second page keeps the first.
     ttAnswers([page(full, true, 1700000000000), { successful: false, error: "internal_error" }]);
-    expect((await syncSocial(u.email, { tiktok: ttConn() }, NOW)).parts.tiktok?.posts).toHaveLength(20);
+    expect((await syncSocial(acct(u), { tiktok: ttConn() }, NOW)).parts.tiktok?.posts).toHaveLength(20);
 
     // Failed stats keep the videos; a failed list keeps the followers.
     ttAnswers();
     answers.TIKTOK_GET_USER_STATS = { successful: false, error: "internal_error" };
-    expect((await syncSocial(u.email, { tiktok: ttConn() }, NOW)).parts.tiktok).toMatchObject({ followers: null, posts: [{ id: ttId(1) }] });
+    expect((await syncSocial(acct(u), { tiktok: ttConn() }, NOW)).parts.tiktok).toMatchObject({ followers: null, posts: [{ id: ttId(1) }] });
     ttAnswers();
     answers.TIKTOK_LIST_VIDEOS = { successful: false, error: "internal_error" };
-    expect((await syncSocial(u.email, { tiktok: ttConn() }, NOW)).parts.tiktok).toMatchObject({ followers: 1000, posts: [] });
+    expect((await syncSocial(acct(u), { tiktok: ttConn() }, NOW)).parts.tiktok).toMatchObject({ followers: 1000, posts: [] });
 
     // Both failing: the account is not read and the last read stands.
     answers.TIKTOK_GET_USER_STATS = { successful: false, error: "internal_error" };
-    const kept = await getSocialSnapshot(u.email);
-    await expect(syncSocial(u.email, { tiktok: ttConn() }, NOW)).rejects.toMatchObject({ provider: "tiktok", message: expect.stringMatching(/ 502:/) });
-    expect(await getSocialSnapshot(u.email)).toEqual(kept);
+    const kept = await getSocialSnapshot(acct(u));
+    await expect(syncSocial(acct(u), { tiktok: ttConn() }, NOW)).rejects.toMatchObject({ provider: "tiktok", message: expect.stringMatching(/ 502:/) });
+    expect(await getSocialSnapshot(acct(u))).toEqual(kept);
   });
 
   it("a scope refusal is a known state, never a refused token, and the record is not marked for reconnect", async () => {
     const u = await newUser("ttscope");
-    await saveConnection(u.email, ttConn());
+    await saveConnection(acct(u), ttConn());
     // TikTok's words when the app or the login lacks user.info.stats or video.list; the adapter reads "Unauthorized" as 401.
     ttAnswers();
     answers.TIKTOK_GET_USER_STATS = { successful: false, error: "Unauthorized: scope_not_authorized: The user did not authorize the scope required for completing this request." };
-    const one = await syncSocial(u.email, { tiktok: ttConn() }, NOW);
+    const one = await syncSocial(acct(u), { tiktok: ttConn() }, NOW);
     expect(one.errors).toEqual({ tiktok: "tt_no_scope" });
     expect(one.parts.tiktok).toMatchObject({ followers: null, posts: [{ id: ttId(1) }] });
     expect(one.parts.tiktok).not.toHaveProperty("known");
     // Both refused: no part, written and not thrown, and the TikTok record (which also publishes) stays connected.
     answers.TIKTOK_LIST_VIDEOS = { successful: false, error: "scope_permission_missed" };
-    expect(await syncSocialIfDue(u.email, NOW, true)).toBe(true);
-    expect(await getSocialSnapshot(u.email)).toMatchObject({ v: 2, parts: {}, errors: { tiktok: "tt_no_scope" } });
-    expect((await getConnection(u.email, "tiktok"))?.needsReconnect).toBeFalsy();
+    expect(await syncSocialIfDue(acct(u), NOW, true)).toBe(true);
+    expect(await getSocialSnapshot(acct(u))).toMatchObject({ v: 2, parts: {}, errors: { tiktok: "tt_no_scope" } });
+    expect((await getConnection(acct(u), "tiktok"))?.needsReconnect).toBeFalsy();
   });
 
   it("a scope refusal the client throws keeps its words through the adapter: tt_no_scope, no reconnect (742)", async () => {
     const u = await newUser("ttscopethrown");
-    await saveConnection(u.email, ttConn());
+    await saveConnection(acct(u), ttConn());
     vi.spyOn(console, "error").mockImplementation(() => {});
     ttAnswers();
     answers.TIKTOK_GET_USER_STATS = () => { throw new Error("Unauthorized: scope_not_authorized: The user did not authorize the scope required for completing this request."); };
-    expect(await syncSocialIfDue(u.email, NOW, true)).toBe(true);
-    const s = await getSocialSnapshot(u.email);
+    expect(await syncSocialIfDue(acct(u), NOW, true)).toBe(true);
+    const s = await getSocialSnapshot(acct(u));
     expect(s?.v === 2 && s.errors).toEqual({ tiktok: "tt_no_scope" });
     expect(s?.v === 2 && s.parts.tiktok).toMatchObject({ followers: null, posts: [{ id: ttId(1) }] });
-    expect((await getConnection(u.email, "tiktok"))?.needsReconnect).toBeFalsy();
+    expect((await getConnection(acct(u), "tiktok"))?.needsReconnect).toBeFalsy();
     // The OAuth words the reader accepts (an insufficient or missing scope) are kept by the adapter's catch too, though
     // statusOf reads the text as 401: one pattern for both, so the record is still not marked.
     for (const text of ["Unauthorized: insufficient_scope", "Unauthorized: missing scope video.list"]) {
       answers.TIKTOK_GET_USER_STATS = () => { throw new Error(text); };
-      expect(await syncSocialIfDue(u.email, NOW, true), text).toBe(true);
-      const t = await getSocialSnapshot(u.email);
+      expect(await syncSocialIfDue(acct(u), NOW, true), text).toBe(true);
+      const t = await getSocialSnapshot(acct(u));
       expect(t?.v === 2 && t.errors, text).toEqual({ tiktok: "tt_no_scope" });
-      expect((await getConnection(u.email, "tiktok"))?.needsReconnect, text).toBeFalsy();
+      expect((await getConnection(acct(u), "tiktok"))?.needsReconnect, text).toBeFalsy();
     }
     // Any other thrown text keeps only the adapter's own word: a refused token still asks for a reconnect.
     answers.TIKTOK_GET_USER_STATS = () => { throw new Error("Unauthorized: token revoked for open_id 123"); };
     answers.TIKTOK_LIST_VIDEOS = () => { throw new Error("Unauthorized: token revoked for open_id 123"); };
-    await expect(syncSocialIfDue(u.email, NOW, true)).rejects.toThrow("reconnect_required");
-    expect((await getConnection(u.email, "tiktok"))?.needsReconnect).toBeTruthy();
+    await expect(syncSocialIfDue(acct(u), NOW, true)).rejects.toThrow("reconnect_required");
+    expect((await getConnection(acct(u), "tiktok"))?.needsReconnect).toBeTruthy();
   });
 
   it("tt_no_scope only when every failed call was a scope refusal; another failure beside one is a failed read (742)", async () => {
     const u = await newUser("ttscopemixed");
     ttAnswers();
-    await syncSocial(u.email, { tiktok: ttConn() }, NOW);
-    const kept = await getSocialSnapshot(u.email);
+    await syncSocial(acct(u), { tiktok: ttConn() }, NOW);
+    const kept = await getSocialSnapshot(acct(u));
     const scope = { successful: false, error: "scope_not_authorized" };
     const broken = { successful: false, error: "internal_error" };
     // Stats refused for a scope, videos failing otherwise: not a scope state, so the last read stands.
     answers.TIKTOK_GET_USER_STATS = scope;
     answers.TIKTOK_LIST_VIDEOS = broken;
-    await expect(syncSocial(u.email, { tiktok: ttConn() }, NOW)).rejects.toMatchObject({ provider: "tiktok", message: expect.stringMatching(/ 502: list_videos internal_error/) });
-    expect(await getSocialSnapshot(u.email)).toEqual(kept);
+    await expect(syncSocial(acct(u), { tiktok: ttConn() }, NOW)).rejects.toMatchObject({ provider: "tiktok", message: expect.stringMatching(/ 502: list_videos internal_error/) });
+    expect(await getSocialSnapshot(acct(u))).toEqual(kept);
     // The other way round.
     answers.TIKTOK_GET_USER_STATS = broken;
     answers.TIKTOK_LIST_VIDEOS = scope;
-    await expect(syncSocial(u.email, { tiktok: ttConn() }, NOW)).rejects.toMatchObject({ provider: "tiktok", message: expect.stringMatching(/ 502: get_user_stats internal_error/) });
-    expect(await getSocialSnapshot(u.email)).toEqual(kept);
+    await expect(syncSocial(acct(u), { tiktok: ttConn() }, NOW)).rejects.toMatchObject({ provider: "tiktok", message: expect.stringMatching(/ 502: get_user_stats internal_error/) });
+    expect(await getSocialSnapshot(acct(u))).toEqual(kept);
     // Both refused for a scope: the known state, written.
     answers.TIKTOK_GET_USER_STATS = scope;
     answers.TIKTOK_LIST_VIDEOS = scope;
-    expect((await syncSocial(u.email, { tiktok: ttConn() }, NOW)).errors).toEqual({ tiktok: "tt_no_scope" });
+    expect((await syncSocial(acct(u), { tiktok: ttConn() }, NOW)).errors).toEqual({ tiktok: "tt_no_scope" });
   });
 
   it("no second page is asked past the shared deadline (741)", async () => {
@@ -880,7 +881,7 @@ describe("TikTok account results (rule 742)", () => {
     const first = page(full, true, 1700000000000);
     ttAnswers([first, page([ttVideo(30, back(2))])]);
     answers.TIKTOK_LIST_VIDEOS = (a) => { vi.setSystemTime(NOW.getTime() + 31_000); return a.cursor === undefined ? first : page([]); };
-    const tt = (await syncSocial(u.email, { tiktok: ttConn() }, NOW)).parts.tiktok!;
+    const tt = (await syncSocial(acct(u), { tiktok: ttConn() }, NOW)).parts.tiktok!;
     expect(listCalls()).toEqual([{ max_count: 20 }]);
     expect(tt).toMatchObject({ followers: 1000 });
     expect(tt.posts).toHaveLength(20);
@@ -888,12 +889,12 @@ describe("TikTok account results (rule 742)", () => {
 
   it("a TikTok record is read daily, and the owner's refresh on the TikTok path reads it (673, 735)", async () => {
     const u = await newUser("ttdaily");
-    await saveConnection(u.email, ttConn());
+    await saveConnection(acct(u), ttConn());
     ttAnswers();
-    expect(await syncSocialIfDue(u.email, NOW)).toBe(true);
-    const s = await getSocialSnapshot(u.email);
+    expect(await syncSocialIfDue(acct(u), NOW)).toBe(true);
+    const s = await getSocialSnapshot(acct(u));
     expect(s?.v === 2 && s.parts.tiktok?.followers).toBe(1000);
-    expect(await syncSocialIfDue(u.email, new Date(NOW.getTime() + 19 * 3600e3))).toBe(false);
+    expect(await syncSocialIfDue(acct(u), new Date(NOW.getTime() + 19 * 3600e3))).toBe(false);
     // holdsSocial derives from READERS: the TikTok path answers sync_social and reads, never 404 not_connected.
     expect(holdsSocial("tiktok", ttConn())).toBe(true);
     await signIn(u.email);
@@ -915,8 +916,8 @@ describe("TikTok account results (rule 742)", () => {
     ttAnswers();
     const conn = ttConn();
     delete conn.meta!.account;
-    expect((await syncSocial(u.email, { tiktok: conn }, NOW)).parts.tiktok?.account).toBe("TikTok");
-    const marked = await syncSocial(u.email, { tiktok: ttConn({ account: "<b>Ward</b>\n" + "y".repeat(120) }) }, NOW);
+    expect((await syncSocial(acct(u), { tiktok: conn }, NOW)).parts.tiktok?.account).toBe("TikTok");
+    const marked = await syncSocial(acct(u), { tiktok: ttConn({ account: "<b>Ward</b>\n" + "y".repeat(120) }) }, NOW);
     expect(marked.parts.tiktok!.account).not.toMatch(/[<>\n]/);
     expect(marked.parts.tiktok!.account.length).toBeLessThanOrEqual(80);
   });
@@ -937,22 +938,22 @@ describe("review of the whole phase (rules 735, 739, 740, 742)", () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     // YouTube's quota answer carries a 403 but is no refused token: the read fails as it is and the channel stays connected.
     const yt = await newUser("ytquota");
-    await saveConnection(yt.email, ytConn());
+    await saveConnection(acct(yt), ytConn());
     const quota = { successful: false, error: "HttpError 403 quotaExceeded: The request cannot be completed because you have exceeded your quota." };
     answers.YOUTUBE_LIST_CHANNELS = quota;
     answers.YOUTUBE_QUERY_ANALYTICS = quota;
     answers.YOUTUBE_LIST_CHANNEL_VIDEOS = quota;
-    await expect(syncSocialIfDue(yt.email, NOW, true)).rejects.toMatchObject({ provider: "youtube", message: expect.stringMatching(/ 502:/) });
-    expect((await getConnection(yt.email, "youtube"))?.needsReconnect).toBeFalsy();
+    await expect(syncSocialIfDue(acct(yt), NOW, true)).rejects.toMatchObject({ provider: "youtube", message: expect.stringMatching(/ 502:/) });
+    expect((await getConnection(acct(yt), "youtube"))?.needsReconnect).toBeFalsy();
     await signIn(yt.email);
     const r = await post("youtube", { action: "sync_social" });
     expect(r.status).toBe(502);
     expect((await r.json()).error).not.toBe("reconnect_required");
-    expect((await getConnection(yt.email, "youtube"))?.needsReconnect).toBeFalsy();
+    expect((await getConnection(acct(yt), "youtube"))?.needsReconnect).toBeFalsy();
 
     // The Facebook Page: a 403 that is not about read_insights, on both sides, is a failed read and no reconnect either.
     const fb = await newUser("fbforbid");
-    await saveConnection(fb.email, fbConn());
+    await saveConnection(acct(fb), fbConn());
     // Not one of Graph's permission codes (#10, #200), which are fb_no_insights.
     const forbidden = { successful: false, error: "(#368) Forbidden 403: the action attempted is not allowed" };
     answers.FACEBOOK_GET_PAGE_INSIGHTS = forbidden;
@@ -961,13 +962,13 @@ describe("review of the whole phase (rules 735, 739, 740, 742)", () => {
     const f = await post("meta", { action: "sync_social" });
     expect(f.status).toBe(502);
     expect((await f.json()).error).toMatch(/ 502:/);
-    expect((await getConnection(fb.email, "meta"))?.needsReconnect).toBeFalsy();
+    expect((await getConnection(acct(fb), "meta"))?.needsReconnect).toBeFalsy();
   });
 
   it("every part whose token was refused asks its own record to reconnect, not only the first (735)", async () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     const u = await newUser("tworefused");
-    await Promise.all([saveConnection(u.email, both()), saveConnection(u.email, ytConn())]);
+    await Promise.all([saveConnection(acct(u), both()), saveConnection(acct(u), ytConn())]);
     fbAnswers();
     igAnswers();
     ytAnswers();
@@ -979,10 +980,10 @@ describe("review of the whole phase (rules 735, 739, 740, 742)", () => {
     // The Page was read and saved; the first refused part in PLATFORMS order (Instagram, on the Meta record) names the answer.
     expect(r.status).toBe(200);
     expect(await r.json()).toEqual({ ok: true, read: true, reconnect: "meta" });
-    const [meta, yt] = await Promise.all([getConnection(u.email, "meta"), getConnection(u.email, "youtube")]);
+    const [meta, yt] = await Promise.all([getConnection(acct(u), "meta"), getConnection(acct(u), "youtube")]);
     expect(meta?.needsReconnect, "Instagram's record").toBeTruthy();
     expect(yt?.needsReconnect, "the channel's record too").toBeTruthy();
-    const s = await getSocialSnapshot(u.email);
+    const s = await getSocialSnapshot(acct(u));
     expect(s?.v === 2 && Object.keys(s.parts)).toEqual(["facebook"]);
     expect(s?.v === 2 && s.errors).toEqual({ instagram: "read_failed", youtube: "read_failed" });
   });
@@ -992,7 +993,7 @@ describe("review of the whole phase (rules 735, 739, 740, 742)", () => {
     owned.push("ca_fb", "ca_yt", "ca_tt");
     const finish = async (provider: string, toolkit: string, accountId: string) => {
       const st = `st-${Math.random().toString(16).slice(2)}`;
-      await saveState(st, { email: u.email, provider, lang: "en", shop: "", verifier: "", via: "composio", toolkit, accountId });
+      await saveState(st, { email: sc(u), provider, lang: "en", shop: "", verifier: "", via: "composio", toolkit, accountId });
       await signIn(u.email);
       jar().set(OAUTH_COOKIE, st);
       const res = await callbackRoute.GET(new Request(`https://app.test/api/connect/${provider}/callback?state=${st}`), ctx(provider));
@@ -1002,7 +1003,7 @@ describe("review of the whole phase (rules 735, 739, 740, 742)", () => {
     answers.FACEBOOK_LIST_MANAGED_PAGES = ok({ data: [{ id: "123", name: "عود الشرق" }] });
     fbAnswers();
     expect((await finish("meta", "facebook", "ca_fb")).get("connected")).toBe("meta");
-    let s = await getSocialSnapshot(u.email);
+    let s = await getSocialSnapshot(acct(u));
     expect(s?.v === 2 && s.parts.facebook?.followers).toBe(512);
 
     ytAnswers();
@@ -1010,12 +1011,12 @@ describe("review of the whole phase (rules 735, 739, 740, 742)", () => {
     // The connect asks for the channel's snippet (its id and title), the reader for its statistics.
     answers.YOUTUBE_LIST_CHANNELS = (a) => (a.part === "snippet" ? ok({ data: { items: [{ kind: "youtube#channel", id: CH, snippet: { title: "Ward TV" } }] } }) : (channels as Result));
     expect((await finish("youtube", "youtube", "ca_yt")).get("connected")).toBe("youtube");
-    s = await getSocialSnapshot(u.email);
+    s = await getSocialSnapshot(acct(u));
     expect(s?.v === 2 && s.parts.youtube?.followers).toBe(5000);
 
     ttAnswers();
     expect((await finish("tiktok", "tiktok", "ca_tt")).get("connected")).toBe("tiktok");
-    s = await getSocialSnapshot(u.email);
+    s = await getSocialSnapshot(acct(u));
     expect(s?.v === 2 && s.parts.tiktok?.followers).toBe(1000);
     expect(s?.v === 2 && Object.keys(s.parts).sort()).toEqual(["facebook", "tiktok", "youtube"]);
   });
@@ -1025,20 +1026,20 @@ describe("review of the whole phase (rules 735, 739, 740, 742)", () => {
     fbAnswers();
     ytAnswers();
     ttAnswers();
-    const s = await syncSocial(u.email, { meta: fbConn(), youtube: ytConn(), tiktok: ttConn() }, NOW);
+    const s = await syncSocial(acct(u), { meta: fbConn(), youtube: ytConn(), tiktok: ttConn() }, NOW);
     expect(s.parts.facebook?.accountId).toBe("123");
     expect(s.parts.youtube?.accountId).toBe(CH);
     expect(s.parts.tiktok).not.toHaveProperty("accountId");
     // Another Page id drops the Page's history even under the same name; the channel renamed keeps its rows.
     const dec = new Date(Date.UTC(2026, 11, 1, 0, 30));
-    const next = await syncSocial(u.email, { meta: fbConn({ pageId: "456" }), youtube: ytConn({ account: "Ward TV 2" }), tiktok: ttConn() }, dec);
+    const next = await syncSocial(acct(u), { meta: fbConn({ pageId: "456" }), youtube: ytConn({ account: "Ward TV 2" }), tiktok: ttConn() }, dec);
     expect(next.history.filter((r) => r.platform === "facebook").map((r) => r.month)).toEqual(["2026-12"]);
     expect(next.history.filter((r) => r.platform === "youtube").map((r) => r.month)).toEqual(["2026-10", "2026-12"]);
   });
 
   it("choosing another Facebook Page reads it at once while the workspace's six social reads an hour last (739)", async () => {
     const u = await newUser("fbpick");
-    await saveConnection(u.email, fbConn({ pages: JSON.stringify([{ id: "123", name: "عود الشرق", ig: "" }, { id: "456", name: "Ward", ig: "" }]) }));
+    await saveConnection(acct(u), fbConn({ pages: JSON.stringify([{ id: "123", name: "عود الشرق", ig: "" }, { id: "456", name: "Ward", ig: "" }]) }));
     fbAnswers();
     await signIn(u.email);
     const r = await post("meta", { action: "select_page", pageId: "456" });
@@ -1054,6 +1055,6 @@ describe("review of the whole phase (rules 735, 739, 740, 742)", () => {
     expect(await late.json()).toMatchObject({ ok: true, read: false });
     await settle();
     expect(calls).toEqual([]);
-    expect((await getConnection(u.email, "meta"))?.meta?.pageId).toBe("123");
+    expect((await getConnection(acct(u), "meta"))?.meta?.pageId).toBe("123");
   });
 });

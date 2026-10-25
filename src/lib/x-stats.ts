@@ -1,6 +1,6 @@
 import { db } from "./db";
 import { sc, trialOver, type User } from "./auth";
-import { chargeOnce, refundOnce, renewIfDue, renewalDue, type SpendMeta } from "./credits";
+import { chargeOnce, personOf, refundOnce, renewIfDue, renewalDue, type SpendMeta } from "./credits";
 import { getGov } from "./governance";
 import { warnAgentCap } from "./notifications";
 import { isComposio } from "./connectors/composio-shape";
@@ -87,7 +87,7 @@ export async function refreshX(u: User, c: Connection, now = new Date()): Promis
   if (trialOver(u)) return { ok: false, status: 402, error: "trial_over" };
   if (renewalDue(u)) await renewIfDue(acct(u));
   const claim = `xread:${scope}:${today}`;
-  const spend: SpendMeta = { scope, agent: "dana", cap: (await getGov(scope)).agentCaps.dana };
+  const spend: SpendMeta = { scope, agent: "dana", cap: (await getGov(scope)).agentCaps.dana, person: personOf(u) };
   const paid = await chargeOnce(acct(u), X_READ_CREDITS, spend, claim);
   if (!paid.ok && paid.reason === "agent_cap") return { ok: false, status: 402, error: "agent_cap", extra: { spent: paid.spent, cap: paid.cap } };
   if (!paid.ok) return { ok: false, status: 402, error: "no_credits", extra: { need: X_READ_CREDITS, credits: paid.credits } };

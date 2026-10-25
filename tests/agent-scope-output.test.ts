@@ -84,7 +84,7 @@ vi.mock("@/lib/agent-scope-classify", async (orig) => {
   };
 });
 
-import { getUser, sc, type User } from "@/lib/auth";
+import { getUser, sc, type User, acct } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { listTasks, type Brand } from "@/lib/brand";
 import { createMcpToken } from "@/lib/mcp";
@@ -112,16 +112,16 @@ const refuseTitle = (title: string) => (i: { text: string }) => (i.text.startsWi
 
 async function owner(prefix: string): Promise<User> {
   const u = await newUser(prefix);
-  await db.set(`brand:${u.email}`, BRAND);
+  await db.set(`brand:${acct(u)}`, BRAND);
   await signIn(u.email);
-  const back = (await getUser(u.email))!;
-  back.scope = back.email;
+  const back = (await getUser(acct(u)))!;
+  back.scope = acct(u);
   return back;
 }
 const batch = (u: User, m: AgentScopeModes, extra: Record<string, unknown> = {}) => generateBatch(u, sc(u), { type: "social", source: "manual", via: "app", agentScope: m, ...extra });
 type Mcp = { isError?: boolean; content: { text: string }[] };
-const tool = async (email: string, name: string, args: Record<string, unknown>): Promise<Mcp> => {
-  const token = await createMcpToken(email);
+const tool = async (account: string, name: string, args: Record<string, unknown>): Promise<Mcp> => {
+  const token = await createMcpToken(account);
   const res = await mcpRoute.POST(new Request("https://nashr.test/api/mcp", { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${token}` }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name, arguments: args } }) }));
   return ((await res.json()) as { result: Mcp }).result;
 };
@@ -311,7 +311,7 @@ describe("rule 800: the chat reply", () => {
 describe("rule 801: the items of a batch", () => {
   it("items: 1 of a full batch of 10 refused in enforce: 9 saved, ceil(cost/10) refunded, held 1", async () => {
     const u = await owner("aso-items");
-    const start = await credits(u.email);
+    const start = await credits(acct(u));
     sdk.items = sdk.full;
     cls.decide = refuseTitle("بند 2");
     const r = await batch(u, modes("enforce"));
@@ -324,11 +324,11 @@ describe("rule 801: the items of a batch", () => {
     expect(r.refunded, "the refund that landed").toBe(back);
     expect(r.tasks.map((t) => t.title)).toEqual(kept);
     expect((await listTasks(sc(u))).map((t) => t.title).sort()).toEqual([...kept].sort());
-    expect(await credits(u.email)).toBe(start - cost + back);
+    expect(await credits(acct(u))).toBe(start - cost + back);
     expect(r.credits).toBe(start - cost + back);
     expect(r.cost, "what the balance lost").toBe(cost - back);
     // The receipt's refund brings the agent's monthly counter down with the balance.
-    expect(agentSpendFor((await getUser(u.email))!, sc(u)).noor).toBe(cost - back);
+    expect(agentSpendFor((await getUser(acct(u)))!, sc(u)).noor).toBe(cost - back);
     const row = (await listActivity(sc(u))).rows.find((a) => a.kind === "generated")!;
     expect(row.credits).toBe(cost - back);
     expect(row.count).toBe(9);
@@ -342,7 +342,7 @@ describe("rule 801: the items of a batch", () => {
 
   it("items: a partial refund that fails is never claimed: held reported, refunded 0, no 'refunded' sentence", async () => {
     const u = await owner("aso-refund-fail");
-    const start = await credits(u.email);
+    const start = await credits(acct(u));
     const cost = TASK_COST.social;
     const err = vi.spyOn(console, "error").mockImplementation(() => {});
     fail.refund = true;
@@ -352,7 +352,7 @@ describe("rule 801: the items of a batch", () => {
     expect(r.held).toBe(1);
     expect(r.refunded).toBe(0);
     expect(r.cost, "the balance lost the whole price").toBe(cost);
-    expect(await credits(u.email)).toBe(start - cost);
+    expect(await credits(acct(u))).toBe(start - cost);
     const line = err.mock.calls.find((c) => c[0] === "agent scope partial refund failed")!;
     expect(line).toBeDefined();
     expect(line[1]).toMatchObject({ error: "RefundStoreError" });
@@ -362,7 +362,7 @@ describe("rule 801: the items of a batch", () => {
     expect(out).toContain(" 1 item(s) were withheld as outside the team's work.");
     expect(out).not.toContain("refunded");
     await setModes(modes("enforce"));
-    const mcp = await tool(u.email, "generate_content", { type: "social" });
+    const mcp = await tool(acct(u), "generate_content", { type: "social" });
     expect(mcp.content[0].text).toContain("1 item(s) were withheld as outside the team's work.");
     expect(mcp.content[0].text).not.toContain("refunded");
     const res = await generateRoute.POST(json("/api/generate", "POST", { type: "social" }));
@@ -371,7 +371,7 @@ describe("rule 801: the items of a batch", () => {
 
   it("items: all refused: nothing saved, whole cost refunded, AgentScopeRefused", async () => {
     const u = await owner("aso-all");
-    const start = await credits(u.email);
+    const start = await credits(acct(u));
     cls.decide = () => "off_topic";
     const r = await batch(u, modes("enforce"));
     expect(r.ok).toBe(false);
@@ -379,33 +379,33 @@ describe("rule 801: the items of a batch", () => {
     expect(r.error).toBeInstanceOf(AgentScopeRefused);
     expect((r.error as AgentScopeRefused).reply).toBe(OFF);
     expect(r.credits).toBe(start);
-    expect(await credits(u.email)).toBe(start);
+    expect(await credits(acct(u))).toBe(start);
     expect(await listTasks(sc(u))).toEqual([]);
-    expect(agentSpendFor((await getUser(u.email))!, sc(u)).noor ?? 0).toBe(0);
+    expect(agentSpendFor((await getUser(acct(u)))!, sc(u)).noor ?? 0).toBe(0);
   });
 
   it("items: one refused in a once batch: the whole claim is refunded", async () => {
     const u = await owner("aso-once");
-    const start = await credits(u.email);
+    const start = await credits(acct(u));
     cls.decide = refuseTitle("بند 3");
     const r = await batch(u, modes("enforce"), { once: `weekly:${sc(u)}:test` });
     if (r.ok || r.reason !== "failed") throw new Error("expected failed");
     expect(r.error).toBeInstanceOf(AgentScopeRefused);
-    expect(await credits(u.email)).toBe(start);
-    expect((await getUser(u.email))!.paidOnce?.[`weekly:${sc(u)}:test`]).toBeUndefined();
+    expect(await credits(acct(u))).toBe(start);
+    expect((await getUser(acct(u)))!.paidOnce?.[`weekly:${sc(u)}:test`]).toBeUndefined();
     expect(await listTasks(sc(u))).toEqual([]);
   });
 
   it("items: shadow saves all and logs the refusals with itemId", async () => {
     const u = await owner("aso-shadow");
-    const start = await credits(u.email);
+    const start = await credits(acct(u));
     sdk.items = sdk.full;
     cls.decide = refuseTitle("بند 2");
     const r = await batch(u, modes("shadow"));
     if (!r.ok) throw new Error("refused");
     expect(r.tasks).toHaveLength(10);
     expect(r.held).toBeUndefined();
-    expect(await credits(u.email)).toBe(start - TASK_COST.social);
+    expect(await credits(acct(u))).toBe(start - TASK_COST.social);
     const log = await logOf(u.email);
     expect(log).toHaveLength(1);
     const two = r.tasks.find((t) => t.title === "بند 2")!;
@@ -449,15 +449,15 @@ describe("rule 801: the items of a batch", () => {
   it("web route: all refused is 422 agent_scope with the reply and the balance; MCP is an isError text", async () => {
     const u = await owner("aso-web");
     await setModes(modes("enforce"));
-    const start = await credits(u.email);
+    const start = await credits(acct(u));
     cls.decide = () => "off_topic";
     const res = await generateRoute.POST(json("/api/generate", "POST", { type: "social" }));
     expect(res.status).toBe(422);
     expect(await res.json()).toEqual({ ok: false, error: "agent_scope", message: OFF, credits: start });
-    const mcp = await tool(u.email, "generate_content", { type: "social" });
+    const mcp = await tool(acct(u), "generate_content", { type: "social" });
     expect(mcp.isError).toBe(true);
     expect(mcp.content[0].text).toBe(OFF);
-    expect(await credits(u.email)).toBe(start);
+    expect(await credits(acct(u))).toBe(start);
   });
 });
 
@@ -466,12 +466,12 @@ describe("rule 802: MCP save_draft", () => {
     const u = await owner("aso-draft");
     await setModes(modes("enforce"));
     cls.decide = () => "other_business";
-    const r = await tool(u.email, "save_draft", { type: "social", body: "إعلان لمطعم آخر في جدة" });
+    const r = await tool(acct(u), "save_draft", { type: "social", body: "إعلان لمطعم آخر في جدة" });
     expect(r.isError).toBe(true);
     expect(r.content[0].text).toBe(agentScopeRefusalText("other_business", "ar", { brand: BRAND.name, otherBrands: [] }));
     expect(await listTasks(sc(u))).toEqual([]);
     expect((await listActivity(sc(u))).rows.filter((a) => a.kind === "external_draft")).toEqual([]);
-    expect(await credits(u.email), "no credits either way").toBe(50);
+    expect(await credits(acct(u)), "no credits either way").toBe(50);
     // The order (ruling): the hourly draft rate is counted before the classifier, which it bounds, so a refused draft is
     // counted there, in both the hourly and the daily draft bucket (accepted: it bounds the classifier's spend).
     expect(Number(await db.get(`rate:draft:h:${u.email}`))).toBe(1);
@@ -484,7 +484,7 @@ describe("rule 802: MCP save_draft", () => {
     const u = await owner("aso-draft-err");
     await setModes(modes("enforce"));
     cls.error = "api";
-    const r = await tool(u.email, "save_draft", { type: "social", title: "عرض", body: "قهوة اليوم بخصم" });
+    const r = await tool(acct(u), "save_draft", { type: "social", title: "عرض", body: "قهوة اليوم بخصم" });
     expect(r.isError).toBeFalsy();
     expect(JSON.parse(r.content[0].text)).toMatchObject({ saved: true });
     expect(await listTasks(sc(u))).toHaveLength(1);
@@ -495,7 +495,7 @@ describe("rule 802: MCP save_draft", () => {
     const u = await owner("aso-draft-rate");
     await setModes(modes("enforce"));
     await db.set(`rate:draft:h:${u.email}`, 1000);
-    const r = await tool(u.email, "save_draft", { type: "social", body: "قهوة" });
+    const r = await tool(acct(u), "save_draft", { type: "social", body: "قهوة" });
     expect(r.isError).toBe(true);
     expect(cls.calls).toHaveLength(0);
   });

@@ -25,7 +25,7 @@ export type TeamLogInput = {
   /** `pid` may be left out only by an invite decline (rule 3121): the invitee may have no person yet. */
   actor: { pid?: string; email: string };
   target: { pid?: string; email: string };
-  role?: "admin" | "member";
+  role?: "admin" | "member" | "viewer";
   via: TeamLogRowValue["via"];
 };
 
@@ -64,7 +64,7 @@ export type TeamLogViewRow = {
   kind: TeamLogRowValue["kind"];
   actor: { email: string };
   target: { email: string };
-  role?: "admin" | "member";
+  role?: "admin" | "member" | "viewer";
   via: TeamLogRowValue["via"];
 };
 

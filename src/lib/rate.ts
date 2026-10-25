@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "./db";
 import type { User } from "./auth";
+import { acct } from "./account-id";
 import { onVercel } from "./deploy-env";
 import { log } from "./log";
 import { globalKey } from "./keys";
@@ -197,12 +198,12 @@ export const workspaceCreateAllowed = (pid: string): Promise<boolean> => allow(`
  * Enforced agent-scope refusals per brand scope (rule 795; spec docs/superpowers/specs/2026-10-08-entitlements-agent-scope-design.md
  * section 4.2). A message the input gate refuses makes no main model call and is given back to the chat allowance, so it
  * is free for the owner; these buckets are what bounds it, and what bounds the classifier calls a looping client could
- * cause. The scope is `u.scope ?? u.email` (what `sc(u)` returns; `sc` is not imported here, that would be a cycle), so
+ * cause. The scope is `u.scope ?? acct(u)` (what `sc(u)` returns; `sc` is not imported here, that would be a cycle), so
  * each brand has its own ceiling. Only enforced input refusals count (`scopeCheck` in src/lib/agent-scope.ts): shadow never.
  */
 export const AGENT_SCOPE_REFUSALS_PER_HOUR = 20;
 export const AGENT_SCOPE_REFUSALS_PER_DAY = 60;
-const agentScopeOf = (u: Pick<User, "scope" | "email">) => u.scope ?? u.email;
+const agentScopeOf = (u: Pick<User, "scope" | "email" | "id">) => u.scope ?? acct(u);
 const count = (v: unknown) => Number(v ?? 0);
 /**
  * Null when the brand scope may still be refused, else which window is spent, so the owner is told "in an hour" or

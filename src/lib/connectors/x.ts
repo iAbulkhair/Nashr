@@ -32,10 +32,11 @@ export async function xMe(c: Connection) {
  * and paid by the account (src/lib/x-stats.ts `refreshX`). X bills each read, so one refresh is two requests and never
  * more: the account with its public counts, then one page of at most `X_MAX_POSTS` of its own posts from the last 30
  * days, never a second page (no `pagination_token`) and nothing joined (no `expansions`). The prices are X's list prices
- * on 2026-10-08 (docs/system/costs.md): $0.010 the user, $0.005 a post, $0.060 a refresh at most, under one credit's
- * ceiling with and without VAT (tests/pricing-floor.test.ts).
+ * on 2026-10-08 (docs/system/costs.md): $0.010 the user, $0.005 a post, $0.060 a refresh at most. Two credits since yearly
+ * billing at 2 months free (rules 4030-4039): one credit's ceiling fell to $0.0592 ($0.0515 with VAT), under $0.060;
+ * two keep it under with and without VAT (tests/pricing-floor.test.ts).
  */
-export const X_READ_CREDITS = 1;
+export const X_READ_CREDITS = 2;
 export const X_MAX_POSTS = 10;
 export const X_READ_USD = Object.freeze({ user: 0.01, post: 0.005 });
 const X_DAYS = 30;

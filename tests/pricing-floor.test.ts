@@ -5,7 +5,7 @@ import {
   cheapestCreditUsd, creditRevenueUsd, maxCostPerCreditUsd,
 } from "@/lib/pricing";
 import { TASK_MODELS } from "@/lib/task-models";
-import { ASSUME, ESTIMATE_MODELS, ITEM_SIZE, draftCredits, estimateBatch, estimateDraft, estimateFor, mediaPromptUsd, onboardEstimateUsd } from "@/lib/task-costs";
+import { ASSUME, DRAFT_MIN_CREDITS, ESTIMATE_MODELS, ITEM_SIZE, draftCharge, draftCredits, estimateBatch, estimateDraft, estimateFor, mediaPromptUsd, onboardEstimateUsd } from "@/lib/task-costs";
 import { DRAFT_TYPES, TASK_COST, TASK_COUNT, TASK_TYPES, isTaskType, type TaskType } from "@/lib/tasks";
 import { costUsd, hasRate } from "@/lib/usage";
 import { ROUTINES } from "@/lib/routines";
@@ -28,7 +28,8 @@ import { X_MAX_POSTS, X_READ_CREDITS, X_READ_USD } from "@/lib/connectors/x";
 
 /**
  * Rule 241: the 60% margin floor is a test, not a comment. What one credit may cost us is at most 40% of the cheapest
- * self-serve credit (src/lib/pricing.ts: Business, 999 SAR / 3.75 / 1,500 = $0.1776, so $0.07104). Every task type's
+ * self-serve credit (src/lib/pricing.ts). Since 2026-10-24 that is Business yearly at 2 months free: 9,990 SAR / 12 / 3.75 /
+ * 1,500 = $0.148, so $0.0592 (it was Business monthly, $0.1776 and $0.07104; rules 4030-4039). Every task type's
  * estimated batch cost (src/lib/task-costs.ts: tokens priced by `costUsd`, so a rate change moves it) divided by its
  * TASK_COST must stay under that. A change to a price, a credit count, a task cost, a batch size or a model rate that
  * breaks the floor fails the build.
@@ -52,15 +53,17 @@ const usd = (n: number) => `$${n.toFixed(4)}`;
  */
 
 describe("the ceiling (rule 241)", () => {
-  it("60% floor: at most 40% of the cheapest self-serve credit, which is Business's $0.1776", () => {
+  it("60% floor: at most 40% of the cheapest self-serve credit, which is Business yearly's $0.148 (rule 4035)", () => {
     expect(MARGIN_FLOOR).toBe(0.6);
     expect(PRICES_INCLUDE_VAT, "the site says prices exclude VAT; flipping this lowers the ceiling (below)").toBe(false);
     expect(creditRevenueUsd("starter")).toBeCloseTo(0.265778, 6);
     expect(creditRevenueUsd("pro")).toBeCloseTo(0.190095, 6);
     expect(creditRevenueUsd("business")).toBeCloseTo(0.1776, 6);
-    expect(cheapestCreditUsd()).toBeCloseTo(0.1776, 6);
-    expect(ceiling).toBeCloseTo(0.07104, 6);
-    expect(maxCostPerCreditUsd(undefined, undefined, true), "VAT-inclusive prices: 999 / 1.15").toBeCloseTo(0.0618, 4);
+    // Monthly credits above; yearly at 2 months free is 10/12 of each: Business yearly is the cheapest credit.
+    expect(cheapestCreditUsd(PLAN_PRICE_SAR, PLAN_CREDITS, PRICES_INCLUDE_VAT, { starter: null, pro: null, business: null })).toBeCloseTo(0.1776, 6);
+    expect(cheapestCreditUsd()).toBeCloseTo(0.148, 6);
+    expect(ceiling).toBeCloseTo(0.0592, 6);
+    expect(maxCostPerCreditUsd(undefined, undefined, true), "VAT-inclusive prices: 9,990 / 1.15").toBeCloseTo(0.0515, 4);
   });
 });
 
@@ -122,15 +125,16 @@ describe("every task type is under the ceiling (rule 241)", () => {
     expect(estimateBatch("article").usdPerCredit).toBeGreaterThan(cut);
   });
 
-  it("more credits for the money fail it too: Business at 2,700 credits puts article over (2,500 does not)", () => {
-    expect(estimateBatch("article").usdPerCredit).toBeLessThan(maxCostPerCreditUsd(undefined, { ...PLAN_CREDITS, business: 2500 }));
-    expect(estimateBatch("article").usdPerCredit).toBeGreaterThan(maxCostPerCreditUsd(undefined, { ...PLAN_CREDITS, business: 2700 }));
+  it("more credits for the money fail it too: Business at 2,300 credits puts article over (2,200 does not)", () => {
+    // 2,700 and 2,500 before yearly billing (rule 4035): the yearly credit leaves less room.
+    expect(estimateBatch("article").usdPerCredit).toBeLessThan(maxCostPerCreditUsd(undefined, { ...PLAN_CREDITS, business: 2200 }));
+    expect(estimateBatch("article").usdPerCredit).toBeGreaterThan(maxCostPerCreditUsd(undefined, { ...PLAN_CREDITS, business: 2300 }));
   });
 
-  it("VAT-inclusive prices (ceiling $0.0618) keep the floor for every type; article is the closest, at about 64% of it", () => {
+  it("VAT-inclusive prices (ceiling $0.0515) keep the floor for every type; article is the closest, at about 77% of it", () => {
     const vat = maxCostPerCreditUsd(undefined, undefined, true);
     expect(TASK_TYPES.map(gate).filter((e) => e.usdPerCredit > vat).map((e) => e.type)).toEqual([]);
-    expect(estimateBatch("article").usdPerCredit / vat).toBeCloseTo(0.64, 2);
+    expect(estimateBatch("article").usdPerCredit / vat).toBeCloseTo(0.77, 2);
   });
 });
 
@@ -148,14 +152,14 @@ describe("Majed's auto-run is a cron path: every type it may start keeps the flo
     expect(over.map((e) => `${e.type}: ${usd(e.usdPerCredit)} per credit cold at ${e.credits} credits (ceiling ${usd(ceiling)})`)).toEqual([]);
   });
 
-  it("it leaves no type to a login's Run since rule 901; the dearest cold types are at about 72% of the ceiling", () => {
+  it("it leaves no type to a login's Run since rule 901; the dearest cold types are at about 87% of the ceiling", () => {
     // followup_seq left the list on 2026-10-09 on Opus 5.5 ($0.0653 cold), article the same day when Sonnet 5.5 took it
     // over ($0.0773 cold on Opus 5.5, $0.0482 now).
     expect(HANDOFF_TYPES.filter((t) => !AUTO_TYPES.includes(t))).toEqual([]);
     expect(estimateBatch("article", { cache: "cold" }).usdPerCredit).toBeCloseTo(0.048175, 6);
     const dearest = Math.max(...HANDOFF_TYPES.map((t) => estimateBatch(t, { cache: "cold" }).usdPerCredit));
     expect(dearest).toBeCloseTo(0.0515, 6);
-    expect(dearest / ceiling).toBeCloseTo(0.725, 2);
+    expect(dearest / ceiling).toBeCloseTo(0.87, 2);
   });
 });
 
@@ -229,23 +233,32 @@ describe("added-brand onboarding covers its cost (rules 241, 246)", () => {
 describe("chat drafts (rules 241, 250)", () => {
   const rows = DRAFT_TYPES.flatMap((t) => ([1, 2, 3] as const).map((n) => estimateDraft(t, n)));
 
-  it("drafts are charged by the chat's formula: the batch price pro rata, at least 1", () => {
+  it("drafts are charged by the chat's formula: the batch price pro rata, at least 1, and social and ads at least 2", () => {
     expect([...DRAFT_TYPES]).toEqual(["social", "whatsapp", "ads", "gbp"]);
     for (const t of DRAFT_TYPES) expect([1, 2, 3].map((n) => draftCredits(t, n)), t).toEqual([1, 2, 3]);
+    // The minimum since yearly billing (rules 4030-4031): a one-item social or ads draft was 1 credit, now 2.
+    expect(DRAFT_MIN_CREDITS).toEqual({ social: 2, ads: 2 });
+    expect(DRAFT_TYPES.map((t) => [t, [1, 2, 3].map((n) => draftCharge(t, n))])).toEqual([["social", [2, 2, 3]], ["whatsapp", [1, 2, 3]], ["ads", [2, 2, 3]], ["gbp", [1, 2, 3]]]);
     // The estimate uses the same formula as the chat's draft_items charge: the tool passes `count` to generateBatch
     // (src/lib/chat-run-tool.ts), which charges `countCost` (src/lib/generate-batch.ts).
     for (const t of TASK_TYPES) expect([1, 2, 3].map((n) => countCost(t, n)), t).toEqual([1, 2, 3].map((n) => draftCredits(t, n)));
     expect(src("src/lib/generate-batch.ts").replace(/\s+/g, "")).toContain("Math.max(1,Math.ceil((TASK_COST[type]/(TASK_COUNT[type]||1))*count))");
     // The base is the batch's or the draft's share; the charge is that base at the batch model's tier (rule 241 by tier, below).
     expect(src("src/lib/generate-batch.ts").replace(/\s+/g, "")).toContain("constbase=opts.count?countCost(type,opts.count):TASK_COST[type];");
-    expect(src("src/lib/generate-batch.ts").replace(/\s+/g, "")).toContain('constcost=creditsFor(base,model,"generate",type);');
+    expect(src("src/lib/generate-batch.ts").replace(/\s+/g, "")).toContain('constcost=opts.count?draftCharge(type,opts.count,model):creditsFor(base,model,"generate",type);');
+    // The ask-first card, a revision and an instructions test show and charge the same price (rule 4032).
+    expect(src("src/lib/chat-run-tool.ts").replace(/\s+/g, "")).toContain("credits:draftCharge(type,count),");
+    expect(src("src/lib/revise.ts").replace(/\s+/g, "")).toContain("constcost=draftCharge(t.type,1,model);");
+    expect(src("src/lib/instructions-test.ts").replace(/\s+/g, "")).toContain("2*draftCharge(type,1,model)");
     expect(src("src/lib/chat-run-tool.ts").replace(/\s+/g, "")).toContain('generateBatch(user,email,{type,notes:String(input.brief??""),count,');
   });
 
   it("every draft keeps the floor, one-item drafts included (no exemption since 2026-10-09)", () => {
     expect(rows.filter((e) => e.usdPerCredit > ceiling).map((e) => `${e.type} x${e.items}: ${usd(e.usdPerCredit)} per credit`)).toEqual([]);
     // Opus 5.5 writes social and ads, Sonnet 5.5 whatsapp and gbp (rule 901).
-    expect(DRAFT_TYPES.map((t) => [t, estimateDraft(t, 1).usdPerCredit])).toEqual([["social", expect.closeTo(0.06045, 6)], ["whatsapp", expect.closeTo(0.04255, 6)], ["ads", expect.closeTo(0.06045, 6)], ["gbp", expect.closeTo(0.04255, 6)]]);
+    // A one-item social or ads draft costs $0.0605, over the $0.0592 ceiling at 1 credit: it is charged 2 (rule 4031).
+    expect(DRAFT_TYPES.map((t) => [t, estimateDraft(t, 1).usdPerCredit])).toEqual([["social", expect.closeTo(0.030225, 6)], ["whatsapp", expect.closeTo(0.04255, 6)], ["ads", expect.closeTo(0.030225, 6)], ["gbp", expect.closeTo(0.04255, 6)]]);
+    expect(estimateBatch("social", { items: 1, credits: 1, cache: "hit" }).usdPerCredit).toBeGreaterThan(ceiling);
   });
 
   function src(path: string) {
@@ -380,7 +393,7 @@ describe("every catalog model keeps the floor on every task type it allows, per 
     for (const m of pickable) {
       for (const t of DRAFT_TYPES.filter((t) => modelAllowsTask(m, t) && TASK_MODELS[t].write !== m.id)) {
         for (const n of [1, 2, 3]) {
-          const c = creditsFor(draftCredits(t, n), m.id, "generate", t);
+          const c = draftCharge(t, n, m.id);
           const e = estimateBatch(t, { items: n, credits: c, cache: "cold", model: m.id });
           if (e.usdPerCredit > ceiling) over.push(`${m.id} ${t} x${n}: ${usd(e.usdPerCredit)} per credit at ${c}`);
         }
@@ -412,10 +425,10 @@ describe("chat keeps the floor per tier: the hold covers each model's own ceilin
     }
   });
 
-  it("today's figures: Sonnet 5.5 $0.14 and 2 credits, Opus 5.5 $0.28 and 4", () => {
+  it("today's figures: Sonnet 5.5 $0.14 and 3 credits, Opus 5.5 $0.28 and 5 (2 and 4 before yearly billing, rule 4033)", () => {
     expect(chatModels.map((m) => [m.id, chatTurnMaxUsd(m.id), chatHoldFor(m.id)])).toEqual([
-      ["claude-sonnet-5-5", 0.14, 2],
-      ["claude-opus-5-5", expect.closeTo(0.28, 12), 4],
+      ["claude-sonnet-5-5", 0.14, 3],
+      ["claude-opus-5-5", expect.closeTo(0.28, 12), 5],
     ]);
   });
 
@@ -564,13 +577,15 @@ describe("what each chat model's ceiling leaves for the answer, from the real ch
 });
 
 describe("X reads are under the ceiling too (rule 745)", () => {
-  it("an X refresh costs less than one credit, with and without VAT (745)", () => {
+  it("an X refresh costs less than its credits, with and without VAT (745; 2 credits since rule 4034)", () => {
     // One user read and at most X_MAX_POSTS posts, at X's list prices on 2026-10-08 (docs/system/costs.md 3.2).
     const usd = (X_READ_USD.user + X_MAX_POSTS * X_READ_USD.post) / X_READ_CREDITS;
-    expect(usd).toBeCloseTo(0.06, 6);
+    // $0.060 a refresh: over one yearly credit's $0.0592 ceiling, so a refresh costs 2 credits, $0.030 each.
+    expect(X_READ_USD.user + X_MAX_POSTS * X_READ_USD.post).toBeCloseTo(0.06, 6);
+    expect(usd).toBeCloseTo(0.03, 6);
     expect(usd).toBeLessThanOrEqual(maxCostPerCreditUsd());
     expect(usd).toBeLessThanOrEqual(maxCostPerCreditUsd(undefined, undefined, true));
-    expect(X_READ_CREDITS).toBe(1);
+    expect(X_READ_CREDITS).toBe(2);
     expect(X_MAX_POSTS).toBeGreaterThanOrEqual(5);
     expect(X_MAX_POSTS).toBeLessThanOrEqual(10);
   });

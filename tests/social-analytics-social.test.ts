@@ -3,7 +3,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { json, newMember, newUser, settle, signIn } from "./helpers/session";
 import { db } from "@/lib/db";
-import { getUser } from "@/lib/auth";
+import { getUser, acct } from "@/lib/auth";
 import { wipeAccount } from "@/lib/account";
 import { saveTask, type Task } from "@/lib/brand";
 import { publishOnce } from "@/lib/publish-once";
@@ -90,10 +90,10 @@ const danaGate = (scope: string, now = NOW) => ROUTINES.find((r) => r.id === "da
 describe("the owner's refresh of the social results (rule 735)", () => {
   it("sync_social is free, any member may press it, six an hour per workspace (735)", async () => {
     const owner = await newUser("socsync");
-    await Promise.all([saveConnection(owner.email, igConn()), saveConnection(owner.email, liConn())]);
+    await Promise.all([saveConnection(acct(owner), igConn()), saveConnection(acct(owner), liConn())]);
     igAnswers();
     liAnswers();
-    const start = (await getUser(owner.email))!.credits;
+    const start = (await getUser(acct(owner)))!.credits;
     const member = await newMember(owner, "member");
     await signIn(member.email);
     for (let i = 0; i < 6; i++) {
@@ -116,12 +116,12 @@ describe("the owner's refresh of the social results (rule 735)", () => {
       expect(await r.json()).toEqual({ ok: false, error: "slow_down" });
     }
     expect(calls, "a refused click reads nothing").toEqual([]);
-    expect(await db.get(OWNER_SYNC_KEY(owner.email)), "nor is it activity: the mark is the last allowed click's").toBe(NOW.toISOString());
-    expect((await getUser(owner.email))!.credits, "free: no credit leaves the account").toBe(start);
+    expect(await db.get(OWNER_SYNC_KEY(acct(owner))), "nor is it activity: the mark is the last allowed click's").toBe(NOW.toISOString());
+    expect((await getUser(acct(owner)))!.credits, "free: no credit leaves the account").toBe(start);
 
     // Another workspace has its own six; this one has six again once the hour is over.
     const other = await newUser("socsync2");
-    await saveConnection(other.email, igConn());
+    await saveConnection(acct(other), igConn());
     await signIn(other.email);
     expect((await post("meta", { action: "sync_social" })).status).toBe(200);
     vi.setSystemTime(NOW.getTime() + HOUR + 1000);
@@ -131,18 +131,18 @@ describe("the owner's refresh of the social results (rule 735)", () => {
 
   it("a refresh reads every held part at once, whatever the last read's age (735)", async () => {
     const owner = await newUser("socforce");
-    await Promise.all([saveConnection(owner.email, igConn()), saveConnection(owner.email, liConn())]);
+    await Promise.all([saveConnection(acct(owner), igConn()), saveConnection(acct(owner), liConn())]);
     igAnswers();
     liAnswers();
     // Read an hour ago: the daily run would not read again for 19 hours.
-    await syncSocial(owner.email, { meta: igConn(), linkedin: liConn() }, new Date(NOW.getTime() - HOUR));
-    expect(await syncSocialIfDue(owner.email, NOW)).toBe(false);
+    await syncSocial(acct(owner), { meta: igConn(), linkedin: liConn() }, new Date(NOW.getTime() - HOUR));
+    expect(await syncSocialIfDue(acct(owner), NOW)).toBe(false);
     calls.length = 0;
     await signIn(owner.email);
     const r = await post("linkedin", { action: "sync_social" });
     expect(await r.json()).toEqual({ ok: true, read: true });
     expect(calls.map((c) => c.slug).sort()).toEqual(["INSTAGRAM_GET_IG_USER_MEDIA", "INSTAGRAM_GET_USER_INFO", "INSTAGRAM_GET_USER_INSIGHTS", "INSTAGRAM_GET_USER_INSIGHTS", "LINKEDIN_GET_NETWORK_SIZE", "LINKEDIN_GET_ORG_PAGE_STATS", "LINKEDIN_GET_SHARE_STATS"]);
-    expect((await getSocialSnapshot(owner.email))?.at).toBe(NOW.toISOString());
+    expect((await getSocialSnapshot(acct(owner)))?.at).toBe(NOW.toISOString());
   });
 
   it("sync_social on a provider that holds no part is 404 not_connected", async () => {
@@ -167,25 +167,25 @@ describe("the owner's refresh of the social results (rule 735)", () => {
       ["tiktok", { provider: "tiktok", data: { access_token: "t", tiktok: "x" }, meta: {}, connectedAt: NOW.toISOString() }],
     ];
     for (const [provider, c] of held) {
-      await saveConnection(owner.email, c);
+      await saveConnection(acct(owner), c);
       const r = await post(provider, { action: "sync_social" });
       expect(r.status, provider).toBe(404);
       expect((await r.json()).error).toBe("not_connected");
     }
     // The action belongs to the social paths only: on Google's it is not an action at all.
-    await saveConnection(owner.email, google());
+    await saveConnection(acct(owner), google());
     expect((await post("google", { action: "sync_social" })).status).toBe(400);
     await settle();
     expect(calls).toEqual([]);
-    expect(await db.get(OWNER_SYNC_KEY(owner.email)), "a refused click is not activity").toBeNull();
+    expect(await db.get(OWNER_SYNC_KEY(acct(owner))), "a refused click is not activity").toBeNull();
     // None of the refusals spent the hour's six.
-    await saveConnection(owner.email, igConn());
+    await saveConnection(acct(owner), igConn());
     for (let i = 0; i < 6; i++) expect((await post("meta", { action: "sync_social" })).status).toBe(200);
   });
 
   it("a refused token is converted inside syncSocialIfDue only, for the part that was refused (735)", async () => {
     const owner = await newUser("socrefused");
-    await Promise.all([saveConnection(owner.email, igConn()), saveConnection(owner.email, liConn())]);
+    await Promise.all([saveConnection(acct(owner), igConn()), saveConnection(acct(owner), liConn())]);
     await signIn(owner.email);
     vi.spyOn(console, "error").mockImplementation(() => {});
     const convert = vi.spyOn(fresh, "refusedToken");
@@ -200,14 +200,14 @@ describe("the owner's refresh of the social results (rule 735)", () => {
     expect(await r.json()).toEqual({ ok: false, error: "reconnect_required" });
     // The reader converted it with the refused part's provider; the route never converts with its path's provider.
     expect(convert.mock.calls.map((c) => c[1])).toEqual(["meta"]);
-    const [meta, linkedin] = await Promise.all([getConnection(owner.email, "meta"), getConnection(owner.email, "linkedin")]);
+    const [meta, linkedin] = await Promise.all([getConnection(acct(owner), "meta"), getConnection(acct(owner), "linkedin")]);
     expect(meta?.needsReconnect).toBe(NOW.toISOString());
     expect(linkedin?.needsReconnect, "the path's own record is not asked to reconnect").toBeUndefined();
   });
 
   it("a read that saved the snapshot while one part's token was refused answers 200 with that part to reconnect (735)", async () => {
     const owner = await newUser("socpartial");
-    await Promise.all([saveConnection(owner.email, igConn()), saveConnection(owner.email, liConn())]);
+    await Promise.all([saveConnection(acct(owner), igConn()), saveConnection(acct(owner), liConn())]);
     await signIn(owner.email);
     igAnswers();
     answers.LINKEDIN_GET_SHARE_STATS = { successful: false, error: "token expired" };
@@ -215,23 +215,23 @@ describe("the owner's refresh of the social results (rule 735)", () => {
     const r = await post("meta", { action: "sync_social" });
     expect(r.status).toBe(200);
     expect(await r.json()).toEqual({ ok: true, read: true, reconnect: "linkedin" });
-    const snap = await getSocialSnapshot(owner.email);
+    const snap = await getSocialSnapshot(acct(owner));
     expect(snap).toMatchObject({ v: 2, at: NOW.toISOString(), parts: { instagram: { followers: 1200 } } });
     expect(snap?.v === 2 && snap.parts.linkedin).toBeUndefined();
-    const [meta, linkedin] = await Promise.all([getConnection(owner.email, "meta"), getConnection(owner.email, "linkedin")]);
+    const [meta, linkedin] = await Promise.all([getConnection(acct(owner), "meta"), getConnection(acct(owner), "linkedin")]);
     expect(linkedin?.needsReconnect).toBe(NOW.toISOString());
     expect(meta?.needsReconnect, "the part that read is not asked to reconnect").toBeUndefined();
-    expect(await db.get(OWNER_SYNC_KEY(owner.email)), "the click counts").toBe(NOW.toISOString());
+    expect(await db.get(OWNER_SYNC_KEY(acct(owner))), "the click counts").toBe(NOW.toISOString());
 
     // The daily run reads the same way and still reports the reconnect it needs.
-    await saveConnection(owner.email, liConn());
-    await expect(syncSocialIfDue(owner.email, NOW, true)).rejects.toThrow("reconnect_required");
-    expect(await getSocialSnapshot(owner.email)).toMatchObject({ parts: { instagram: { followers: 1200 } } });
+    await saveConnection(acct(owner), liConn());
+    await expect(syncSocialIfDue(acct(owner), NOW, true)).rejects.toThrow("reconnect_required");
+    expect(await getSocialSnapshot(acct(owner))).toMatchObject({ parts: { instagram: { followers: 1200 } } });
   });
 
   it("a read whose other parts were only known states is no read: a refused token stays 502 reconnect_required (735)", async () => {
     const owner = await newUser("socknownonly");
-    await Promise.all([saveConnection(owner.email, igConn()), saveConnection(owner.email, liConn())]);
+    await Promise.all([saveConnection(acct(owner), igConn()), saveConnection(acct(owner), liConn())]);
     await signIn(owner.email);
     vi.spyOn(console, "error").mockImplementation(() => {});
     // Instagram answers that the account is not professional (a known state, no figure read); LinkedIn's token is refused.
@@ -242,13 +242,13 @@ describe("the owner's refresh of the social results (rule 735)", () => {
     const r = await post("meta", { action: "sync_social" });
     expect(r.status).toBe(502);
     expect(await r.json()).toEqual({ ok: false, error: "reconnect_required" });
-    expect((await getConnection(owner.email, "linkedin"))?.needsReconnect).toBe(NOW.toISOString());
+    expect((await getConnection(acct(owner), "linkedin"))?.needsReconnect).toBe(NOW.toISOString());
     // The known state is still written, beside no part: the card says it, and nothing claims a read.
-    expect(await getSocialSnapshot(owner.email)).toMatchObject({ v: 2, parts: {}, errors: { instagram: "ig_not_professional", linkedin: "read_failed" } });
-    await expect(syncSocialIfDue(owner.email, NOW, true)).resolves.toBe(true);
+    expect(await getSocialSnapshot(acct(owner))).toMatchObject({ v: 2, parts: {}, errors: { instagram: "ig_not_professional", linkedin: "read_failed" } });
+    await expect(syncSocialIfDue(acct(owner), NOW, true)).resolves.toBe(true);
 
     // One part actually read beside the refused one is a read: 200 with the part to reconnect.
-    await saveConnection(owner.email, liConn());
+    await saveConnection(acct(owner), liConn());
     igAnswers();
     const read = await post("meta", { action: "sync_social" });
     expect(read.status).toBe(200);
@@ -258,7 +258,7 @@ describe("the owner's refresh of the social results (rule 735)", () => {
   it("a Facebook Page with only its posts read is no read either: the refused token stays 502 (735, 738)", async () => {
     const owner = await newUser("socfbposts");
     const fb = via("meta", { facebook: "ca_fb" }, { pageId: "123", pageName: "Oud" });
-    await Promise.all([saveConnection(owner.email, fb), saveConnection(owner.email, liConn())]);
+    await Promise.all([saveConnection(acct(owner), fb), saveConnection(acct(owner), liConn())]);
     await signIn(owner.email);
     vi.spyOn(console, "error").mockImplementation(() => {});
     // The Page's insights fail (not a permission), its posts are read: a part with no follower count and no total.
@@ -272,15 +272,15 @@ describe("the owner's refresh of the social results (rule 735)", () => {
     expect(r.status).toBe(502);
     expect(await r.json()).toEqual({ ok: false, error: "reconnect_required" });
     // The posts are still written; the Not-read list says the Page was not read, the same test.
-    const snap = await getSocialSnapshot(owner.email);
+    const snap = await getSocialSnapshot(acct(owner));
     expect(snap?.v === 2 && snap.parts.facebook?.posts).toHaveLength(1);
-    expect((await notRead(owner.email)).find((i) => i.platform === "facebook")?.reason).toBe("read_failed");
+    expect((await notRead(acct(owner))).find((i) => i.platform === "facebook")?.reason).toBe("read_failed");
   });
 
   it("choosing another LinkedIn page reads it at once while the six social reads an hour last, and says when it waits (735)", async () => {
     const owner = await newUser("socorg");
     const orgs = JSON.stringify([{ urn: "urn:li:organization:42", name: "Oud" }, { urn: "urn:li:organization:43", name: "Ward" }]);
-    await saveConnection(owner.email, via("linkedin", { linkedin: "ca_li" }, { author: "urn:li:person:abc", liOrgs: orgs, liOrg: "urn:li:organization:42" }));
+    await saveConnection(acct(owner), via("linkedin", { linkedin: "ca_li" }, { author: "urn:li:person:abc", liOrgs: orgs, liOrg: "urn:li:organization:42" }));
     liAnswers();
     await signIn(owner.email);
     const r = await post("linkedin", { action: "select_org", org: "urn:li:organization:43" });
@@ -296,44 +296,44 @@ describe("the owner's refresh of the social results (rule 735)", () => {
     expect(await late.json()).toMatchObject({ ok: true, read: false });
     await settle();
     expect(calls).toEqual([]);
-    expect((await getConnection(owner.email, "linkedin"))?.meta?.liOrg).toBe("urn:li:organization:42");
+    expect((await getConnection(acct(owner), "linkedin"))?.meta?.liOrg).toBe("urn:li:organization:42");
   });
 });
 
 describe("Dana's routine counts the owner's click, never the cron's read (rule 736)", () => {
   it("an owner click opens Dana's gate; the cron's site and social reads do not (736)", async () => {
     const owner = await newUser("socgate");
-    await Promise.all([saveConnection(owner.email, igConn()), saveConnection(owner.email, google())]);
+    await Promise.all([saveConnection(acct(owner), igConn()), saveConnection(acct(owner), google())]);
     igAnswers();
     siteAnswers();
     // The daily cron's reads, forced so both certainly run: the snapshots are fresh, and the gate stays shut.
-    expect(await syncSiteIfDue(owner.email, NOW, true)).toBe(true);
-    expect(await syncSocialIfDue(owner.email, NOW, true)).toBe(true);
-    expect(await danaGate(owner.email)).toBe("idle");
-    expect(await db.get(OWNER_SYNC_KEY(owner.email))).toBeNull();
+    expect(await syncSiteIfDue(acct(owner), NOW, true)).toBe(true);
+    expect(await syncSocialIfDue(acct(owner), NOW, true)).toBe(true);
+    expect(await danaGate(acct(owner))).toBe("idle");
+    expect(await db.get(OWNER_SYNC_KEY(acct(owner)))).toBeNull();
 
     await signIn(owner.email);
     expect((await post("google", { action: "sync_site" })).status).toBe(200);
-    expect(await db.get(OWNER_SYNC_KEY(owner.email))).toBe(NOW.toISOString());
-    expect(await danaGate(owner.email)).toBeNull();
+    expect(await db.get(OWNER_SYNC_KEY(acct(owner)))).toBe(NOW.toISOString());
+    expect(await danaGate(acct(owner))).toBeNull();
     // Seven days on the click no longer counts, and the mark itself is gone after eight.
-    expect(await danaGate(owner.email, new Date(NOW.getTime() + 7 * 24 * HOUR + 1000))).toBe("idle");
+    expect(await danaGate(acct(owner), new Date(NOW.getTime() + 7 * 24 * HOUR + 1000))).toBe("idle");
     vi.setSystemTime(NOW.getTime() + 8 * 24 * HOUR + 1000);
-    expect(await db.get(OWNER_SYNC_KEY(owner.email))).toBeNull();
+    expect(await db.get(OWNER_SYNC_KEY(acct(owner)))).toBeNull();
   });
 
   it("a member's sync_social counts, even when the platform fails; another workspace's gate stays shut (736)", async () => {
     const owner = await newUser("socgate2");
-    await saveConnection(owner.email, igConn());
+    await saveConnection(acct(owner), igConn());
     const member = await newMember(owner, "member");
     await signIn(member.email);
     vi.spyOn(console, "error").mockImplementation(() => {});
     answers.INSTAGRAM_GET_USER_INFO = { successful: false, error: "Internal error (500)" };
     const r = await post("meta", { action: "sync_social" });
     expect(r.status).toBe(502);
-    expect(await danaGate(owner.email)).toBeNull();
+    expect(await danaGate(acct(owner))).toBeNull();
     const other = await newUser("socgate3");
-    expect(await danaGate(other.email)).toBe("idle");
+    expect(await danaGate(acct(other))).toBe("idle");
   });
 });
 
@@ -349,7 +349,7 @@ describe("the social snapshot v2 and its history (rules 737, 746; amended 664, 6
     igAnswers();
     liAnswers();
     answers.INSTAGRAM_GET_USER_INSIGHTS = ok({ data: { data: [{ name: "reach", total_value: { value: 1200 } }, { name: "views", total_value: { value: 9100 } }] } });
-    const s = await syncSocial(owner.email, { meta: igConn(), linkedin: liConn() }, NOW);
+    const s = await syncSocial(acct(owner), { meta: igConn(), linkedin: liConn() }, NOW);
     expect(s.v).toBe(2);
     expect(s.parts.instagram?.totals.reach).toBe(1200);
     expect(s.parts.instagram?.totals.clicks).toBeNull();
@@ -361,16 +361,16 @@ describe("the social snapshot v2 and its history (rules 737, 746; amended 664, 6
     expect(Object.keys(s.parts.linkedin!.totals)).not.toContain("engagement");
     // Nothing that was not read became 0: Instagram read reach and views only.
     expect(Object.entries(s.parts.instagram!.totals).filter(([, v]) => v !== null).map(([k]) => k).sort()).toEqual(["reach", "views"]);
-    expect(await getSocialSnapshot(owner.email)).toEqual(s);
+    expect(await getSocialSnapshot(acct(owner))).toEqual(s);
   });
 
   it("a v1 snapshot renders as not read and is due (Review Focus 2)", async () => {
     const owner = await newUser("socv1");
-    await saveConnection(owner.email, igConn());
+    await saveConnection(acct(owner), igConn());
     igAnswers();
-    await db.set(SOCIAL_KEY(owner.email), legacyV1);
+    await db.set(SOCIAL_KEY(acct(owner)), legacyV1);
     // Until the next read: Dana's block is empty, the card says not read yet without a figure, the followers tile stays shut.
-    expect(await socialDataBlock(owner.email, NOW)).toBe("");
+    expect(await socialDataBlock(acct(owner), NOW)).toBe("");
     const html = renderToStaticMarkup(createElement(SocialStats, { lang: "en", social: legacyV1 as never }));
     expect(html).toContain("Social results have not been read yet.");
     expect(html).not.toContain("1200");
@@ -378,9 +378,9 @@ describe("the social snapshot v2 and its history (rules 737, 746; amended 664, 6
     expect(renderToStaticMarkup(createElement(SocialStats, { lang: "ar", social: legacyV1 as never }))).toContain("لم تُقرأ بعد");
     expect(socialRead(legacyV1 as never)).toBe(false);
     // Read at NOW, so the daily run would wait 20 hours; a v1 snapshot is read again at once, never migrated in place.
-    expect(await syncSocialIfDue(owner.email, NOW)).toBe(true);
-    expect(await getSocialSnapshot(owner.email)).toMatchObject({ v: 2, parts: { instagram: { account: "oud", followers: 1200 } } });
-    expect(await syncSocialIfDue(owner.email, NOW), "a v2 read an instant old is not due").toBe(false);
+    expect(await syncSocialIfDue(acct(owner), NOW)).toBe(true);
+    expect(await getSocialSnapshot(acct(owner))).toMatchObject({ v: 2, parts: { instagram: { account: "oud", followers: 1200 } } });
+    expect(await syncSocialIfDue(acct(owner), NOW), "a v2 read an instant old is not due").toBe(false);
   });
 
   it("history keeps one row per platform and month, newest 13 (746)", () => {
@@ -398,16 +398,16 @@ describe("the social snapshot v2 and its history (rules 737, 746; amended 664, 6
     const owner = await newUser("sochist");
     igAnswers();
     liAnswers();
-    await syncSocial(owner.email, { meta: igConn(), linkedin: liConn() }, NOW);
+    await syncSocial(acct(owner), { meta: igConn(), linkedin: liConn() }, NOW);
     // A month later LinkedIn fails: Instagram gets November's row, LinkedIn keeps October's.
     answers.LINKEDIN_GET_SHARE_STATS = { successful: false, error: "Internal error (500)" };
     const later = new Date(Date.UTC(2026, 10, 1, 0, 30));
-    const s = await syncSocial(owner.email, { meta: igConn(), linkedin: liConn() }, later);
+    const s = await syncSocial(acct(owner), { meta: igConn(), linkedin: liConn() }, later);
     expect(s.errors.linkedin).toBe("read_failed");
     expect(s.history.map((r) => `${r.month} ${r.platform}`).sort()).toEqual(["2026-10 instagram", "2026-10 linkedin", "2026-11 instagram"]);
     // A v1 snapshot has no history: the first v2 read starts one.
-    await db.set(SOCIAL_KEY(owner.email), legacyV1);
-    expect((await syncSocial(owner.email, { meta: igConn() }, NOW)).history.map((r) => r.platform)).toEqual(["instagram"]);
+    await db.set(SOCIAL_KEY(acct(owner)), legacyV1);
+    expect((await syncSocial(acct(owner), { meta: igConn() }, NOW)).history.map((r) => r.platform)).toEqual(["instagram"]);
   });
 
   it("a part read from another account starts its platform's history again; a name not read keeps it (746)", async () => {
@@ -415,18 +415,18 @@ describe("the social snapshot v2 and its history (rules 737, 746; amended 664, 6
     igAnswers();
     liAnswers();
     const months = async () => {
-      const s = await getSocialSnapshot(owner.email);
+      const s = await getSocialSnapshot(acct(owner));
       return s?.v === 2 ? s.history.map((r) => `${r.month} ${r.platform}`).sort() : [];
     };
-    await syncSocial(owner.email, { meta: igConn(), linkedin: liConn() }, NOW);
+    await syncSocial(acct(owner), { meta: igConn(), linkedin: liConn() }, NOW);
     // November: another Instagram account was connected (another igId); the company page is the same.
     answers.INSTAGRAM_GET_USER_INFO = ok({ data: { id: "1785", username: "rose", followers_count: 40 } });
-    await syncSocial(owner.email, { meta: igConn("1785"), linkedin: liConn() }, new Date(Date.UTC(2026, 10, 1, 0, 30)));
+    await syncSocial(acct(owner), { meta: igConn("1785"), linkedin: liConn() }, new Date(Date.UTC(2026, 10, 1, 0, 30)));
     expect(await months(), "October's Instagram row was another account's").toEqual(["2026-10 linkedin", "2026-11 instagram", "2026-11 linkedin"]);
     // December: the owner chose another company page, and Instagram answered without its username.
     answers.INSTAGRAM_GET_USER_INFO = ok({ data: { id: "1785", followers_count: 41 } });
     const page43 = via("linkedin", { linkedin: "ca_li" }, { author: "urn:li:person:abc", liOrg: "urn:li:organization:43" });
-    const s = await syncSocial(owner.email, { meta: igConn("1785"), linkedin: page43 }, new Date(Date.UTC(2026, 11, 1, 0, 30)));
+    const s = await syncSocial(acct(owner), { meta: igConn("1785"), linkedin: page43 }, new Date(Date.UTC(2026, 11, 1, 0, 30)));
     expect(s.parts.linkedin?.account).toBe("Page 43");
     expect(await months()).toEqual(["2026-11 instagram", "2026-12 instagram", "2026-12 linkedin"]);
   });
@@ -436,31 +436,31 @@ describe("the social snapshot v2 and its history (rules 737, 746; amended 664, 6
     igAnswers();
     liAnswers();
     const months = async () => {
-      const s = await getSocialSnapshot(owner.email);
+      const s = await getSocialSnapshot(acct(owner));
       return s?.v === 2 ? s.history.filter((r) => r.platform === "instagram").map((r) => r.month) : [];
     };
-    const first = await syncSocial(owner.email, { meta: igConn(), linkedin: liConn() }, NOW);
+    const first = await syncSocial(acct(owner), { meta: igConn(), linkedin: liConn() }, NOW);
     // Taken only from the stored connection, never from the platform's answer.
     expect(first.parts.instagram?.accountId).toBe("1784");
     expect(first.parts.linkedin?.accountId).toBe("urn:li:organization:42");
     // November: the same account (igId 1784) under a new username keeps its rows.
     answers.INSTAGRAM_GET_USER_INFO = ok({ data: { id: "1784", username: "oud_ksa", followers_count: 1300 } });
-    await syncSocial(owner.email, { meta: igConn() }, new Date(Date.UTC(2026, 10, 1, 0, 30)));
+    await syncSocial(acct(owner), { meta: igConn() }, new Date(Date.UTC(2026, 10, 1, 0, 30)));
     expect(await months(), "renamed, not another account").toEqual(["2026-10", "2026-11"]);
     // December: another account (igId 1785) under the same username drops them.
-    await syncSocial(owner.email, { meta: igConn("1785") }, new Date(Date.UTC(2026, 11, 1, 0, 30)));
+    await syncSocial(acct(owner), { meta: igConn("1785") }, new Date(Date.UTC(2026, 11, 1, 0, 30)));
     expect(await months(), "another account, the same name").toEqual(["2026-12"]);
 
     // A part stored before the id (the expand step, rule 679): the names decide, as before. The same name keeps the rows...
     const october = upsertHistory([], [part("instagram", { account: "oud" })], NOW);
-    await db.set(SOCIAL_KEY(owner.email), { v: 2, at: NOW.toISOString(), parts: { instagram: part("instagram", { account: "oud" }) }, errors: {}, history: october });
+    await db.set(SOCIAL_KEY(acct(owner)), { v: 2, at: NOW.toISOString(), parts: { instagram: part("instagram", { account: "oud" }) }, errors: {}, history: october });
     igAnswers();
-    await syncSocial(owner.email, { meta: igConn() }, new Date(Date.UTC(2026, 10, 1, 0, 30)));
+    await syncSocial(acct(owner), { meta: igConn() }, new Date(Date.UTC(2026, 10, 1, 0, 30)));
     expect(await months()).toEqual(["2026-10", "2026-11"]);
     // ...and another name drops them.
-    await db.set(SOCIAL_KEY(owner.email), { v: 2, at: NOW.toISOString(), parts: { instagram: part("instagram", { account: "oud" }) }, errors: {}, history: october });
+    await db.set(SOCIAL_KEY(acct(owner)), { v: 2, at: NOW.toISOString(), parts: { instagram: part("instagram", { account: "oud" }) }, errors: {}, history: october });
     answers.INSTAGRAM_GET_USER_INFO = ok({ data: { id: "1784", username: "rose", followers_count: 40 } });
-    await syncSocial(owner.email, { meta: igConn() }, new Date(Date.UTC(2026, 10, 1, 0, 30)));
+    await syncSocial(acct(owner), { meta: igConn() }, new Date(Date.UTC(2026, 10, 1, 0, 30)));
     expect(await months()).toEqual(["2026-11"]);
   });
 
@@ -468,10 +468,10 @@ describe("the social snapshot v2 and its history (rules 737, 746; amended 664, 6
     const owner = await newUser("sochistidout");
     igAnswers();
     liAnswers();
-    await syncSocial(owner.email, { meta: igConn("17841400000000001"), linkedin: liConn() }, NOW);
-    const stored = await getSocialSnapshot(owner.email);
+    await syncSocial(acct(owner), { meta: igConn("17841400000000001"), linkedin: liConn() }, NOW);
+    const stored = await getSocialSnapshot(acct(owner));
     expect(JSON.stringify(stored)).toContain("17841400000000001");
-    const block = await socialDataBlock(owner.email, NOW);
+    const block = await socialDataBlock(acct(owner), NOW);
     expect(block).not.toMatch(/accountId|17841400000000001|urn:li:organization/);
     const page = socialForPage(stored);
     expect(JSON.stringify(page)).not.toMatch(/accountId|17841400000000001|urn:li:organization/);
@@ -491,9 +491,9 @@ describe("the social snapshot v2 and its history (rules 737, 746; amended 664, 6
       row("2026-09", "linkedin", 0), row("2026-09", "youtube", null), row("2026-10", "tiktok", 40), row("2026-09", "facebook", 300),
     ];
     const parts = { instagram: part("instagram", { followers: 1200 }), linkedin: part("linkedin"), youtube: part("youtube"), tiktok: part("tiktok"), facebook: part("facebook", { followers: null }) };
-    await db.set(SOCIAL_KEY(owner.email), { v: 2, at: NOW.toISOString(), errors: {}, history, parts });
+    await db.set(SOCIAL_KEY(acct(owner)), { v: 2, at: NOW.toISOString(), errors: {}, history, parts });
     const read = (block: string) => JSON.parse(block.slice(block.indexOf("<social_data>") + 13, block.indexOf("</social_data>")));
-    const block = await socialDataBlock(owner.email, NOW);
+    const block = await socialDataBlock(acct(owner), NOW);
     const data = read(block);
     // The newest earlier month only, never this month's own row.
     expect(data.instagram.last_month).toEqual({ month: "2026-09", followers: 1000 });
@@ -503,8 +503,8 @@ describe("the social snapshot v2 and its history (rules 737, 746; amended 664, 6
     expect(block).toContain("where a prev figure is 0 or null, give no percentage change for it");
     // X's own history gives X's last_month.
     const x: XStats = { platform: "x", account: "@oud", range: { from: "2026-09-08", to: "2026-10-08" }, followers: 50, totals: { ...EMPTY_TOTALS }, posts: [], at: NOW.toISOString(), history: [row("2026-09", "x", 45), row("2026-10", "x", 50)] };
-    await db.set(XSTATS_KEY(owner.email), x);
-    expect(read(await socialDataBlock(owner.email, NOW)).x.last_month).toEqual({ month: "2026-09", followers: 45 });
+    await db.set(XSTATS_KEY(acct(owner)), x);
+    expect(read(await socialDataBlock(acct(owner), NOW)).x.last_month).toEqual({ month: "2026-09", followers: 45 });
   });
 
   it("an Instagram username is stored as one clean line of at most 80 characters (737)", async () => {
@@ -512,16 +512,16 @@ describe("the social snapshot v2 and its history (rules 737, 746; amended 664, 6
     igAnswers();
     // 100 characters with markup.
     answers.INSTAGRAM_GET_USER_INFO = ok({ data: { id: "1784", username: "<b>oud</b>" + "x".repeat(90), followers_count: 1200 } });
-    await syncSocial(owner.email, { meta: igConn() }, NOW);
-    const s = await getSocialSnapshot(owner.email);
+    await syncSocial(acct(owner), { meta: igConn() }, NOW);
+    const s = await getSocialSnapshot(acct(owner));
     const account = s?.v === 2 ? s.parts.instagram!.account : "";
     expect(account.length).toBeGreaterThan(0);
     expect(account.length).toBeLessThanOrEqual(80);
     expect(account).not.toContain("<");
     // Instagram's own characters stay: `_` and `.` are part of the username.
     answers.INSTAGRAM_GET_USER_INFO = ok({ data: { id: "1784", username: "oud_roastery.sa", followers_count: 1200 } });
-    await syncSocial(owner.email, { meta: igConn() }, NOW);
-    const next = await getSocialSnapshot(owner.email);
+    await syncSocial(acct(owner), { meta: igConn() }, NOW);
+    const next = await getSocialSnapshot(acct(owner));
     expect(next?.v === 2 && next.parts.instagram!.account).toBe("oud_roastery.sa");
   });
 
@@ -535,9 +535,9 @@ describe("the social snapshot v2 and its history (rules 737, 746; amended 664, 6
 
   it("history goes with the account (746)", async () => {
     const owner = await newUser("socwipe");
-    await db.set(SOCIAL_KEY(owner.email), { v: 2, at: NOW.toISOString(), parts: { instagram: part("instagram") }, errors: {}, history: upsertHistory([], [part("instagram"), part("linkedin")], NOW) });
-    await wipeAccount(owner.email);
-    expect(await getSocialSnapshot(owner.email)).toBeNull();
+    await db.set(SOCIAL_KEY(acct(owner)), { v: 2, at: NOW.toISOString(), parts: { instagram: part("instagram") }, errors: {}, history: upsertHistory([], [part("instagram"), part("linkedin")], NOW) });
+    await wipeAccount(acct(owner));
+    expect(await getSocialSnapshot(acct(owner))).toBeNull();
   });
 
   it("a Meta record with a Page counts as a social source; followers unlock on any part (664, 670)", () => {
@@ -582,13 +582,13 @@ describe("the social snapshot v2 and its history (rules 737, 746; amended 664, 6
     const owner = await newUser("socpub");
     vi.spyOn(publish, "publishTask").mockImplementation(async (_scope, _task, provider) => ({ url: "", id: `id-${provider}`, provider, status: "published" }));
     const t: Task = { id: "tsocpub1", type: "social", channel: "instagram", title: "t", body: "عود ملكي جديد", status: "approved", createdAt: NOW.toISOString(), lang: "ar" };
-    await saveTask(owner.email, t, true);
+    await saveTask(acct(owner), t, true);
     const providers = ["facebook", "linkedin", "youtube", "tiktok", "x", "telegram"];
-    for (const p of providers) expect((await publishOnce(owner.email, t.id, p)).ok, p).toBe(true);
-    for (const p of providers.slice(0, 5)) expect(await db.sismember(SOCIAL_PUB_KEY(owner.email), `id-${p}`), p).toBe(true);
-    expect(await db.sismember(SOCIAL_PUB_KEY(owner.email), "id-telegram"), "Telegram has no results to mark").toBe(false);
+    for (const p of providers) expect((await publishOnce(acct(owner), t.id, p)).ok, p).toBe(true);
+    for (const p of providers.slice(0, 5)) expect(await db.sismember(SOCIAL_PUB_KEY(acct(owner)), `id-${p}`), p).toBe(true);
+    expect(await db.sismember(SOCIAL_PUB_KEY(acct(owner)), "id-telegram"), "Telegram has no results to mark").toBe(false);
     const other = await newUser("socpub2");
-    expect(await db.smembers(SOCIAL_PUB_KEY(other.email))).toEqual([]);
+    expect(await db.smembers(SOCIAL_PUB_KEY(acct(other)))).toEqual([]);
   });
 });
 
@@ -603,7 +603,7 @@ describe("the social previous period and the shared deadline (rules 733, 741; am
     const owner = await newUser("socprevig");
     igAnswers();
     answers.INSTAGRAM_GET_USER_INSIGHTS = igInsights(igTotals(4500, 7000));
-    const s = await syncSocial(owner.email, { meta: igConn() }, NOW);
+    const s = await syncSocial(acct(owner), { meta: igConn() }, NOW);
     const ins = calls.filter((c) => c.slug === "INSTAGRAM_GET_USER_INSIGHTS");
     expect(ins.map((c) => [c.args.since, c.args.until])).toEqual([[S, U], [S - 28 * 86400, S]]);
     // The same metrics, period and type: only the dates differ.
@@ -616,16 +616,16 @@ describe("the social previous period and the shared deadline (rules 733, 741; am
     const owner = await newUser("socprevigfail");
     igAnswers();
     answers.INSTAGRAM_GET_USER_INSIGHTS = igInsights({ successful: false, error: "Internal error (500)" });
-    const failed = await syncSocial(owner.email, { meta: igConn() }, NOW);
+    const failed = await syncSocial(acct(owner), { meta: igConn() }, NOW);
     expect(failed.parts.instagram).toMatchObject({ followers: 1200, totals: { reach: 5400, views: 9100 } });
     expect(failed.parts.instagram).not.toHaveProperty("prev");
     expect(failed.errors).toEqual({});
     // An account with no figure for the earlier days (professional only since this month): no prev, so no "up from" either.
     answers.INSTAGRAM_GET_USER_INSIGHTS = igInsights(ok({ data: { data: [] } }));
-    expect((await syncSocial(owner.email, { meta: igConn() }, NOW)).parts.instagram).not.toHaveProperty("prev");
+    expect((await syncSocial(acct(owner), { meta: igConn() }, NOW)).parts.instagram).not.toHaveProperty("prev");
     // A refused token on the previous read is still a refused token: thrown with its provider, never hidden as "no prev".
     answers.INSTAGRAM_GET_USER_INSIGHTS = igInsights({ successful: false, error: "token expired" });
-    await expect(syncSocial(owner.email, { meta: igConn() }, NOW)).rejects.toMatchObject({ provider: "meta", message: expect.stringMatching(/ 401:/) });
+    await expect(syncSocial(acct(owner), { meta: igConn() }, NOW)).rejects.toMatchObject({ provider: "meta", message: expect.stringMatching(/ 401:/) });
   });
 
   it("an earlier period in which every figure read is 0 gives no prev (733)", async () => {
@@ -637,14 +637,14 @@ describe("the social previous period and the shared deadline (rules 733, 741; am
     answers.LINKEDIN_GET_SHARE_STATS = (a) => ok({ elements: [liDay(liEnd(a), 1, 900, 9), ...Array.from({ length: 28 }, (_, i) => liDay(liEnd(a), 29 + i, 0))] });
     answers.LINKEDIN_GET_NETWORK_SIZE = ok({ firstDegreeSize: 812 });
     answers.LINKEDIN_GET_ORG_PAGE_STATS = ok({ elements: [] });
-    const s = await syncSocial(owner.email, { meta: igConn(), linkedin: liConn() }, NOW);
+    const s = await syncSocial(acct(owner), { meta: igConn(), linkedin: liConn() }, NOW);
     expect(s.parts.instagram).toMatchObject({ totals: { reach: 5400, views: 9100 } });
     expect(s.parts.linkedin).toMatchObject({ totals: { views: 900, clicks: 9 } });
     expect(s.parts.instagram, "Instagram").not.toHaveProperty("prev");
     expect(s.parts.linkedin, "LinkedIn").not.toHaveProperty("prev");
     // One figure above 0 in the earlier period is a prev, its zeros kept as read.
     answers.INSTAGRAM_GET_USER_INSIGHTS = igInsights(igTotals(0, 3));
-    expect((await syncSocial(owner.email, { meta: igConn() }, NOW)).parts.instagram?.prev?.totals).toMatchObject({ reach: 0, views: 3 });
+    expect((await syncSocial(acct(owner), { meta: igConn() }, NOW)).parts.instagram?.prev?.totals).toMatchObject({ reach: 0, views: 3 });
   });
 
   it("LinkedIn asks 56 whole days once and splits them by day (733)", async () => {
@@ -657,7 +657,7 @@ describe("the social previous period and the shared deadline (rules 733, 741; am
       liDay(liEnd(a), 0, 5000), liDay(liEnd(a), 57, 5000), { totalShareStatistics: { impressionCount: 5000 } },
     ] });
     answers.LINKEDIN_GET_NETWORK_SIZE = ok({ firstDegreeSize: 812 });
-    const s = await syncSocial(owner.email, { linkedin: liConn() }, NOW);
+    const s = await syncSocial(acct(owner), { linkedin: liConn() }, NOW);
     const asked = calls.filter((c) => c.slug === "LINKEDIN_GET_SHARE_STATS");
     expect(asked).toHaveLength(1);
     // Whole UTC days ending at today's midnight, so both periods are whole days however LinkedIn cuts its DAY rows.
@@ -669,12 +669,12 @@ describe("the social previous period and the shared deadline (rules 733, 741; am
   it("a page with days only in the window has no prev; rows dated in neither period leave null figures, said once (733)", async () => {
     const owner = await newUser("socprevlinew");
     liAnswers();
-    const s = await syncSocial(owner.email, { linkedin: liConn() }, NOW);
+    const s = await syncSocial(acct(owner), { linkedin: liConn() }, NOW);
     expect(s.parts.linkedin?.totals.views).toBe(900);
     expect(s.parts.linkedin).not.toHaveProperty("prev");
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     answers.LINKEDIN_GET_SHARE_STATS = ok({ elements: [{ totalShareStatistics: { impressionCount: 900 } }, { timeRange: { start: 0, end: 864e5 }, totalShareStatistics: { impressionCount: 900 } }] });
-    const odd = await syncSocial(owner.email, { linkedin: liConn() }, NOW);
+    const odd = await syncSocial(acct(owner), { linkedin: liConn() }, NOW);
     expect(odd.parts.linkedin).toMatchObject({ followers: 812, totals: { views: null, clicks: null, engagements: null } });
     expect(odd.parts.linkedin).not.toHaveProperty("prev");
     expect(warn.mock.calls).toEqual([["li_no_day_rows"]]);
@@ -702,8 +702,8 @@ describe("the social previous period and the shared deadline (rules 733, 741; am
     answers.INSTAGRAM_GET_USER_INFO = { successful: false, error: "(#100) Unsupported get request." };
     answers.LINKEDIN_GET_SHARE_STATS = { successful: false, error: "403 Forbidden" };
     const started = Date.now() - SOCIAL_DEADLINE_MS - 1;
-    await expect(READERS.instagram.read(owner.email, igConn(), NOW, started + SOCIAL_DEADLINE_MS)).rejects.toThrow(/^deadline$/);
-    await expect(READERS.linkedin.read(owner.email, liConn(), NOW, started + SOCIAL_DEADLINE_MS)).rejects.toThrow(/^deadline$/);
+    await expect(READERS.instagram.read(acct(owner), igConn(), NOW, started + SOCIAL_DEADLINE_MS)).rejects.toThrow(/^deadline$/);
+    await expect(READERS.linkedin.read(acct(owner), liConn(), NOW, started + SOCIAL_DEADLINE_MS)).rejects.toThrow(/^deadline$/);
     expect(calls).toEqual([]);
   });
 
@@ -717,7 +717,7 @@ describe("the social previous period and the shared deadline (rules 733, 741; am
       vi.setSystemTime(NOW.getTime() + 31_000);
       return ok({ data: { data: (a.metric as string[]).map((name) => ({ name, values: [{ value: 7 }] })) } });
     };
-    const s = await syncSocial(owner.email, { meta: igConn(), linkedin: liConn() }, NOW);
+    const s = await syncSocial(acct(owner), { meta: igConn(), linkedin: liConn() }, NOW);
     expect(s.parts.linkedin?.totals.views).toBe(900);
     // Four post reads run at a time: the four asked before the clock passed 30 s land, and none is asked after.
     expect(calls.filter((c) => c.slug === "INSTAGRAM_GET_IG_MEDIA_INSIGHTS")).toHaveLength(4);
@@ -734,7 +734,7 @@ describe("the social previous period and the shared deadline (rules 733, 741; am
       vi.setSystemTime(NOW.getTime() + SOCIAL_DEADLINE_MS);
       return ok({ data: { id: "1784", username: "oud", followers_count: 1200 } });
     };
-    const late = await syncSocial(owner.email, { meta: igConn(), linkedin: liConn() }, NOW);
+    const late = await syncSocial(acct(owner), { meta: igConn(), linkedin: liConn() }, NOW);
     expect(calls.map((c) => c.slug).sort()).toEqual(["INSTAGRAM_GET_USER_INFO", "LINKEDIN_GET_NETWORK_SIZE", "LINKEDIN_GET_ORG_PAGE_STATS", "LINKEDIN_GET_SHARE_STATS"]);
     expect(late.parts.instagram).toMatchObject({ account: "oud", followers: 1200, totals: EMPTY_TOTALS, posts: [] });
     expect(late.parts.instagram).not.toHaveProperty("prev");
@@ -757,7 +757,7 @@ describe("LinkedIn page views (rule 748)", () => {
       pageDay(pageEnd(a), 1, 300), pageDay(pageEnd(a), 2, "10"), pageDay(pageEnd(a), 3, "N/A"), pageDay(pageEnd(a), 4, {}),
       pageDay(pageEnd(a), 29, 120), pageDay(pageEnd(a), 0, 5000), { totalPageStatistics: { views: { allPageViews: { pageViews: 5000 } } } },
     ] });
-    const s = await syncSocial(owner.email, { linkedin: liConn() }, NOW);
+    const s = await syncSocial(acct(owner), { linkedin: liConn() }, NOW);
     const asked = calls.filter((c) => c.slug === "LINKEDIN_GET_ORG_PAGE_STATS");
     expect(asked).toHaveLength(1);
     // The page from the connection, DAY granularity, and the share statistics' 56 whole UTC days ending at today's midnight.
@@ -768,7 +768,7 @@ describe("LinkedIn page views (rule 748)", () => {
     expect(s.parts.linkedin?.prev).toEqual({ range: { from: "2026-08-13", to: "2026-09-09" }, totals: { ...EMPTY_TOTALS, pageViews: 120 } });
     expect(s.history.find((r) => r.platform === "linkedin")?.totals.pageViews).toBe(310);
     // Dana reads them in the part's totals, told they are visits to the page itself, not its posts' impressions.
-    const block = await socialDataBlock(owner.email, NOW);
+    const block = await socialDataBlock(acct(owner), NOW);
     expect(block).toContain('"pageViews":310');
     expect(block).toContain("pageViews are visits to the page itself");
   });
@@ -777,18 +777,18 @@ describe("LinkedIn page views (rule 748)", () => {
     const owner = await newUser("socliviewsnone");
     liAnswers();
     answers.LINKEDIN_GET_ORG_PAGE_STATS = (a) => ok({ elements: [pageDay(pageEnd(a), 1, "N/A"), pageDay(pageEnd(a), 2, {})] });
-    expect((await syncSocial(owner.email, { linkedin: liConn() }, NOW)).parts.linkedin?.totals.pageViews).toBeNull();
+    expect((await syncSocial(acct(owner), { linkedin: liConn() }, NOW)).parts.linkedin?.totals.pageViews).toBeNull();
     answers.LINKEDIN_GET_ORG_PAGE_STATS = ok({ elements: [] });
-    expect((await syncSocial(owner.email, { linkedin: liConn() }, NOW)).parts.linkedin?.totals.pageViews).toBeNull();
+    expect((await syncSocial(acct(owner), { linkedin: liConn() }, NOW)).parts.linkedin?.totals.pageViews).toBeNull();
     // Page-view rows dated in neither period are not summed and are said once, even when the share rows are odd too.
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const odd = { totalPageStatistics: { views: { allPageViews: { pageViews: 5000 } } } };
     answers.LINKEDIN_GET_ORG_PAGE_STATS = ok({ elements: [odd, { ...odd, timeRange: { start: 0, end: 864e5 } }] });
-    const s = await syncSocial(owner.email, { linkedin: liConn() }, NOW);
+    const s = await syncSocial(acct(owner), { linkedin: liConn() }, NOW);
     expect(s.parts.linkedin).toMatchObject({ totals: { views: 900, pageViews: null } });
     expect(s.parts.linkedin).not.toHaveProperty("prev");
     answers.LINKEDIN_GET_SHARE_STATS = ok({ elements: [{ totalShareStatistics: { impressionCount: 900 } }] });
-    await syncSocial(owner.email, { linkedin: liConn() }, NOW);
+    await syncSocial(acct(owner), { linkedin: liConn() }, NOW);
     expect(warn.mock.calls).toEqual([["li_no_day_rows"], ["li_no_day_rows"]]);
   });
 
@@ -798,12 +798,12 @@ describe("LinkedIn page views (rule 748)", () => {
     liAnswers();
     // The page-statistics read needs the ADMINISTRATOR role and rw_organization_admin; without them LinkedIn answers 403.
     answers.LINKEDIN_GET_ORG_PAGE_STATS = { successful: false, error: "403 Forbidden: Not enough permissions to access: organizationalPageStatistics" };
-    const s = await syncSocial(owner.email, { linkedin: liConn() }, NOW);
+    const s = await syncSocial(acct(owner), { linkedin: liConn() }, NOW);
     expect(s.parts.linkedin).toMatchObject({ followers: 812, totals: { views: 900, clicks: 9, engagements: 14, pageViews: null } });
     expect(s.errors, "the share statistics were read: the page is not li_no_page_access").toEqual({});
     // A token LinkedIn refused is not a missing scope: thrown with its provider, after nothing else was hidden.
     answers.LINKEDIN_GET_ORG_PAGE_STATS = { successful: false, error: "The token used in the request has expired" };
-    await expect(syncSocial(owner.email, { linkedin: liConn() }, NOW)).rejects.toMatchObject({ provider: "linkedin", message: expect.stringMatching(/ 401:/) });
+    await expect(syncSocial(acct(owner), { linkedin: liConn() }, NOW)).rejects.toMatchObject({ provider: "linkedin", message: expect.stringMatching(/ 401:/) });
   });
 
   it("page views asked past the deadline are null; the rest of the part stands with no error (741, 748)", async () => {
@@ -815,7 +815,7 @@ describe("LinkedIn page views (rule 748)", () => {
     const clock = Date.now.bind(Date);
     let checks = 0;
     vi.spyOn(Date, "now").mockImplementation(() => ((new Error().stack ?? "").includes("beforeDeadline") && ++checks === 3 ? Number.MAX_SAFE_INTEGER : clock()));
-    const s = await syncSocial(owner.email, { linkedin: liConn() }, NOW);
+    const s = await syncSocial(acct(owner), { linkedin: liConn() }, NOW);
     expect(checks, "one deadline check per LinkedIn call, through beforeDeadline").toBe(3);
     expect(calls.map((c) => c.slug), "the page statistics, and only they, were refused by the deadline").not.toContain("LINKEDIN_GET_ORG_PAGE_STATS");
     expect(calls.map((c) => c.slug).sort()).toEqual(["LINKEDIN_GET_NETWORK_SIZE", "LINKEDIN_GET_SHARE_STATS"]);
@@ -834,7 +834,7 @@ describe("LinkedIn page views (rule 748)", () => {
     };
     answers.LINKEDIN_GET_NETWORK_SIZE = ok({ firstDegreeSize: -1 });
     answers.LINKEDIN_GET_ORG_PAGE_STATS = (a) => ok({ elements: [pageDay(pageEnd(a), 1, "-3"), pageDay(pageEnd(a), 2, "2e2")] });
-    const s = await syncSocial(owner.email, { meta: igConn(), linkedin: liConn() }, NOW);
+    const s = await syncSocial(acct(owner), { meta: igConn(), linkedin: liConn() }, NOW);
     expect(s.parts.instagram).toMatchObject({ followers: null, totals: EMPTY_TOTALS });
     expect(s.parts.instagram, "no figure read for the earlier 28 days: no prev").not.toHaveProperty("prev");
     // Only the reposts were read: no impressions, so no engagements either.

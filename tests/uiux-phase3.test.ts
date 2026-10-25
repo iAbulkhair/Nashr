@@ -6,6 +6,7 @@ import { NextRequest } from "next/server";
 import { jar, json, newMember, newUser, signIn, signOut } from "./helpers/session";
 import { currentUser, getUser, saveUser, sc } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { acct } from "@/lib/account-id";
 import { appDict } from "@/lib/app-i18n";
 import { LEGACY_SETTINGS, SETTINGS_COPY, SETTINGS_SECTIONS, isBrandSettings, legacySettingsPath, settingsHref, type SettingsSection } from "@/lib/settings-nav";
 import { EMAIL_LEVELS, emailAllowed, inAppAllowed, legacyEmails, parsePrefs, prefsFrom, prefsFromLevel, readPrefs, readPrefsMany, storedFrom, type NotifyPrefs } from "@/lib/notify-prefs";
@@ -328,7 +329,7 @@ describe("rule 1150: sign out other devices", () => {
     expect(src).toContain("const bucket = `signoutothers:${a.email}`;");
     expect(src).toMatch(/allow\(bucket, SIGN_OUT_OTHERS_PER_HOUR, WINDOW\.hour\)/);
     expect(src).not.toMatch(/db\.(keys|scan)\(/);
-    expect(read("src/lib/roles.ts")).toMatch(/"sessions\.revoke": "member"/);
+    expect(read("src/lib/roles.ts")).toMatch(/"sessions\.revoke": "viewer"/);
   });
 });
 
@@ -389,7 +390,7 @@ describe("rule 1154: plan cards, the summary and the VAT note", () => {
 
 describe("rule 1155: GET /api/billing/status and the return page's poll", () => {
   const get = () => statusRoute.GET();
-  const intent = (email: string, status: string, kind = "plan") => ({ ref: "", email, kind, plan: "pro", baseHalalas: 1, vatHalalas: 0, amountCents: 1, currency: "SAR", status, createdAt: new Date().toISOString() });
+  const intent = (u: { email: string; id?: string }, status: string, kind = "plan") => ({ ref: "", email: u.email, acct: acct(u), kind, plan: "pro", baseHalalas: 1, vatHalalas: 0, amountCents: 1, currency: "SAR", status, createdAt: new Date().toISOString() });
   it("signs in, is the owner's, and reads nothing while Paymob is off", async () => {
     paymobOff();
     expect((await get()).status).toBe(401);
@@ -410,14 +411,14 @@ describe("rule 1155: GET /api/billing/status and the return page's poll", () => 
     await signIn(owner.email);
     expect((await (await get()).json()).checkout).toEqual({ state: "none" });
     const ref = `pmi_${"b".repeat(24)}`;
-    await db.set(`paymob:intent:${ref}`, { ...intent(other.email, "paid"), ref });
-    await db.set(lastCheckoutKey(owner.email), ref);
+    await db.set(`paymob:intent:${ref}`, { ...intent(other, "paid"), ref });
+    await db.set(lastCheckoutKey(acct(owner)), ref);
     expect((await (await get()).json()).checkout).toEqual({ state: "none" }); // another account's intent
-    await db.set(`paymob:intent:${ref}`, { ...intent(owner.email, "open"), ref });
+    await db.set(`paymob:intent:${ref}`, { ...intent(owner, "open"), ref });
     expect((await (await get()).json()).checkout).toEqual({ state: "pending", kind: "plan", plan: "pro" });
-    await db.set(`paymob:intent:${ref}`, { ...intent(owner.email, "paid"), ref });
+    await db.set(`paymob:intent:${ref}`, { ...intent(owner, "paid"), ref });
     expect((await (await get()).json())).toMatchObject({ ok: true, enabled: true, checkout: { state: "success" } });
-    await db.set(lastCheckoutKey(owner.email), "../../user:x");
+    await db.set(lastCheckoutKey(acct(owner)), "../../user:x");
     expect((await (await get()).json()).checkout).toEqual({ state: "none" });
     expect([checkoutState("open"), checkoutState("paid"), checkoutState("failed"), checkoutState("mismatch"), checkoutState(undefined)]).toEqual(["pending", "success", "failed", "failed", "none"]);
   });

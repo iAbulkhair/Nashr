@@ -16,10 +16,9 @@ import * as twoStepRoute from "@/app/api/account/2fa/route";
 import * as resetRoute from "@/app/api/auth/reset/route";
 import { addShadowMembership, json, newMember, newUser, signIn, signOut } from "./helpers/session";
 
-vi.mock("@/lib/multi-org", async (orig) => ({ ...(await orig<typeof import("@/lib/multi-org")>()), MULTI_ORG: true }));
 
 /**
- * Auth review fixes (rules 2990-2992, docs/system/tests/2990-auth-review.md), with `MULTI_ORG` on for this file:
+ * Auth review fixes (rules 2990-2992, docs/system/tests/2990-auth-review.md), with `MULTI_ORG` on (the release switch since M2 enable):
  * 2990 one birth for a login (`loginBornAt`), so a `p_` person's two-step enrolment counts in every workspace it owns or
  * joins later; 2991 wrong-try buckets on PATCH and DELETE /api/account; 2992 a password reset or change revokes in
  * every account the person owns.

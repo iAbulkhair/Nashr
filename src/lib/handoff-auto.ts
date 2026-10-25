@@ -86,7 +86,7 @@ async function eligible(scope: string, gov: AutoGov, now: number): Promise<AutoQ
  */
 export async function dueHandoffs(users: User[], now: number = Date.now()): Promise<AutoCandidate[]> {
   const found = await pmap(users, async (u): Promise<AutoCandidate | null> => {
-    const scope = u.scope ?? u.email;
+    const scope = u.scope ?? acct(u);
     const gov = await getGov(scope);
     if (gov.majedAutoHandoff !== true || !hasHandoffCap(gov)) return null;
     const first = (await eligible(scope, gov, now))[0];
@@ -115,7 +115,7 @@ export async function autoQueue(scope: string, gov: AutoGov, now: number = Date.
  */
 export async function autoRunHandoff(user: User, id: string, n: number, deadline: number): Promise<string> {
   if (!isHandoffId(id)) return "skip:not_found";
-  const scope = user.scope ?? user.email;
+  const scope = user.scope ?? acct(user);
   return (await withRunLock(scope, id, () => runLocked(user, scope, id, n, deadline))) ?? "retry:locked";
 }
 

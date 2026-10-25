@@ -6,7 +6,7 @@ import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { NextRequest } from "next/server";
 import { jar, newUser } from "./helpers/session";
-import { createSession, currentUser, destroySession, sessionKey, sessionRecord } from "@/lib/auth";
+import { acct, createSession, currentUser, destroySession, sessionKey, sessionRecord } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { dateFormat } from "@/lib/dates";
 import { formatMoney, formatNumber, formatTime } from "@/lib/format";
@@ -305,7 +305,7 @@ describe("rule 1813: MCP and OAuth tokens are minted as thakeen_, and an old nas
   const bearer = (t: string) => new Request("https://thakeen.test/api/mcp", { headers: { authorization: `Bearer ${t}` } });
   it("new tokens carry the new prefix and sign in", async () => {
     const u = await newUser("tok");
-    const t = await createMcpToken(u.email);
+    const t = await createMcpToken(acct(u));
     expect(t.startsWith(TOKEN_PREFIX)).toBe(true);
     expect(TOKEN_PREFIX).toBe("thakeen_");
     expect((await userFromBearer(bearer(t)))?.email).toBe(u.email);
@@ -313,7 +313,7 @@ describe("rule 1813: MCP and OAuth tokens are minted as thakeen_, and an old nas
   it("a token minted before the rename is accepted; another prefix is not", async () => {
     const u = await newUser("oldtok");
     const old = "nashr_" + randomBytes(24).toString("base64url");
-    await db.set(`mcptoken:${tokenHash(old)}`, u.email);
+    await db.set(`mcptoken:${tokenHash(old)}`, acct(u));
     expect((await userFromBearer(bearer(old)))?.email).toBe(u.email);
     expect(BEARER.test(`Bearer ${old}`)).toBe(true);
     expect(BEARER.test("Bearer other_abc")).toBe(false);

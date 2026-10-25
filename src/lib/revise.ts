@@ -1,5 +1,5 @@
 import { trialOver, type User } from "./auth";
-import { charge, refund, renewIfDue, renewalDue, type SpendRef } from "./credits";
+import { charge, personOf, refund, renewIfDue, renewalDue, type SpendRef } from "./credits";
 import { fairUseGate } from "./fair-use";
 import { agentForTask } from "./agents";
 import { addPreference, getBrand, getTask, listPreferencesFor, updateTask, type Brand, type Task } from "./brand";
@@ -7,7 +7,6 @@ import { isDraftType, type TaskType } from "./tasks";
 import { getGov } from "./governance";
 import { modelState } from "./model";
 import { modelAllowsTask, modelById } from "./models/catalog";
-import { creditsFor } from "./models/credits";
 import { generateRouteFor } from "./models/overrides";
 import { memoryBlock } from "./files";
 import { feedbackFor } from "./feedback";
@@ -19,7 +18,7 @@ import { recordActivity, type Activity } from "./activity";
 import { AgentScopeRefused, checkGenerationNotes, otherBrandNames, readAgentScopeModes, scopeCheck, type AgentScopeModes } from "./agent-scope";
 import { taskVersion } from "./task-version";
 import { appendPreferences, cleanNote } from "./task-notes";
-import { draftCredits } from "./task-costs";
+import { draftCharge } from "./task-costs";
 import { decisionOf, recordDecisions } from "./decisions";
 import { editPctOf } from "./similarity";
 import { acct } from "./account-id";
@@ -80,14 +79,15 @@ function modelFor(user: User, brand: Pick<Brand, "model">, type: TaskType): stri
 }
 
 /**
- * One draft's price (rule 2492): `draftCredits(type, 1)` at the model's tier (`creditsFor`, rule 902), what the chat's one-item
+ * One draft's price (rule 2492): `draftCharge(type, 1, model)`, `draftCredits(type, 1)` at the model's tier (rule 902) and
+ * at least the type's draft minimum (rule 4030), what the chat's one-item
  * draft costs. Null for a type that is not a draft type or a model the catalog does not offer for it. The inbox shows this
  * price on the send button; the charge below uses the same function.
  */
 export function revisePrice(user: User, brand: Pick<Brand, "model">, type: TaskType): number | null {
   if (!isDraftType(type)) return null;
   const model = modelFor(user, brand, type);
-  return model ? creditsFor(draftCredits(type, 1), model, "generate", type) : null;
+  return model ? draftCharge(type, 1, model) : null;
 }
 
 export type ReviseRefusal =
@@ -134,11 +134,11 @@ export async function reviseTask(user: User, scope: Scope, id: string, input: { 
   });
   if (gate.block) return "slow" in gate ? { ok: false, reason: "agent_scope_slow", retry: gate.slow } : { ok: false, reason: "agent_scope", message: gate.reply };
 
-  const cost = creditsFor(draftCredits(t.type, 1), model, "generate", t.type);
+  const cost = draftCharge(t.type, 1, model);
   const by = byOf(user);
   const row = (kind: Activity["kind"], extra: Partial<Activity> = {}): Activity => ({ at: new Date().toISOString(), kind, agent, by, via: "app", type: t.type, tasks: [t.id], credits: cost, ...extra });
   if (renewalDue(user)) await renewIfDue(acct(user));
-  const paid = await charge(acct(user), cost, { scope, agent, cap: gov.agentCaps[agent] });
+  const paid = await charge(acct(user), cost, { scope, agent, cap: gov.agentCaps[agent], person: personOf(user) });
   if (!paid.ok && paid.reason === "agent_cap") {
     await recordActivity(scope, [row("cap_reached", { outcome: `${paid.spent}/${paid.cap}` })]);
     return { ok: false, reason: "agent_cap", agent: paid.agent, spent: paid.spent, cap: paid.cap, credits: paid.credits };
