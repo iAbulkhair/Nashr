@@ -123,7 +123,7 @@ type Props = {
   canRefresh?: boolean;
   /** `socialRefreshPath`: the provider path `sync_social` posts to; null when no part can be read. */
   socialVia?: string | null;
-  /** `can(u, "generate")`: X's refresh spends one of the account's credits (rule 744). */
+  /** `can(u, "generate")`: X's refresh spends the account's credits (`X_READ_CREDITS`, rules 744, 4034). */
   canRefreshX?: boolean;
   /** `xDirect`: X is connected directly and does not wait for a reconnect. */
   xConnected?: boolean;

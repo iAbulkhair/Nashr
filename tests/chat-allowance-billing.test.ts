@@ -222,7 +222,7 @@ describe("rule 907: the billing card names the hold of a conversation on a Premi
 
   it("chatPremiumHold is the largest hold of a Premium model a customer may pick for chat: Opus 5.5's, above the default's", () => {
     expect(chatPremiumHold()).toBe(chatHoldFor("claude-opus-5-5"));
-    expect(chatPremiumHold()).toBe(4);
+    expect(chatPremiumHold()).toBe(5); // 4 before yearly billing (rule 4033)
     expect(chatPremiumHold()).toBeGreaterThan(HOLD);
   });
 

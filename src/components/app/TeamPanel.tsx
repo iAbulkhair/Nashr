@@ -25,9 +25,10 @@ export type TeamView = {
   you: { email: string; name: string; role: Role };
   /**
    * `included`, `extra`, `unitSar` and `canBuy` (paid seats, rule 3369) are optional so a page rendered by an older build
-   * still reads: absent means no paid seats and no purchase offered.
+   * still reads: absent means no paid seats and no purchase offered. On a yearly subscription `charge` is what one seat
+   * costs now (rule 4040) and `blocked` why none is sold online (rule 4049); absent on a monthly one.
    */
-  seats: { used: number; limit: number; freeViewers?: number; freeViewersLeft?: number; included?: number; extra?: number; unitSar?: number; canBuy?: boolean };
+  seats: { used: number; limit: number; freeViewers?: number; freeViewersLeft?: number; included?: number; extra?: number; unitSar?: number; canBuy?: boolean; charge?: SeatCharge; blocked?: "no_card" | "no_saved_charge" };
   members: Row[];
   invites: PendingRow[];
   /** Managers only: the account's active brands for the scope picker, and the approval policy (rule 3762). */
@@ -37,6 +38,13 @@ export type TeamView = {
   approvals?: Record<string, { approved: number; rejected: number; edited: number; rate: number | null }>;
 };
 type Result = { ok: boolean; status: number; j: Record<string, unknown> };
+/** A seat charged now on a yearly subscription (`charge` from src/lib/team.ts): months left and halalas. */
+type SeatCharge = { months: number; baseHalalas: number; totalHalalas: number };
+const readCharge = (v: unknown): SeatCharge | null => {
+  const c = v as Partial<SeatCharge> | null;
+  return c && typeof c === "object" && Number.isSafeInteger(c.months) && Number.isSafeInteger(c.totalHalalas) && (c.totalHalalas as number) > 0 ? { months: c.months as number, baseHalalas: Number(c.baseHalalas) || 0, totalHalalas: c.totalHalalas as number } : null;
+};
+const sar = (halalas: number) => (halalas / 100).toFixed(2);
 /** One GET /api/team/log row (`teamLogView` in src/lib/teamlog.ts): addresses only, never a person id. */
 type LogRow = { at: string; kind: keyof AppDict["team"]["logKinds"]; actor: { email: string }; target: { email: string }; role?: TeamRole; via: keyof AppDict["team"]["logVia"] };
 /** The owner's pending ownership offer (`pendingTransfer`): the address and the expiry, never the token. */
@@ -99,13 +107,18 @@ export default function TeamPanel({ t, lang, initial, perms, mailOn = true, tran
   // The owner may add one paid seat at invite time (rules 3366-3369). Display only: the server checks it again.
   const canBuy = perms.buySeats && view.seats.canBuy === true;
   const price = EXTRA_SEAT_MONTHLY_SAR;
+  // Rules 4040-4050: on a yearly subscription the seat is charged now; the dialog, the note and the toast say how much.
+  const charge = readCharge(view.seats.charge);
+  const seatBlock = perms.buySeats ? view.seats.blocked : undefined;
   const pct = Math.min(100, Math.round((used / Math.max(1, limit)) * 100));
 
   const errorCode = (r: Result) => r.status === 429 ? "rate_limited" : typeof r.j.error === "string" ? r.j.error : "failed";
   const errorText = (r: Result) => {
     const code = errorCode(r);
-    if (code === "seats") return fill(T.errors.seats, { used: Number(r.j.used ?? used), limit: Number(r.j.limit ?? limit) });
-    return (T.errors as Record<string, string>)[code] ?? T.errors.failed;
+    // Rule 4047: a seat charged in this request and refunded says so after the reason.
+    const back = r.j.refunded === true ? T.seatRefunded : "";
+    if (code === "seats") return fill(T.errors.seats, { used: Number(r.j.used ?? used), limit: Number(r.j.limit ?? limit) }) + back;
+    return ((T.errors as Record<string, string>)[code] ?? T.errors.failed) + back;
   };
   /** Rule 2001: a plain "could not do it" is a toast; a refusal the person must act on (seats, rate, role, address) stays in the alert. */
   const fail = (r: Result) => {
@@ -131,8 +144,14 @@ export default function TeamPanel({ t, lang, initial, perms, mailOn = true, tran
     setBusy("");
   }
 
-  /** The owner's explicit confirmation of one paid seat: the price and the leave rule, in the page's language. */
-  const confirmSeat = (to: string) => ask({ title: T.addSeatTitle, message: fill(T.addSeatConfirm, { email: to, price }), confirmLabel: T.addSeatYes, cancelLabel: t.dialog.back });
+  /**
+   * The owner's explicit confirmation of one paid seat: the price and the leave rule, in the page's language. On a yearly
+   * subscription (`now`) the amount charged now, incl. VAT, and the months it covers (rule 4050).
+   */
+  const confirmSeat = (to: string, now: SeatCharge | null) =>
+    now
+      ? ask({ title: T.addSeatTitle, message: fill(T.addSeatConfirmNow, { email: to, months: now.months, price, total: sar(now.totalHalalas) }), confirmLabel: fill(T.addSeatYesNow, { total: sar(now.totalHalalas) }), cancelLabel: t.dialog.back })
+      : ask({ title: T.addSeatTitle, message: fill(T.addSeatConfirm, { email: to, price }), confirmLabel: T.addSeatYes, cancelLabel: t.dialog.back });
   async function invite(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const to = email.trim();
@@ -142,21 +161,27 @@ export default function TeamPanel({ t, lang, initial, perms, mailOn = true, tran
     // No seat left for this invite and the owner may buy: ask first, then send `addSeat: true`. It is never sent without
     // this confirmation. A viewer within the free viewers is not `blocked` (rule 3753), so it is never asked to pay.
     let addSeat = false;
+    let paidNow = charge;
     if (blocked && canBuy) {
-      if (!(await confirmSeat(to))) return;
+      if (!(await confirmSeat(to, charge))) return;
       addSeat = true;
     }
-    const send = (paid: boolean) => call("/api/team/invite", "POST", { email: to, role, lang, ...access, ...(paid ? { addSeat: true } : {}) });
+    // `seatHalalas`: the amount the dialog showed; the server charges a yearly seat only at that amount (rule 4050).
+    const send = (paid: boolean) => call("/api/team/invite", "POST", { email: to, role, lang, ...access, ...(paid ? { addSeat: true, ...(paidNow ? { seatHalalas: paidNow.totalHalalas } : {}) } : {}) });
     await run("invite", async () => {
       const r = await send(addSeat);
       // A stale page (the last seat went meanwhile): the server says full and that this owner may buy one, so ask now.
-      if (!r.ok && !addSeat && r.status === 409 && r.j.error === "seats" && r.j.canBuy === true && perms.buySeats) {
-        if (!(await confirmSeat(to))) return r;
+      // The amount asked is the server's (`charge`), never the one this page read earlier.
+      // Also once when the amount moved since the dialog (rule 4050): the server answers today's `charge` and charged nothing.
+      const now = readCharge(r.j.charge);
+      if (!r.ok && (!addSeat || (now && now.totalHalalas !== paidNow?.totalHalalas)) && r.status === 409 && r.j.error === "seats" && r.j.canBuy === true && perms.buySeats) {
+        paidNow = now;
+        if (!(await confirmSeat(to, paidNow))) return r;
         return send(true);
       }
       return r;
     }, (r) => {
-      if (r.j.seatAdded === true) toast.success(fill(T.seatAdded, { price }));
+      if (r.j.seatAdded === true) toast.success(paidNow ? fill(T.seatAddedNow, { total: sar(paidNow.totalHalalas) }) : fill(T.seatAdded, { price }));
       setEmail(""); setScope(null); setApproves(false);
       const shown = (r.j.invite as { email?: string } | undefined)?.email ?? to;
       if (r.j.emailed === true) toast.success(fill(T.sent, { email: shown })); // rule 2001
@@ -354,7 +379,7 @@ export default function TeamPanel({ t, lang, initial, perms, mailOn = true, tran
                 )}
               </div>
             )}
-            {blocked && <p className="mt-2 text-sm text-danger">{canBuy ? fill(T.seatsFullBuy, { price }) : perms.inviteAdmin ? T.seatsFull : T.seatsFullAsk}</p>}
+            {blocked && <p className="mt-2 text-sm text-danger">{canBuy ? (charge ? fill(T.seatsFullBuyNow, { total: sar(charge.totalHalalas) }) : fill(T.seatsFullBuy, { price })) : seatBlock === "no_card" ? T.seatsBlockedCard : seatBlock === "no_saved_charge" ? T.seatsBlockedContact : perms.inviteAdmin ? T.seatsFull : T.seatsFullAsk}</p>}
             {link && (
               <div className="mt-4 rounded-lg border border-foreground/30 bg-foreground/5 p-3">
                 <p className="text-sm font-medium">{T.linkTitle}</p>

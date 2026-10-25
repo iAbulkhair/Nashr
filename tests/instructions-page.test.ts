@@ -23,6 +23,7 @@ import { AGENT_IDS } from "@/lib/agents";
 import { DRAFT_TYPES } from "@/lib/tasks";
 import { generateRouteFor } from "@/lib/models/overrides";
 import { countCost } from "@/lib/generate-batch";
+import { DRAFT_MIN_CREDITS } from "@/lib/task-costs";
 import { creditsFor } from "@/lib/models/credits";
 import * as testRoute from "@/app/api/instructions/test/route";
 import { TestOutput } from "@/components/app/InstructionsPanel";
@@ -237,7 +238,8 @@ describe("rule 957: the price on the Test button is the price the route charges"
     const u = await account("p957k", "agency");
     for (const type of DRAFT_TYPES) {
       const m = generateRouteFor(u, brand, type).model;
-      expect(testPrice(u, brand, type)).toBe(2 * creditsFor(countCost(type, 1), m, "generate", type));
+      // Two one-item drafts, each at least the type's draft minimum (rule 4032): what generateBatch charges with count 1.
+      expect(testPrice(u, brand, type)).toBe(2 * Math.max(DRAFT_MIN_CREDITS[type] ?? 1, creditsFor(countCost(type, 1), m, "generate", type)));
     }
     const options = testOptionsFor(u, brand);
     expect(options.map((o) => o.type).sort()).toEqual([...DRAFT_TYPES].sort());

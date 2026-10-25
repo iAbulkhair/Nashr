@@ -69,11 +69,14 @@ async function tellOwner(u: User, inviter: string, emailed: boolean) {
 }
 
 /**
- * POST /api/team/invite {email, role, lang?, brands?, approves?, addSeat?} → {ok, invite, emailed, link?, seatAdded?}. The
+ * POST /api/team/invite {email, role, lang?, brands?, approves?, addSeat?, seatHalalas?} → {ok, invite, emailed, link?, seatAdded?}. The
  * owner may invite any role, an admin editors and viewers only (role "editor" is the Editor, stored "member", rule 3751).
  * `brands` (a list of the account's own active brand ids, absent = every brand) and `approves` need `team.access` (rules
  * 3756, 3760). Over the seat limit the answer is 409 {error:"seats", used, limit, included, extra, unitSar, canBuy}; the
- * owner confirms and sends addSeat:true (paid seats, rules 3366-3369). The link carries the token in its fragment (`/{lang}/app/join#t=…`), so it never reaches a server
+ * owner confirms and sends addSeat:true (paid seats, rules 3366-3369). On an active yearly subscription the 409 also carries
+ * `charge` {months, baseHalalas, totalHalalas}, charged on the saved card when the owner confirms, before the seat exists
+ * (rules 4040-4047), and only when the confirm sent that `totalHalalas` back as `seatHalalas` (rule 4050): 402 seat_declined, 502 seat_failed, 409 seat_busy / seat_pending / seat_changed, and `refunded: true`
+ * on an answer whose paid seat was refunded; without a saved-card charge `canBuy` is false with `blocked` (rule 4049). The link carries the token in its fragment (`/{lang}/app/join#t=…`), so it never reaches a server
  * or edge log. When mail can reach a customer the link goes ONLY to the invited address: if that send fails, the invite
  * is withdrawn and the answer is 502 {error:"send_failed"}, never the link, so an inviter cannot accept an invite for an
  * address they do not control by making the send fail. When mail is not set up at all, the link is returned once to the
@@ -85,7 +88,7 @@ export async function POST(req: Request) {
   const no = forbid(u, "team.invite.member");
   if (no) return no;
   const a = u.actor!;
-  const b = (await req.json().catch(() => ({}))) as { email?: unknown; role?: unknown; lang?: unknown; brands?: unknown; approves?: unknown; addSeat?: unknown };
+  const b = (await req.json().catch(() => ({}))) as { email?: unknown; role?: unknown; lang?: unknown; brands?: unknown; approves?: unknown; addSeat?: unknown; seatHalalas?: unknown };
   const to = normalizeEmail(typeof b.email === "string" ? b.email : "");
   const [perAccount, perIp, perAddress] = await Promise.all([
     allow(`team:invite:acct:${u.email}`, u.plan === "trial" ? PER_TRIAL_ACCOUNT_DAY : PER_ACCOUNT_DAY, 86400),
@@ -100,7 +103,7 @@ export async function POST(req: Request) {
   const byEmail = mailReady();
   // `addSeat: true` is the owner's confirmation of one paid seat (rules 3366-3369): only the literal true counts, and
   // createInvite still checks who acts, the plan and the count under the team lock. Without it, over the limit is a 409.
-  const res = await createInvite(u, a, to, typeof b.role === "string" ? b.role : "", lang, { brands: b.brands, approves: b.approves }, { addSeat: b.addSeat === true });
+  const res = await createInvite(u, a, to, typeof b.role === "string" ? b.role : "", lang, { brands: b.brands, approves: b.approves }, { addSeat: b.addSeat === true, ...(typeof b.seatHalalas === "number" ? { seatHalalas: b.seatHalalas } : {}) });
   if (!res.ok) return teamFail(res);
 
   const inv = res.invite;

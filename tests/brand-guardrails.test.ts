@@ -522,9 +522,9 @@ describe("draft_items takes only the draft types, checked in code (rule 250)", (
     }
     expect(await credits(acct(u))).toBe(50);
     expect(await listLite(acct(u))).toHaveLength(0);
-    // A draft type still drafts, at 1 credit an item.
+    // A draft type still drafts: a one-item social draft costs social's draft minimum, 2 credits (rule 4031).
     expect(await runTool(user, "draft_items", { type: "social", count: 1, brief: "منشور" }, [])).toMatch(/^Drafted 1 social/);
-    expect(await credits(acct(u))).toBe(49);
+    expect(await credits(acct(u))).toBe(48);
     await settle();
   });
 });

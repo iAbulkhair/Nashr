@@ -625,7 +625,7 @@ describe("the Reports page (spec section 8; rules 670, 734, 735, 738, 744)", () 
     }
   });
 
-  it("shows Refresh to members and Refresh X (1 credit) only with a direct X connection", async () => {
+  it("shows Refresh to members and Refresh X (2 credits) only with a direct X connection", async () => {
     expect(SOCIAL_PATHS).toEqual(SOCIAL_PROVIDERS);
     const ig = { provider: "meta", meta: { via: "composio", igId: "1784" } };
     const li = { provider: "linkedin", meta: { via: "composio", liOrg: "urn:li:organization:42" } };
@@ -641,10 +641,10 @@ describe("the Reports page (spec section 8; rules 670, 734, 735, 738, 744)", () 
     expect(card()).not.toContain("<button");
     const both = card({ canRefresh: true, socialVia: "meta", canRefreshX: true, xConnected: true });
     expect(both).toContain(">Refresh<");
-    expect(both).toContain("Refresh X (1 credit)");
+    expect(both).toContain("Refresh X (2 credits)");
     expect(card({ canRefresh: true, socialVia: "meta", canRefreshX: true, xConnected: false })).not.toContain("Refresh X");
     expect(card({ canRefresh: true, socialVia: null, canRefreshX: false, xConnected: true }), "nothing to refresh, and no right to pay").not.toContain("<button");
-    expect(card({ lang: "ar", canRefreshX: true, xConnected: true })).toContain("حدّث إكس (رصيد واحد)");
+    expect(card({ lang: "ar", canRefreshX: true, xConnected: true })).toContain("حدّث إكس (رصيدان)");
 
     expect(refreshNote("en", "social", 200, { ok: true, read: true, reconnect: "meta" })).toMatch(/Connect Instagram and Facebook again/);
     expect(refreshNote("ar", "social", 200, { ok: true, read: true, reconnect: "linkedin" })).toContain("لينكدإن");
@@ -656,7 +656,7 @@ describe("the Reports page (spec section 8; rules 670, 734, 735, 738, 744)", () 
     expect(refreshNote("en", "x", 402, { ok: false, error: "trial_over" })).toMatch(/trial/);
     expect(refreshNote("en", "x", 429, { ok: false, error: "x_unavailable" })).toMatch(/X is not available/);
     expect(refreshNote("en", "x", 200, { ok: true, charged: false })).toMatch(/no credit was used/);
-    expect(refreshNote("en", "x", 200, { ok: true, charged: true })).toMatch(/One credit was used/);
+    expect(refreshNote("en", "x", 200, { ok: true, charged: true })).toMatch(/Two credits were used/);
     expect(refreshNote("en", "social", 502, { ok: false, error: "reconnect_required" })).toMatch(/connect it again/);
     expect(refreshNote("en", "social", 0, {})).toMatch(/failed/);
     // A token refresh held by another request (rule 2192).
@@ -668,7 +668,7 @@ describe("the Reports page (spec section 8; rules 670, 734, 735, 738, 744)", () 
     const m = await page();
     expect(m.props).toMatchObject({ canRead: true, canGenerate: true, canConnectors: false, socialVia: "meta", xConnected: true });
     expect(JSON.stringify(m.props.x), "the X account's id never reaches the page").not.toContain("x-id-999");
-    expect(m.html).toContain("Refresh X (1 credit)");
+    expect(m.html).toContain("Refresh X (2 credits)");
     expect(m.html).toContain(">Refresh<");
     expect(row(m.html, "x")).toContain("@oud");
     // The page builds the not-read list from the reads it holds for its cards: the same list notRead reads (738).

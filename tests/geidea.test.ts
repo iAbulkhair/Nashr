@@ -6,6 +6,7 @@ import { acct, getUser, saveUser, type User } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { globalKey } from "@/lib/keys";
 import { ksaDay } from "@/lib/partner-rules";
+import { addMonths } from "@/lib/billing-state";
 import type { Payment } from "@/lib/partners";
 import {
   GEIDEA_API, GEIDEA_HPP, callbackSignText, geideaConfig, geideaTimestamp, parseOrder, sessionBody, sessionSignText, signGeidea, toHalalas, toRiyals, verifyCallback,
@@ -419,6 +420,25 @@ describe("rule 3910: saved-card renewals (MIT) only with GEIDEA_MIT=1, only on t
     expect(await renewPaymob(acct(u))).toBe("geidea_renewed");
     expect(fake.sessions.at(-1)!.body.amount).toBe(Number(toRiyals(37260)));
     expect((await getUser(acct(u)))!).toMatchObject({ extraSeats: 1, billing: { status: "active" } });
+  });
+  it("yearly through Geidea: one session for the yearly amount, a year paid through, and a yearly renewal with twelve months of a seat (rules 3540, 3372)", async () => {
+    on({ GEIDEA_MIT: "1" });
+    const u = await owner("gdyear");
+    const st = await started({ kind: "plan", plan: "starter", interval: "year" });
+    // 2,990 SAR (10 × 299) + 15% VAT, charged once; Geidea gets no period of its own.
+    expect(st.amount).toBe(Number(toRiyals(343850)));
+    expect(st.s.body).not.toHaveProperty("interval");
+    const ord = order({ ref: st.ref, amount: st.amount, agreementId: st.agreementId });
+    expect(await result(await hook(envelope(ord)))).toBe("paid");
+    expect((await getUser(acct(u)))!.billing).toMatchObject({ provider: "geidea", interval: "year", paidThrough: addMonths(today(), 12) });
+    await newMember(u, "member");
+    await saveUser({ ...(await getUser(acct(u)))!, extraSeats: 1 });
+    await due(u);
+    fake.pay = (s) => ({ status: 200, body: { responseCode: "000", order: order({ ref: String(s.body.merchantReferenceId), amount: s.body.amount, agreementId: String(ord.agreementId) }) } });
+    expect(await renewPaymob(acct(u))).toBe("geidea_renewed");
+    // (2,990 + 12 × 25) × 1.15: the free months are the plan's, a seat is charged for each month of the year.
+    expect(fake.sessions.at(-1)!.body.amount).toBe(Number(toRiyals(378350)));
+    expect((await getUser(acct(u)))!.billing).toMatchObject({ interval: "year", paidThrough: addMonths(today(), 12) });
   });
   it("without GEIDEA_MIT the due month goes past due for the owner to pay; nothing is charged", async () => {
     const { u } = await subscribed();
