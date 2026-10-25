@@ -12,6 +12,8 @@ import { AWAY_AHEAD_DAYS } from "./secretary-away";
 import { HANDOFF_BRIEF_MAX, HANDOFF_MAX_ITEMS, HANDOFF_TYPES } from "./handoffs";
 import { INSTRUCTION_CHARS } from "./instructions-safety";
 import { authorityOf, capOfTool, type ToolPolicy } from "./tool-authority";
+import { REMEMBER_TOOL } from "./memory-tool";
+import { MEMORY_V2 } from "./v2-flags";
 
 /**
  * Brand fields a tool call may propose a change to: every one of them is a plain string on `Brand`. No tool call writes
@@ -167,7 +169,9 @@ export const FREE_SLOTS_TOOL: Anthropic.Tool = { name: FREE_SLOTS_DEF.name, desc
  * Without a policy (the offered-tool check in `runTool`, tests) it is the agent's full list.
  */
 export const toolsFor = (agentId: AgentId, policy?: ToolPolicy): Anthropic.Tool[] => {
-  const all = agentId === "majed" ? [...TOOLS, PROPOSE_HANDOFF_TOOL] : agentId === "reem" ? [...TOOLS, CONTACT_AWAY_TOOL, PROPOSE_MEETING_TASKS_TOOL, FREE_SLOTS_TOOL] : TOOLS;
+  const base = agentId === "majed" ? [...TOOLS, PROPOSE_HANDOFF_TOOL] : agentId === "reem" ? [...TOOLS, CONTACT_AWAY_TOOL, PROPOSE_MEETING_TASKS_TOOL, FREE_SLOTS_TOOL] : TOOLS;
+  // Scoped memory (v2 phase 1, rule 4555): the `remember` tool only while its switch is on; off, the list is as before.
+  const all = MEMORY_V2 ? [...base, REMEMBER_TOOL] : base;
   if (!policy) return all;
   return all.filter((t) => {
     const cap = capOfTool(t.name);

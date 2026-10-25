@@ -315,6 +315,8 @@ export const INSTRUCTION_TESTS_PER_HOUR = 10;
 export const INSTRUCTION_TESTS_PER_DAY = 30;
 export const INSTRUCTION_PROPOSALS_PER_DAY = 20;
 export const INSTRUCTION_IMPORTS_PER_HOUR = 30;
+/** Memory cards an agent may propose in one workspace a day (rule 4553, src/lib/memory.ts). */
+export const MEMORY_PROPOSALS_PER_DAY = 30;
 export const ADMIN_SKILL_TESTS_PER_HOUR = 30;
 
 /** Constant-time string comparison for secrets. It lives in secret.ts, which has no store behind it, so the proxy can use

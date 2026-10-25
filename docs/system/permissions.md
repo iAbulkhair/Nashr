@@ -846,3 +846,10 @@ What each agent may do from a conversation, set by the owner and checked in code
 - No new route and no new permission. The gateway (`src/lib/gateway.ts`) judges calls that already passed authentication: a chat turn's tools (the session user) and MCP `tools/call` (the bearer token's user, after the unknown-tool answer). In this release it is off; in log mode it only records.
 - Its verdicts are computed in code from the session's role (`can`), the tools offered to the talking agent and the owner's tool authority (Governance). The model's words are never an input. A connected app (`mcp`) is denied `publish_item` and `handoff_note` whatever its role.
 - The audit list (`audit:{scope}`) and the run log (`run:{scope}:{id}`, `runs:{scope}`) are keyed by `sc(u)` only and hold tool names, verdicts, models and token counts, never text. Nothing reads them over a route yet; they are deleted with the account.
+
+## Scoped memory (2026-10-25, branch `claude/thakeen-v2-p1-memory`, rules 4550-4562)
+
+- `POST /api/memory/proposals/[id]` (save or dismiss a memory card) and `DELETE /api/memory` (forget a fact) need `brand.write`: owner and admin. `GET /api/memory` (list the facts) is open to every member of the workspace. All three answer 404 while `MEMORY_V2` is off.
+- The model only proposes: a fact enters memory on a person's Save, checked in the route, never on the model's word. The `remember` tool is refused over MCP and for API tokens.
+- Facts are keyed by `sc(u)` only. An agent fact is read only in that agent's turns, a conversation fact only in its thread; another brand's or workspace's facts are never read, and the vector index can rank only ids already found in the caller's own hash.
+- A recalled fact is data in the prompt, fenced, and never authorises publishing, spending or a brand change; those stay checked in code as before.

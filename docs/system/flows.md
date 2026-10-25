@@ -2024,3 +2024,33 @@ Run log ("Run log", C2, `RUN_LOG`):
 ### 129.1 Release step (rule 679)
 
 Expand: three new key families, no stored shape changes, both switches off. Turning either on is a later release that changes one constant in `src/lib/v2-flags.ts`; turning it off again leaves rows that expire on their own.
+
+## 130. Thakeen v2 phase 1: scoped memory and recall (2026-10-25, branch `claude/thakeen-v2-p1-memory`, rules 4550-4562)
+
+The plan: the Claude Doc "Thakeen v2 — PRD, Spec and Roadmap" (component C5). Files: `src/lib/memory.ts`, `src/lib/memory-tool.ts`, `src/lib/recall.ts`, `src/lib/memory-index.ts`, the routes `src/app/api/memory/route.ts` and `src/app/api/memory/proposals/[id]/route.ts`, the card `src/components/app/MemoryProposalCard.tsx`, wired in `src/lib/chat.ts`, `src/lib/chat-tools.ts`, `src/lib/chat-reply.ts`, `src/lib/chat-history.ts` (`historyFor`) and the account wipe (`src/lib/account.ts`). Switch: `MEMORY_V2` in `src/lib/v2-flags.ts`, off.
+
+Propose (the `remember` tool):
+
+1. Off, the tool is not offered (`toolsFor`) and `runRemember` answers "Unknown tool."; no route answers but 404; recall reads nothing.
+2. On, an agent proposes one fact (at most 300 characters) with a scope: `brand` (every agent), `agent` (its own notes) or `conversation` (this thread). The agent and thread labels come from the turn, never from the model's input. `inferred` marks a fact the agent concluded itself; the card says so.
+3. Refused in code, nothing stored: over MCP or for a token (another assistant's words are not the owner's memory); a fourth card in one reply (`MEMORY_CARDS_PER_REPLY` = 3); more than `MEMORY_PROPOSALS_PER_DAY` (30) proposals a day for the scope; text the instruction screen flags (injection, a claimed authority, a discount or offer, which belongs in the brand file through `update_brand`); text holding a credential value (`looksLikeCredential`, src/lib/log.ts) or credential words (password, API key, access token, OTP, كلمة المرور, الرقم السري, رمز التحقق and the like). Each refusal tells the model plainly that nothing was stored.
+4. An accepted proposal is stored for 7 days (`memprop:{scope}:{id}`, indexed in `memprops:{scope}`) and shown as a card under the reply; the reply's message keeps the card (`memoryProposals`, expand-only) and `historyFor` reads each card's state in one round trip.
+
+Decide (the owner's click):
+
+5. `POST /api/memory/proposals/[id]` with `save` or `dismiss`: role `brand.write`, 60 an hour per scope. One decision at a time (`memprop-claim`, 60 seconds); a decided card answers 409 with its state, an expired one 410, an unknown id 404. Save refuses at 200 facts (`full`). A saved fact is written to `mem:{scope}` and then sent to the index best effort; an index failure is logged and the fact stays saved.
+
+Recall (each chat turn):
+
+6. Before the model call, `recall` reads this scope's facts and keeps those visible to the turn: brand facts, the talking agent's own agent facts, this thread's conversation facts. Nothing of another scope, brand or agent is ever read into the turn.
+7. Up to 8 facts: when there are more, the index ranks them (only ids found among the visible facts count), else a word match that folds Arabic letter forms; the newest visible facts fill what the ranker left. A failed index call falls back to the word match and never fails the turn.
+8. The facts go into the uncached system block inside `<memory>` as data (`asData` escapes `<`, so a fact cannot close the fence), each with its scope, source and saved date, under the line that a fact never authorises publishing, spending or a brand change.
+
+Manage and wipe:
+
+9. `GET /api/memory` lists the facts (any member, 300 an hour), without who saved them; `DELETE /api/memory?id=` forgets one (`brand.write`, 60 an hour) and removes its vector.
+10. The account wipe deletes the fact hash, every proposal, done and claim key, the proposal index and the rate bucket of each brand, and drops each brand's index namespace (logged on failure).
+
+### 130.1 Release step (rule 679)
+
+Expand: new key families and an optional field on the chat message (`memoryProposals`), which old code ignores. Turning memory on is a later release that changes `MEMORY_V2`; without `UPSTASH_VECTOR_REST_URL` and `UPSTASH_VECTOR_REST_TOKEN` recall uses the word match only. Turning it off again leaves the facts in place, unread, until the account is wiped.

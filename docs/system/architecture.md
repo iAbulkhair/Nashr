@@ -746,6 +746,10 @@ The cookie `thakeen_pk` holds the sign-in nonce (32 random bytes, base64url): `h
 
 Thakeen v2 phase 0. `src/lib/gateway.ts` sits in front of `runTool` and the MCP `tools/call` dispatch; `src/lib/runs.ts` keeps one record per chat turn, MCP call and batch through `AsyncLocalStorage`, fed by `metered`, the gateway and `publishOnce`. Both are switched by constants in `src/lib/v2-flags.ts` and ship off. Keys (workspace, `wsKey`): `run:{scope}:{id}` (json `Run`, 30 days), `runs:{scope}` (list of ids, newest 200), `audit:{scope}` (list of json `AuditRow`, newest 1000, 30 days). Flow: `flows.md` section 129.
 
+### 3.z.1 Scoped memory keys (2026-10-25, branch `claude/thakeen-v2-p1-memory`, rules 4550-4562)
+
+Thakeen v2 phase 1, C5. `src/lib/memory.ts` keeps the facts and the proposal cards, `src/lib/memory-tool.ts` is the chat's `remember` tool, `src/lib/recall.ts` picks the facts a turn sees, `src/lib/memory-index.ts` talks to the optional Upstash Vector index. Switched by `MEMORY_V2` in `src/lib/v2-flags.ts`, shipped off. Keys (workspace, `wsKey`): `mem:{scope}` (hash id → json `Fact`, at most 200), `memprop:{scope}:{id}` (json `MemoryProposal`, 7 days), `memprop-done:{scope}:{id}` (`saved` or `dismissed`, 7 days), `memprop-claim:{scope}:{id}` (60 seconds, one decision at a time), `memprops:{scope}` (set of proposal ids, 7 days), and the rate bucket `memprop-day:{scope}` (`MEMORY_PROPOSALS_PER_DAY`). The vector index, when configured, holds one namespace per scope (the scope URL-encoded) with the fact's id, text and scope/agent/conversation labels; it ranks, it never adds a fact. Flow: `flows.md` section 130.
+
 ## 4. Request lifecycles
 
 ### (a) Marketing page

@@ -9,6 +9,7 @@ import type { By } from "./actor";
 import { cleanLine } from "./secretary";
 import type { AwayProposal } from "./secretary-away";
 import { proposalCard, type InstructionProposal } from "./instruction-proposals";
+import { MEMORY_CARDS_PER_REPLY, memoryCard, type MemoryProposal } from "./memory";
 import { chatItemOf } from "./handoffs";
 import { DEFAULTS, type Rejected } from "./models/route";
 import { SPEND_CARDS_PER_REPLY, spendCard, type SpendProposal } from "./spend-proposals";
@@ -75,8 +76,8 @@ export const cleanName = (v: unknown) => (typeof v === "string" ? cleanLine(v).s
 /** The text blocks of a model response, joined. */
 export const textOf = (content: Anthropic.ContentBlock[]) => content.filter((b): b is Anthropic.TextBlock => b.type === "text").map((b) => b.text).join("\n").trim();
 /** What every reply of a turn carries: its actions (without the `limit:*` tags), the items made, the handoff card, the switch card, brand proposals, away proposals, instruction proposals and spend proposals (as cards: without who proposed). */
-export function turnParts(actions: string[], made: Task[], proposed: BrandProposal[], awayProposed: AwayProposal[] = [], instructionProposed: InstructionProposal[] = [], spendProposed: SpendProposal[] = [], fileProposed: FileProposal[] = []): Pick<ChatMsg, "actions" | "items" | "handoff" | "switchTo" | "proposals" | "awayProposals" | "instructionProposals" | "spendProposals" | "fileProposals"> {
-  return { actions: actions.filter((a) => !a.startsWith("limit:")), ...(made.length ? { items: made.slice(0, 10).map(chatItemOf) } : {}), ...handoffOf(actions), ...switchOf(actions), ...(proposed.length ? { proposals: proposed.slice(0, BRAND_CARDS_PER_REPLY) } : {}), ...(awayProposed.length ? { awayProposals: awayProposed.slice(0, AWAY_CARDS_PER_REPLY) } : {}), ...(instructionProposed.length ? { instructionProposals: instructionProposed.slice(0, INSTRUCTION_CARDS_PER_REPLY).map(proposalCard) } : {}), ...(spendProposed.length ? { spendProposals: spendProposed.slice(0, SPEND_CARDS_PER_REPLY).map(spendCard) } : {}), ...(fileProposed.length ? { fileProposals: fileProposed.slice(0, FILE_CARDS_PER_REPLY).map(fileProposalCard) } : {}) };
+export function turnParts(actions: string[], made: Task[], proposed: BrandProposal[], awayProposed: AwayProposal[] = [], instructionProposed: InstructionProposal[] = [], spendProposed: SpendProposal[] = [], fileProposed: FileProposal[] = [], memoryProposed: MemoryProposal[] = []): Pick<ChatMsg, "actions" | "items" | "handoff" | "switchTo" | "proposals" | "awayProposals" | "instructionProposals" | "spendProposals" | "fileProposals" | "memoryProposals"> {
+  return { actions: actions.filter((a) => !a.startsWith("limit:")), ...(made.length ? { items: made.slice(0, 10).map(chatItemOf) } : {}), ...handoffOf(actions), ...switchOf(actions), ...(proposed.length ? { proposals: proposed.slice(0, BRAND_CARDS_PER_REPLY) } : {}), ...(awayProposed.length ? { awayProposals: awayProposed.slice(0, AWAY_CARDS_PER_REPLY) } : {}), ...(instructionProposed.length ? { instructionProposals: instructionProposed.slice(0, INSTRUCTION_CARDS_PER_REPLY).map(proposalCard) } : {}), ...(spendProposed.length ? { spendProposals: spendProposed.slice(0, SPEND_CARDS_PER_REPLY).map(spendCard) } : {}), ...(fileProposed.length ? { fileProposals: fileProposed.slice(0, FILE_CARDS_PER_REPLY).map(fileProposalCard) } : {}), ...(memoryProposed.length ? { memoryProposals: memoryProposed.slice(0, MEMORY_CARDS_PER_REPLY).map(memoryCard) } : {}) };
 }
 /** After the reply is saved: the first limit a tool hit (the app raises its dialog) and the turn's model cost, neither saved. */
 export function withLimit(m: ChatTurn, actions: string[], spent: number): ChatTurn {

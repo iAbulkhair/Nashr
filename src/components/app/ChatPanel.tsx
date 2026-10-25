@@ -10,6 +10,7 @@ import type { AwayProposal } from "@/lib/secretary-away";
 import type { InstructionProposalCard as InstructionProposalCardData } from "@/lib/instruction-proposals";
 import type { FileProposalCard as FileProposalCardData } from "@/lib/file-proposals";
 import type { SpendProposalCard as SpendProposalCardData } from "@/lib/spend-proposals";
+import { MemoryProposalCard } from "./MemoryProposalCard";
 import { endOfZoneDay, formatWhen } from "@/lib/secretary-agenda";
 // Type only: chat-allowance.ts reads the store. The numbers arrive from the server in each answer's `chat`.
 import type { ChatStatus } from "@/lib/chat-allowance";
@@ -913,7 +914,7 @@ export default function ChatPanel({ t, initial, credits: c0, lang, initialConv, 
           </div>
         )}
         {msgs.map((m, i) => (
-          <ChatBubble key={i} role={m.role} name={m.role === "assistant" ? A[m.agent ?? agent].name : undefined} wide={!!(m.items?.length || m.files?.length || m.plan?.length || m.handoff || m.proposals?.length || m.awayProposals?.length || m.instructionProposals?.length || m.spendProposals?.length || m.fileProposals?.length)}>
+          <ChatBubble key={i} role={m.role} name={m.role === "assistant" ? A[m.agent ?? agent].name : undefined} wide={!!(m.items?.length || m.files?.length || m.plan?.length || m.handoff || m.proposals?.length || m.awayProposals?.length || m.instructionProposals?.length || m.spendProposals?.length || m.fileProposals?.length || m.memoryProposals?.length)}>
             {m.role === "assistant" ? <div className="prose-nashr prose-compact" dangerouslySetInnerHTML={{ __html: render(m.content) }} /> : <p className="whitespace-pre-wrap">{m.content}</p>}
             {m.items && m.items.length > 0 && <div className="mt-1">{m.items.map((it) => <ItemCard key={it.id} item={it} t={t} lang={lang} canApprove={canApprove} />)}</div>}
             {m.files && m.files.length > 0 && <div className="mt-1">{m.files.map((f, n) => <FileCard key={f.name} file={f} lang={lang} defaultOpen={n === 0 && m.files!.length === 1} />)}</div>}
@@ -923,6 +924,7 @@ export default function ChatPanel({ t, initial, credits: c0, lang, initialConv, 
             {m.awayProposals && m.awayProposals.length > 0 && <div className="mt-1">{m.awayProposals.map((p) => <AwayProposalCard key={p.id} p={p} t={t} lang={lang} />)}</div>}
             {m.instructionProposals && m.instructionProposals.length > 0 && <div className="mt-1">{m.instructionProposals.map((p) => <InstructionProposalCard key={p.id} p={p} t={t} lang={lang} canWrite={canInstructions} />)}</div>}
             {m.fileProposals && m.fileProposals.length > 0 && <div className="mt-1">{m.fileProposals.map((p) => <FileProposalCard key={p.id} p={p} t={t} lang={lang} canWrite={canBrand} />)}</div>}
+            {m.memoryProposals && m.memoryProposals.length > 0 && <div className="mt-1">{m.memoryProposals.map((p) => <MemoryProposalCard key={p.id} p={p} t={t} lang={lang} canWrite={canBrand} />)}</div>}
             {m.spendProposals && m.spendProposals.length > 0 && <div className="mt-1">{m.spendProposals.map((p) => <SpendProposalCard key={p.id} p={p} t={t} lang={lang} canRun={canRun} onCredits={setCredits} />)}</div>}
             {actionLabels(m.actions, lang).length > 0 && <p className="tnum mt-1 text-xs text-foreground-muted" dir="auto">{actionLabels(m.actions, lang).join(" · ")}</p>}
             {m.role === "assistant" && m.switchTo && isAgentId(m.switchTo) && m.switchTo !== agent && (

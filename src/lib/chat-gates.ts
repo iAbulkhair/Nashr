@@ -10,6 +10,7 @@ import type { BrandProposal } from "./brand-proposals";
 import { byOf, type By } from "./actor";
 import type { AwayProposal } from "./secretary-away";
 import type { InstructionProposal } from "./instruction-proposals";
+import type { MemoryProposal } from "./memory";
 import type { FileProposal } from "./file-proposals";
 import type { Action } from "./roles";
 import { spendIntent } from "./spend-intent";
@@ -117,7 +118,7 @@ export const TOOL_ACTION: Readonly<Record<string, Action>> = { update_brand: "br
  * proposal (`proposed`) and an away proposal (`awayProposed`, Reem's contact_away) are collected for the turn's reply
  * cards, and, for a handoff (src/lib/handoffs.ts), the turn's own message (`ownerMsg`) and its conversation (`conv`).
  */
-export type ToolCtx = { lang?: "ar" | "en"; agent?: AgentId; by?: By; via?: "app" | "mcp"; proposed?: BrandProposal[]; awayProposed?: AwayProposal[]; instructionProposed?: InstructionProposal[]; /** core-file rewrites held for the owner's Apply this turn (rule 2306, src/lib/file-proposals.ts) */ fileProposed?: FileProposal[]; /** paid work proposed on a card this turn because the owner's message did not ask for it (rule 1511) */ spendProposed?: SpendProposal[]; ownerMsg?: string; conv?: string; /** the founder's agent-scope modes for this turn (the preflight's copy): the role layer and the prompt flag for the batch */ modes?: AgentScopeModes };
+export type ToolCtx = { lang?: "ar" | "en"; agent?: AgentId; by?: By; via?: "app" | "mcp"; proposed?: BrandProposal[]; awayProposed?: AwayProposal[]; instructionProposed?: InstructionProposal[]; /** facts the `remember` tool proposed this turn (src/lib/memory-tool.ts, rule 4555) */ memoryProposed?: MemoryProposal[]; /** core-file rewrites held for the owner's Apply this turn (rule 2306, src/lib/file-proposals.ts) */ fileProposed?: FileProposal[]; /** paid work proposed on a card this turn because the owner's message did not ask for it (rule 1511) */ spendProposed?: SpendProposal[]; ownerMsg?: string; conv?: string; /** the founder's agent-scope modes for this turn (the preflight's copy): the role layer and the prompt flag for the batch */ modes?: AgentScopeModes };
 /** Brand-change cards one reply carries at most: update_brand refuses a further proposal rather than save one with no card. */
 export const BRAND_CARDS_PER_REPLY = 5;
 /** Away cards one reply carries at most: the turn's further contact_away calls are refused, not dropped from view. */

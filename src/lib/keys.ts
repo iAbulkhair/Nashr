@@ -196,6 +196,18 @@ export const wsKey = {
   runs: (s: Scope) => `runs:${s}`,
   /** list: json `AuditRow`s of the action gateway, newest first, capped at `AUDIT_KEEP` (rule 4503); 30 days from the last row. */
   audit: (s: Scope) => `audit:${s}`,
+  /** hash: the brand's saved memory facts (src/lib/memory.ts, rule 4550), field = fact id, value json `Fact`. No expiry. */
+  mem: (s: Scope) => `mem:${s}`,
+  /** json `MemoryProposal`: a fact an agent proposed in chat, waiting for the owner's Save (rule 4552); 7 days. */
+  memProp: (s: Scope, id: string) => `memprop:${s}:${id}`,
+  /** string: the outcome of a memory proposal, "saved" or "dismissed" (rule 4554); 7 days. */
+  memPropDone: (s: Scope, id: string) => `memprop-done:${s}:${id}`,
+  /** claim: orders two answers to one memory proposal arriving together; 60 s. */
+  memPropClaim: (s: Scope, id: string) => `memprop-claim:${s}:${id}`,
+  /** set: the ids of this scope's memory proposals, for `wipeAccount`; 7 days from the last proposal. */
+  memProps: (s: Scope) => `memprops:${s}`,
+  /** rate bucket (`allow`, stored as `rate:{bucket}`): the memory proposals of this scope today (rule 4553). */
+  memProposalBucket: (s: Scope) => `memprop-day:${s}`,
 } as const;
 
 export const personKey = {
