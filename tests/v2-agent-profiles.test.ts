@@ -54,7 +54,17 @@ describe("a profile is the roster entry plus its prompt half (rule 4601)", () =>
   });
   it("holds no tool, model or cap field: no agent differs from the defaults there today", () => {
     const fields = new Set(AGENT_PROFILES.flatMap((p) => Object.keys(p)));
-    expect([...fields].sort()).toEqual(["id", "name", "persona", "reviewFocus", "role", "skills", "slices", "specs", "tasks"]);
+    expect([...fields].sort()).toEqual([
+      "id",
+      "name",
+      "persona",
+      "reviewFocus",
+      "role",
+      "skills",
+      "slices",
+      "specs",
+      "tasks",
+    ]);
     for (const a of AGENT_IDS) for (const c of TOOL_CAPS) expect(authorityOf(undefined, a, c)).toBe("on");
   });
 });
