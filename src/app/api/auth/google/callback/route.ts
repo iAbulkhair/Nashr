@@ -9,6 +9,7 @@ import { afterSignup, signupPartner } from "@/lib/partners";
 import { allow, clientIp } from "@/lib/rate";
 import { applyReferral, registerCode } from "@/lib/referral";
 import { track } from "@/lib/track";
+import { welcomeOnSignup } from "@/lib/welcome";
 import { appHref } from "@/lib/ws-path";
 
 const go = (path: string) => NextResponse.redirect(`${appOrigin()}${path}`, 303);
@@ -62,6 +63,8 @@ export async function GET(req: Request) {
     if (partner && partner !== "bad") await afterSignup({ id, email: res.email }, partner).catch(() => false);
     await createSession(res.email);
     await track(id, "signup");
+    // Rule 3506: the one welcome, as the password signup gives it (a sign-in or a link never reaches this branch).
+    if (res.login.kind === "owner") await welcomeOnSignup(res.login.user);
     // A new account has one brand, "default": its start page by name, no legacy hop (rule 894).
     return go(st.next || appHref(lang, "/start", null, "default"));
   }

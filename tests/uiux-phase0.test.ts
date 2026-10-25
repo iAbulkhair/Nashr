@@ -76,8 +76,8 @@ describe("rule 961: every app and founder console screen has its own title", () 
   // notifications and danger sections came; a settings section's title comes from `settingsScreenMeta`. 46 with the
   // agent instructions page and the console's skills section (rules 957-958). 47 with the console's Integrations
   // section (rule 1540). 51 with the staff sign-in, setup, staff and account pages (rules 1631, 1638, `staffScreenMeta`).
-  it("finds all 56 pages and each exports generateMetadata from the shared helper", () => {
-    expect(pages.length).toBe(56); // 52 since the mail preview (rule 1964), 53 with the workspaces page (multi-workspace M2), 54 with Settings → AI usage (rule 2907), 56 with the console's workspace page and account table (rule 3741).
+  it("finds all 57 pages and each exports generateMetadata from the shared helper", () => {
+    expect(pages.length).toBe(57); // 52 since the mail preview (rule 1964), 53 with the workspaces page (multi-workspace M2), 54 with Settings → AI usage (rule 2907), 56 with the console's workspace page and account table (rule 3741), 57 with the overview (rule 3507).
     for (const p of pages) expect(read(p), p).toMatch(/export const generateMetadata = (?:app|admin|settings|staff)ScreenMeta\("[a-z]+"\);/);
   });
 

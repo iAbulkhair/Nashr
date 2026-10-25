@@ -22,7 +22,8 @@ import { TeamLogRow, type TeamLogRowValue } from "./stored";
  */
 export type TeamLogInput = {
   kind: TeamLogRowValue["kind"];
-  actor: { pid: string; email: string };
+  /** `pid` may be left out only by an invite decline (rule 3121): the invitee may have no person yet. */
+  actor: { pid?: string; email: string };
   target: { pid?: string; email: string };
   role?: "admin" | "member" | "viewer";
   via: TeamLogRowValue["via"];
@@ -34,7 +35,7 @@ export async function logTeam(aid: AccountId, row: TeamLogInput, opts: { teamLoc
   const value: TeamLogRowValue = {
     at: new Date().toISOString(),
     kind: row.kind,
-    actor: { pid: row.actor.pid, email: row.actor.email },
+    actor: row.actor.pid === undefined ? { email: row.actor.email } : { pid: row.actor.pid, email: row.actor.email },
     target: row.target.pid === undefined ? { email: row.target.email } : { pid: row.target.pid, email: row.target.email },
     ...(row.role === undefined ? {} : { role: row.role }),
     via: row.via,

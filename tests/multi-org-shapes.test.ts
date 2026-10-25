@@ -90,8 +90,8 @@ describe("rule 2134: the person row", () => {
 describe("rule 2129: the team log row", () => {
   const row = { at: "2026-10-19T08:00:00.000Z", kind: "joined", actor: { pid: "p_aaaaaaaaaaaaaaaaaaaaaaaa", email: "a@example.com" }, target: { email: "b@example.com" }, via: "web" };
 
-  it("the eleven kinds of spec section 13, and access_changed (customer roles, rule 3763)", () => {
-    expect([...TEAM_LOG_KINDS]).toEqual(["invited", "invite_cancelled", "joined", "role_changed", "removed", "left", "paused_for_seats", "resumed", "ownership_offered", "ownership_transferred", "workspace_created", "access_changed"]);
+  it("the eleven kinds of spec section 13, access_changed (customer roles, rule 3763), the console rename of rule 3554, then invite_declined (rule 3121)", () => {
+    expect([...TEAM_LOG_KINDS]).toEqual(["invited", "invite_cancelled", "joined", "role_changed", "removed", "left", "paused_for_seats", "resumed", "ownership_offered", "ownership_transferred", "workspace_created", "access_changed", "workspace_renamed", "invite_declined"]);
     for (const kind of TEAM_LOG_KINDS) expect(parseStored("teamlog", TeamLogRow, { ...row, kind }, null)).toMatchObject({ kind });
   });
 

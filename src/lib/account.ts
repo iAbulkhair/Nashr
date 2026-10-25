@@ -13,6 +13,9 @@ import { chatTrialKey, usageMonthKeys, usageRankKey } from "./usage";
 import { OWNER_SYNC_KEY, autoHoldKey, routineFingerprints, routineKeys, routineSkipKeys } from "./routines";
 import { activityKey } from "./activity";
 import { agentCapFingerprint, seenKey } from "./notifications";
+import { forgetAvatar } from "./avatar";
+import { forgetLogo } from "./workspace-logo";
+import { WELCOME_FP } from "./welcome";
 import { holdsElsewhere, membersKey, rosterLinks, wipeMemberships, withLoginLock } from "./team";
 import { revokeBook } from "./booking-token";
 import { revokeFeed } from "./feed-token";
@@ -260,6 +263,10 @@ export async function wipeAccount(id: string, opts: { userLocked?: boolean; logi
   // their suffix cannot be enumerated (the ones that can, per brand, are deleted above).
   keys.push(
     accountKey.notifications(e),
+    // The one-time welcome's marker (rule 3506): a new account at this address is welcomed again.
+    seenKey(e, WELCOME_FP),
+    // The workspace's readable slug (rule 3504), only while it still names this account.
+    ...(account?.workspaceSlug && (await db.get<string>(globalKey.wsSlug(account.workspaceSlug))) === aid ? [globalKey.wsSlug(account.workspaceSlug)] : []),
     // The digest choice, its window and its claim (rule 2357); the account leaves the tick's set below.
     accountKey.digest(e),
     accountKey.digestLast(e),
@@ -322,6 +329,10 @@ export async function wipeAccount(id: string, opts: { userLocked?: boolean; logi
   // The owner's device sessions once more, now the account is gone: a sign-in that ran between the first revoke and the
   // deletion of `user:{owner}` could have recorded a new one. Kept for an owner who still signs in to another account.
   if (alone) await revokeAllDevices(login);
+  // The owner person's picture (rule 3502) goes with the person: only when it holds nothing else, as its sign-in.
+  if (alone) await forgetAvatar(self);
+  // The workspace's logo (rule 3610) belongs to the account, so it goes with the account whoever else the owner is.
+  await forgetLogo(aid);
   // The owner's links once more (a create that ran between the first revoke and the deletion of `user:{owner}`); the
   // owner's login index went in `finish` above (members' in `wipeMemberships`); the deletion row names the id and the
   // address (rule 1999).

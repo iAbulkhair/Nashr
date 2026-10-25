@@ -111,10 +111,17 @@ export type User = {
    */
   ownerPid?: string;
   /**
-   * The name a person gave a workspace they created (multi-workspace M2, `POST /api/workspaces`). Shown by the switcher
-   * when the account has no brand name yet. Optional and new (expand): older code ignores it.
+   * The name a person gave a workspace they created (multi-workspace M2, `POST /api/workspaces`), or the owner set in
+   * Settings, Account (PUT /api/account/workspace, rules 3115-3118; `cleanWorkspaceName`, at most 80 characters). Shown
+   * first wherever a workspace is named (`workspaceLabel`, src/lib/workspace-name.ts), before the brand's name. Optional
+   * (expand): older code ignores it, and an account without one is shown by its brand's name as before.
    */
   workspaceName?: string;
+  /**
+   * The workspace's readable slug (rule 3504, `claimSlug` in src/lib/ws-slug.ts): unique through `wsslug:{slug}`, made at
+   * `createWorkspace`. Shown only; links keep the `w_` handle (rule 2114). Optional and new (expand): older code ignores it.
+   */
+  workspaceSlug?: string;
   /**
    * When the account last changed owner (ISO, multi-workspace M3 ownership transfer, rule 2757). A saved card
    * whose checkout started before it belongs to the previous owner and is refused (`intentOutdatesOwner`, src/lib/billing-state).

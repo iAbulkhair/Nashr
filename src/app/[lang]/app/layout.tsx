@@ -1,5 +1,8 @@
 import Link from "next/link";
-import { headers } from "next/headers";
+import { getAvatar } from "@/lib/avatar";
+import { getLogo } from "@/lib/workspace-logo";
+import { aidOf } from "@/lib/membership";
+import { cookies, headers } from "next/headers";
 import { notFound, redirect } from "next/navigation";
 import { isLang } from "@/lib/i18n";
 import { safeNext } from "@/lib/safe-next";
@@ -26,6 +29,8 @@ import { topupsSold } from "@/lib/pricing";
 import { SKIP_TO_CONTENT } from "@/lib/screen-titles";
 import { ToastProvider } from "@/components/ui/Toast";
 import { acct } from "@/lib/account-id";
+import { RAIL_COOKIE } from "@/lib/cookie-names";
+import { railCollapsed } from "@/lib/rail";
 
 /**
  * Paths reachable without a session. `/join` accepts a team invite (the token is in the URL fragment). `/verify` is the
@@ -86,7 +91,11 @@ export default async function AppLayout({ children, params }: { children: React.
   // Rule 1119: the shell's first numbers (bell, approvals badge) are read here, in one round of parallel reads with the
   // brand, so the rail paints with them instead of fetching them again on every navigation. Scope and email are the
   // session's, never the request's.
-  const [brand, notifs, toApprove] = await Promise.all([getBrand(sc(user)), listNotifs(acct(user)).then((all) => visibleNotifs(all, user)), pendingCount(sc(user))]);
+  // The acting person's picture (rule 3502) in the same round: the session's person, never one from the request.
+  // The workspace's logo (rule 3610) too: the session's account, never one from the request.
+  const [brand, notifs, toApprove, avatar, workspaceLogo] = await Promise.all([getBrand(sc(user)), listNotifs(acct(user)).then((all) => visibleNotifs(all, user)), pendingCount(sc(user)), user.actor ? getAvatar(user.actor.pid) : Promise.resolve(null), getLogo(aidOf(user))]);
+  // Rule 3124: the desktop rail's width from this browser's own cookie (no Redis read), so the first paint is already folded or open.
+  const railFolded = railCollapsed((await cookies()).get(RAIL_COOKIE)?.value);
   const unread = notifs.filter((n) => !n.read).length;
   // `user` is the ACCOUNT (the owner's record); the person acting is `user.actor`. Plan and credits belong to the account,
   // the name, email and role shown are the actor's. The flags only hide controls; the routes enforce the same `can()`.
@@ -98,7 +107,7 @@ export default async function AppLayout({ children, params }: { children: React.
     <div className="flex min-h-dvh flex-col bg-background lg:h-dvh lg:flex-row lg:overflow-hidden">
       {/* Rule 968: past the sidebar's links straight to the screen. */}
       <a href="#main" className="skip-link">{SKIP_TO_CONTENT[lang]}</a>
-      <Sidebar t={t} lang={lang} user={{ name: actor?.name ?? user.name, email: actor?.email ?? user.email, role: actor?.role ?? "member", credits: user.credits, plan: user.plan }} show={{ owner, refer: can(user, "referral"), mcp: can(user, "mcp.token"), partner: !!user.partnerCode && can(user, "partner") }} brandName={brand?.name} admin={isFounderActor(user)} supportWa={(process.env.SUPPORT_WHATSAPP ?? "").replace(/\D/g, "") || undefined} />
+      <Sidebar t={t} lang={lang} user={{ name: actor?.name ?? user.name, email: actor?.email ?? user.email, role: actor?.role ?? "member", credits: user.credits, plan: user.plan, avatar }} show={{ owner, refer: can(user, "referral"), mcp: can(user, "mcp.token"), partner: !!user.partnerCode && can(user, "partner") }} brandName={brand?.name} workspaceLogo={workspaceLogo} admin={isFounderActor(user)} supportWa={(process.env.SUPPORT_WHATSAPP ?? "").replace(/\D/g, "") || undefined} collapsed={railFolded} />
       <main id="main" tabIndex={-1} className="flex min-w-0 flex-1 flex-col px-4 py-5 sm:px-8 lg:overflow-y-auto">
         {/* Rule 1177: from the session, never the cookie alone; the account's email and the end the founder chose. */}
         {actor?.kind === "founder" && <ImpersonationBanner lang={lang} email={user.email} until={actor.until} />}

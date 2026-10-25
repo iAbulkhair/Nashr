@@ -26,6 +26,11 @@ export const LANG_COOKIE = "thakeen_lang";
 export const THEME_COOKIE = "thakeen_theme";
 export const PARTNER_COOKIE = "thakeen_partner";
 export const OAUTH_COOKIE = "thakeen_oauth";
+/**
+ * The desktop rail's width on this browser (rules 3123-3127): `collapsed` or `open`. Display only, read by the app layout
+ * so the first paint has the right width. New under this name (no `nashr_` spelling ever existed), so it has no LEGACY entry.
+ */
+export const RAIL_COOKIE = "thakeen_rail";
 
 /** sessionStorage: the invite token from the link's fragment, so a language switch keeps it. */
 export const INVITE_TOKEN_KEY = "thakeen_invite_token";

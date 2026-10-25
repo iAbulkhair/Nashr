@@ -86,6 +86,7 @@ describe("rule 2030: each builder returns the bytes of its old template", () => 
     [accountKey.digestLock(E), `digestlock:${E}`],
     [accountKey.digestBucket(E), `digestsave:${E}`],
     [accountKey.reviseBucket(E), `revise:${E}`],
+    [accountKey.workspaceNameBucket(E), `wsname:${E}`],
     [accountKey.referrals(E), `referrals:${E}`],
     [accountKey.referredBy(E), `referredBy:${E}`],
     [accountKey.shared(E), `shared:${E}`],
@@ -120,6 +121,10 @@ describe("rule 2030: each builder returns the bytes of its old template", () => 
     [accountKey.mfaPasswordBucket(E), `mfapw:${E}`],
     [accountKey.passwordChangeBucket(E), `pwchange:${E}`],
     [accountKey.accountDeleteBucket(E), `acctdelete:${E}`],
+    // Console workspace edits (rules 3550-3569): the per-address invite bucket keeps the customer route's old bytes.
+    [accountKey.consoleTeamBucket(storedAccountId(E)), `wsedit:acct:${E}`],
+    [accountKey.inviteToBucket("ab12"), `team:invite:to:ab12`],
+    [accountKey.consoleActorBucket("ab12"), `wsedit:ab12`],
     // Agent status and phone notifications (rules 2560-2573): new families, no old template.
     [accountKey.tabSeen(E), `tabseen:${E}`],
     [accountKey.pushLast(E), `pushlast:${E}`],
@@ -127,6 +132,12 @@ describe("rule 2030: each builder returns the bytes of its old template", () => 
     [accountKey.seenBucket(E), `tabbeat:${E}`],
     // Account-id R2 (rule 2743): the 30-day hold on a moved-from address; new family, no old template.
     [accountKey.emailHold(E), `emailhold:${E}`],
+    // Workspace logo (rules 3610-3611): new families, no old template.
+    [accountKey.logo(storedAccountId(E)), `wslogo:${E}`],
+    [accountKey.logoLock(storedAccountId(E)), `lock:wslogo:${E}`],
+    [accountKey.logoSetBucket(storedAccountId(E)), `wslogoset:${E}`],
+    [accountKey.logoPlanBucket(storedAccountId(E)), `wslogoplan:${E}`],
+    [accountKey.logoUploadOwner(storedAccountId(E)), `w:${E}`],
     [accountKey.payCard(E), `pay:card:${E}`],
     [accountKey.payLast(E), `pay:last:${E}`],
     [accountKey.payAttempt(E, "2026-10-24"), `pay:attempt:${E}:2026-10-24`],
@@ -151,6 +162,7 @@ describe("rule 2030: each builder returns the bytes of its old template", () => 
     [globalKey.googleAccount("123"), "google:123"],
     [globalKey.invite("i1"), "invite:i1"],
     [globalKey.inviteUse("i1"), "inviteuse:i1"],
+    [globalKey.inviteDeclineBucket("1.2.3.4"), "team:decline:ip:1.2.3.4"],
     [globalKey.rate("files:x"), "rate:files:x"],
     [globalKey.usageAll("2026-10"), "usage:_all:2026-10"],
     [globalKey.paymobRefundEnded(123456), "paymob:refund_ended:123456"],
@@ -183,6 +195,11 @@ describe("rule 2030: each builder returns the bytes of its old template", () => 
     [globalKey.emailRevert("h1"), "emailrevert:h1"],
     [globalKey.emailRevertIpBucket("1.2.3.4"), "emailrevert:ip:1.2.3.4"],
     [globalKey.passwordReset("h1"), "pwreset:h1"],
+    // Profile picture and workspace slug (rules 3501-3504): new families, no old template.
+    [globalKey.uploadTicket("p:p_x", "n1.jpg"), "upload:p:p_x:n1.jpg"],
+    [globalKey.wsSlug("rose-shop"), "wsslug:rose-shop"],
+    [globalKey.avatarGetBucket("1.2.3.4"), "avatarget:1.2.3.4"],
+    [globalKey.logoGetBucket("1.2.3.4"), "wslogoget:1.2.3.4"],
   ];
 
   it.each(ws)("workspace %s", (built, old) => expect(built).toBe(old));

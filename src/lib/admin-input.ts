@@ -151,6 +151,8 @@ export const ADMIN_INPUT_ERRORS = {
     paid_through_needs_plan: "A trial has no paid-through day: set a paid plan first.",
     paid_through_paymob: "This account pays online: its subscription sets the paid-through day.",
     mismatch: "Type the email exactly to confirm.",
+    bad_name: "Workspace name: 1 to 80 characters.",
+    bad_email: "Write one valid email address.",
     failed: "That did not go through. Try again.",
   },
   ar: {
@@ -173,6 +175,8 @@ export const ADMIN_INPUT_ERRORS = {
     paid_through_needs_plan: "التجربة ليس لها يوم دفع: اختر خطة مدفوعة أولًا.",
     paid_through_paymob: "هذا الحساب يدفع إلكترونيًا: اشتراكه يحدد يوم الدفع.",
     mismatch: "اكتب البريد كما هو للتأكيد.",
+    bad_name: "اسم مساحة العمل: من حرف إلى 80 حرفاً.",
+    bad_email: "اكتب عنوان بريد صحيحاً واحداً.",
     failed: "لم يتم ذلك. حاول مرة أخرى.",
   },
 } as const;

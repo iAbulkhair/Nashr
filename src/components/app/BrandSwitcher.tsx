@@ -8,6 +8,7 @@ import { useAppLink } from "./WorkspaceContext";
 import Menu, { type MenuItem } from "@/components/ui/Menu";
 import { useToast } from "@/components/ui/Toast";
 import { Icon } from "./Icons";
+import WorkspaceLogo from "./WorkspaceLogo";
 
 /** A brand as `GET /api/brands` lists it (names filled in from the brand file; archived ones are in the list too). */
 export type SwitcherBrand = { id: string; name: string; status?: "active" | "archived" };
@@ -63,9 +64,10 @@ export async function pickBrand(id: string, pathname: string, push: (href: strin
 
 /**
  * The brand you work on, as a menu button (rule 893). `brands` is null until the rail has loaded the list (it asks when the
- * menu is first opened, `onOpen`), so the closed button and a not-yet-loaded menu show the current brand alone.
+ * menu is first opened, `onOpen`), so the closed button and a not-yet-loaded menu show the current brand alone. `logo`
+ * (rule 3610): the workspace's logo, shown in place of the initial tile when the workspace has one.
  */
-export default function BrandSwitcher({ lang, brands, current, canAdd, sub, onOpen, onPicked }: { lang: Lang; brands: SwitcherBrand[] | null; current: { id: string; name: string }; canAdd: boolean; sub?: string; onOpen?: () => void; onPicked?: () => void }) {
+export default function BrandSwitcher({ lang, brands, current, canAdd, sub, logo, onOpen, onPicked }: { lang: Lang; brands: SwitcherBrand[] | null; current: { id: string; name: string }; canAdd: boolean; sub?: string; logo?: string | null; onOpen?: () => void; onPicked?: () => void }) {
   const c = COPY[lang];
   const path = usePathname();
   const r = useRouter();
@@ -93,7 +95,11 @@ export default function BrandSwitcher({ lang, brands, current, canAdd, sub, onOp
           aria-label={`${c.label}: ${name || c.unnamed}`}
           className="flex w-full min-w-0 items-center gap-3 rounded-lg px-1 py-1 text-start hover:bg-background-muted/60"
         >
-          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg border-[1.5px] border-border-strong bg-background-muted font-display text-lg font-bold text-foreground" aria-hidden>{initial}</span>
+          {logo ? (
+            <WorkspaceLogo src={logo} name={name} size={36} className="border-[1.5px] border-border-strong font-display text-lg font-bold text-foreground" />
+          ) : (
+            <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg border-[1.5px] border-border-strong bg-background-muted font-display text-lg font-bold text-foreground" aria-hidden>{initial}</span>
+          )}
           <span className="min-w-0 flex-1"><span className="clip block text-sm font-semibold text-foreground" dir="auto">{name || (lang === "ar" ? "علامتك" : "Your brand")}</span>{sub && <span className="block text-xs text-foreground-muted">{sub}</span>}</span>
           <Icon name="chevron" className={`h-4 w-4 shrink-0 text-foreground-muted transition ${isOpen ? "rotate-180" : ""}`} />
         </button>

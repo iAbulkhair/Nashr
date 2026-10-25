@@ -10,6 +10,9 @@ import { workspaceCreateAllowed } from "./rate";
 import { joinInviteAsPerson, withLoginLock, type TeamFail, type TeamRole } from "./team";
 import { matchHandle, wsHandle } from "./ws-handle";
 import { asHandle } from "./ws-path";
+import { workspaceLabel } from "./workspace-name";
+import { claimSlug, releaseSlug } from "./ws-slug";
+import { logoUrls } from "./workspace-logo";
 
 /**
  * A person's workspaces (multi-workspace M2, docs/specs/2026-10-18-multi-org.md sections 7 "Switching", 10 and 16;
@@ -22,19 +25,32 @@ export const OWNED_CAP = 3;
 /** A trial workspace's days, as at sign-up (`createUser`). */
 const TRIAL_DAYS = 3;
 
-export type WorkspaceRow = { handle: string; name: string; role: Role; current: boolean };
+/**
+ * `slug` (rule 3504): the readable slug, shown beside the name; absent for a workspace made before slugs. `logo` (rule
+ * 3610): the workspace logo's signed URL, absent when it has none (an optional field added, expand-only).
+ */
+export type WorkspaceRow = { handle: string; name: string; role: Role; current: boolean; slug?: string; logo?: string };
 
 /**
  * The person's workspaces for the switcher and `/{lang}/app/workspaces`: the held accounts (`heldAccounts`, which
  * re-checks every one on the forward records), then ONE `pmap` round of each account and its default brand for the
- * name: the brand's name, else the name given at create, else the owner's name. `current` is the session's account.
+ * name (`workspaceLabel`, rule 3116): the name the owner gave it, else the brand's name, else the owner's name. `current`
+ * is the session's account.
  */
 export async function listWorkspaces(p: Person, current: AccountId | null): Promise<WorkspaceRow[]> {
   const held = await heldAccounts(p);
-  return pmap(held, async ({ aid, role }) => {
-    const [u, brand] = await Promise.all([getAccount(aid), getBrand(aid)]);
-    const name = brand?.name?.trim() || u?.workspaceName?.trim() || u?.name || "";
-    return { handle: wsHandle(aid), name, role, current: aid === current };
+  // The logos in ONE `mget` beside the same round (rule 3610), never a read per row.
+  const [rows, logos] = await Promise.all([
+    pmap(held, async ({ aid, role }): Promise<WorkspaceRow> => {
+      const [u, brand] = await Promise.all([getAccount(aid), getBrand(aid)]);
+      const name = workspaceLabel(u, brand);
+      return { handle: wsHandle(aid), name, role, current: aid === current, ...(u?.workspaceSlug ? { slug: u.workspaceSlug } : {}) };
+    }),
+    logoUrls(held.map((h) => h.aid)),
+  ]);
+  return rows.map((r, i) => {
+    const logo = logos.get(held[i].aid);
+    return logo ? { ...r, logo } : r;
   });
 }
 
@@ -76,7 +92,15 @@ export async function createWorkspace(p: Person, input: { name: string; lang: "a
         emailVerifiedAt: fresh.emailVerifiedAt,
         workspaceName: input.name.trim().slice(0, 80),
       };
-      await saveUser(u);
+      // Rule 3504: a readable slug from the name, claimed atomically (SET NX) for this new id; released if the save fails.
+      const slug = await claimSlug(u.workspaceName ?? "", aid);
+      if (slug) u.workspaceSlug = slug;
+      try {
+        await saveUser(u);
+      } catch (e) {
+        await releaseSlug(slug ?? undefined, aid).catch(() => {});
+        throw e;
+      }
       await Promise.all([
         db.sadd(personKey.orgs(fresh.pid), aid),
         db.set(personKey.lastOrg(fresh.pid), aid),

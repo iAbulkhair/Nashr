@@ -91,6 +91,7 @@ const ROUTE_ROLES: Record<string, Gate> = {
   "POST /api/auth/verify/check": "unverified-session",
   "POST /api/auth/verify/email": "unverified-session",
   "POST /api/team/accept": "public",
+  "POST /api/team/decline": "public", // rule 3119: the token is the credential, per-IP bucket
   // Multi-workspace M2: create a workspace and switch the session's workspace (the person, not one account's role).
   "POST /api/workspaces": "person-session",
   "POST /api/workspaces/switch": "person-session",
@@ -142,6 +143,7 @@ const ROUTE_ROLES: Record<string, Gate> = {
   "POST /api/admin/payments/[email]": "admin-console",
   "POST /api/admin/founding": "admin-console", // second factor, reason, audit (rule 1710)
   "POST /api/admin/users/[email]": "admin-console",
+  "POST /api/admin/users/[email]/workspace/edit": "admin-console", // rules 3550-3569: adminActor, staffMay("workspace.edit") (owner only), second factor, reason
   // Credit top-ups, activated by hand while there is no payment gateway (rules 446-447): the founder only.
   "POST /api/admin/topups": "admin-console",
   // Agent scope (rule 1411): the founder releases one held item.
@@ -238,9 +240,18 @@ const ROUTE_ROLES: Record<string, Gate> = {
   "POST /api/account/passkeys": g("viewer", "passkeys.manage"),
   "POST /api/account/email": g("viewer", "email.change"),
   "POST /api/account/google": g("viewer", "google.manage"),
+  // The acting person's own picture (rules 3501-3503): a session, then actingLogin (an impersonation and a token are 403).
+  "POST /api/account/avatar": "member",
+  "DELETE /api/account/avatar": "member",
+  "POST /api/account/avatar/upload": "member",
+  // The workspace's logo (rules 3610-3611, 3621): owner or an unscoped admin; a token, a brand-scoped admin and a founder impersonating are refused by `can`.
+  "POST /api/account/logo": g("admin", "workspace.logo"),
+  "DELETE /api/account/logo": g("admin", "workspace.logo"),
+  "POST /api/account/logo/upload": g("admin", "workspace.logo"),
   // Notification preferences per type and channel (rule 1145): the account's settings, owner only.
   "PUT /api/notifications/prefs": g("owner", "profile.account"),
   "PUT /api/notifications/digest": g("owner", "profile.account"),
+  "PUT /api/account/workspace": g("owner", "profile.account"), // rule 3115: rename the workspace
   // Phone notifications (rules 2562-2567): a person's own device in the workspace they act in; tokens and founder views get 403 in the route.
   "POST /api/push": "member",
   "DELETE /api/push": "member",
@@ -403,6 +414,10 @@ const READS: Record<string, Gate> = {
   "GET /api/instructions/refs": "member",
   "GET /api/instructions/history": "member",
   "GET /api/notifications": "member",
+  // A person's picture to any signed-in user, behind an HMAC signature and a per-IP limit; every refusal is one 404 (rule 3503).
+  "GET /api/avatar/[name]": "member",
+  // A workspace's logo the same way, under a signature key of its own (rule 3612).
+  "GET /api/logo/[name]": "member",
   // The text a woken phone worker shows (rule 2567), read with the device's own session.
   "GET /api/push/latest": "member",
   "GET /api/onboard/plan": "member",
@@ -453,7 +468,7 @@ const PUBLIC_WITHOUT_LIMIT: Record<string, string> = {
  * Signed-in writes that must carry a rate limit of their own (allow() from src/lib/rate.ts), on top of their gate: each
  * writes a log or record a script could churn. The list may only grow.
  */
-const SESSION_RATE_LIMITED = ["POST /api/chat/feedback", "POST /api/team/transfer", "POST /api/workspaces/transfer", "DELETE /api/workspaces/person", "POST /api/governance/rollback", "POST /api/handoffs/[id]/decline", "PUT /api/models",
+const SESSION_RATE_LIMITED = ["POST /api/account/logo", "DELETE /api/account/logo", "POST /api/account/logo/upload", "POST /api/chat/feedback", "POST /api/team/transfer", "POST /api/workspaces/transfer", "DELETE /api/workspaces/person", "POST /api/governance/rollback", "POST /api/handoffs/[id]/decline", "PUT /api/models",
   // Agent instructions (rules 930-959).
   "PUT /api/instructions", "POST /api/instructions/activate", "POST /api/instructions/refs/search", "POST /api/instructions/refs/import", "POST /api/instructions/discard", "POST /api/instructions/restore", "POST /api/instructions/proposals/[id]", "POST /api/instructions/test",
   // Core-file rewrite cards (rule 2306).
@@ -462,6 +477,8 @@ const SESSION_RATE_LIMITED = ["POST /api/chat/feedback", "POST /api/team/transfe
   "POST /api/account/sessions", "PUT /api/notifications/prefs", "GET /api/billing/status",
   // The digest email choice (rule 2355).
   "PUT /api/notifications/digest",
+  // Workspace rename (rule 3117).
+  "PUT /api/account/workspace",
   // Phone notifications (rules 2562-2567): per-login hourly buckets.
   "POST /api/push", "DELETE /api/push", "POST /api/push/seen", "GET /api/push/latest",
   // Chat spend cards (rule 1512): each Run is a paid batch or render.
@@ -584,8 +601,9 @@ describe("every API handler has a declared gate (fail closed)", () => {
     expect(hidden).toEqual([]);
   });
   it("rule 3752: a write that needs only the session is one a Viewer may make; every other names an action", () => {
-    // A Viewer's own browser push subscription, the bell's read marks and the product wishlist: nothing of the workspace.
-    const VIEWER_WRITES = new Set(["POST /api/push", "DELETE /api/push", "POST /api/push/seen", "POST /api/notifications", "POST /api/wishlist/suggest", "POST /api/wishlist/vote"]);
+    // A Viewer's own browser push subscription, the bell's read marks, the product wishlist and the person's own picture
+    // (rules 3501-3503, keyed by the acting person, never the workspace): nothing of the workspace.
+    const VIEWER_WRITES = new Set(["POST /api/push", "DELETE /api/push", "POST /api/push/seen", "POST /api/notifications", "POST /api/wishlist/suggest", "POST /api/wishlist/vote", "POST /api/account/avatar", "DELETE /api/account/avatar", "POST /api/account/avatar/upload"]);
     const bare = Object.entries(ROUTE_ROLES).filter(([, gate]) => gate === "member").map(([k]) => k);
     expect(bare.filter((k) => !VIEWER_WRITES.has(k))).toEqual([]);
   });

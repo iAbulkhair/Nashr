@@ -6,6 +6,7 @@ import { pmap } from "./parallel";
 import { isPersonSuspended, isSuspended } from "./suspension";
 import { heldAnywhere } from "./team";
 import { wsHandle } from "./ws-handle";
+import { workspaceLabel } from "./workspace-name";
 
 export type PeopleWorkspace = { handle: string; name: string; role: string; plan: User["plan"] | null; suspended: boolean; paused: boolean };
 export type PeopleView = {
@@ -28,7 +29,7 @@ export async function peopleView(email: string): Promise<PeopleView | null> {
   const [held, last] = await Promise.all([heldAnywhere(pid), lastSignIn(normalizeEmail(person.email))]);
   const workspaces = await pmap(held, async ({ aid, owner }) => {
     const [u, m, brand] = await Promise.all([getAccount(aid), owner ? Promise.resolve(null) : getMembership(aid, pid), getBrand(aid)]);
-    const name = brand?.name?.trim() || u?.workspaceName?.trim() || u?.name || "";
+    const name = workspaceLabel(u, brand);
     return {
       handle: wsHandle(aid), name, role: owner ? "owner" : (m?.role ?? "member"),
       plan: u?.plan ?? null, suspended: !!u && isSuspended(u), paused: !owner && !!m?.disabled,

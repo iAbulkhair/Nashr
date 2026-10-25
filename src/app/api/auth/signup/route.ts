@@ -10,6 +10,7 @@ import { getMember, withLoginLock } from "@/lib/team";
 import { addressBlocked } from "@/lib/email-hold";
 import { acct } from "@/lib/account-id";
 import { isPersonLockTimeout } from "@/lib/person";
+import { welcomeOnSignup } from "@/lib/welcome";
 
 export async function POST(req: Request) {
   const b = (await req.json().catch(() => ({}))) as Record<string, string>;
@@ -55,6 +56,8 @@ export async function POST(req: Request) {
   const partnered = await afterSignup(account, partner).catch((e) => { console.error("partner attribution failed", e instanceof Error ? e.message : "error"); return false; });
   await createSession(account.email);
   await track(acct(account), "signup");
+  // Rule 3506: the one welcome in the bell, in the signup language; claimed once per account, never fails the signup.
+  await welcomeOnSignup(account);
   // The first verification code (rule 762). The account exists and is signed in by now, so a mail that cannot go out
   // never fails the signup: `mail: false` tells the verify page to offer a resend. Rule 766: `devCode` only on a test deploy.
   let mail = false;
