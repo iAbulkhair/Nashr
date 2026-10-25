@@ -89,6 +89,7 @@ describe("rule 2030: each builder returns the bytes of its old template", () => 
     [wsKey.queueJob(S, "ab12"), `qjob:${S}:ab12`],
     [wsKey.queue(S), `jobq:${S}`],
     [wsKey.queueJobs(S), `qjobs:${S}`],
+    [wsKey.routineRail(S, "dana_weekly_report"), `routinerail:${S}:dana_weekly_report`],
     [wsKey.keyCheckBucket(D, "hour"), `keycheck:hour:${E}`],
     [wsKey.connectStartBucket(D), `connectstart:${E}`],
     [wsKey.storeSyncBucket(D), `storesync:${E}`],

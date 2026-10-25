@@ -22,7 +22,7 @@ export const LOG_ROWS = 5;
 export const STATUS_ROWS = 200;
 
 /** A scheduled run's skip outcomes that mean the agent could not do its work (as `SKIPPED` in src/lib/activity.ts). */
-const STUCK_SKIPS = new Set(["cap_reached", "agent_cap", "no_credits", "trial_over", "fair_use", "attempts_exhausted", "error"]);
+const STUCK_SKIPS = new Set(["cap_reached", "agent_cap", "no_credits", "trial_over", "fair_use", "attempts_exhausted", "error", "paused"]);
 
 /** Rows that close a piece of work; the others (decisions, settings, refunds, declines) say nothing about the agent's state. */
 const DONE_KINDS: ReadonlySet<ActivityKind> = new Set<ActivityKind>([

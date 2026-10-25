@@ -10,7 +10,7 @@ import { forgetPartnerData } from "./partners";
 import { monthKey } from "./credits";
 import { AGENTS, AGENT_IDS } from "./agents";
 import { chatTrialKey, usageMonthKeys, usageRankKey } from "./usage";
-import { OWNER_SYNC_KEY, autoHoldKey, routineFingerprints, routineKeys, routineSkipKeys } from "./routines";
+import { OWNER_SYNC_KEY, ROUTINE_IDS, autoHoldKey, routineFingerprints, routineKeys, routineSkipKeys } from "./routines";
 import { activityKey } from "./activity";
 import { agentCapFingerprint, seenKey } from "./notifications";
 import { forgetAvatar } from "./avatar";
@@ -189,6 +189,8 @@ export async function wipeAccount(id: string, opts: { userLocked?: boolean; logi
       // Each routine's last run, locks, hold and attempt counts, for every routine id (routines.ts), and the hold of
       // Majed's auto-run under the same weekly cap (360 s).
       ...routineKeys(s), autoHoldKey(s),
+      // Each routine's rail: its failures in a row and its pause (rule 4724, no expiry).
+      ...ROUTINE_IDS.map((id) => wsKey.routineRail(s, id)),
       // The Sunday plan's run receipts (rule 2476) for this week and the last: they name the scope and live 8 days.
       ...[0, 7].map((d) => globalKey.runReceipt(weeklyClaim(s, weekStartUtc(new Date(Date.now() - d * 864e5))))),
       // When someone last pressed Refresh on the site or social results, which Dana's routine counts (8 days, rule 747).

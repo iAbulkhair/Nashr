@@ -224,6 +224,11 @@ export const wsKey = {
   queue: (s: Scope) => `jobq:${s}`,
   /** set: every job id this scope ever queued, for `wipeAccount` (rule 4652); 30 days from the last job. */
   queueJobs: (s: Scope) => `qjobs:${s}`,
+  /**
+   * json `RoutineRail` (src/lib/routines.ts, rules 4720-4729): one routine's failures in a row and, after
+   * `ROUTINE_FAILS_PAUSE` of them, its pause. No expiry: a success or the owner's switch deletes it, and so does `wipeAccount`.
+   */
+  routineRail: (s: Scope, id: string) => `routinerail:${s}:${id}`,
 } as const;
 
 export const personKey = {

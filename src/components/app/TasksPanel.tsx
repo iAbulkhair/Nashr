@@ -33,7 +33,7 @@ function Card({ k, busy, title, desc, on, last, which, onToggle, onRun, readOnly
 }
 
 /** One routine: who, what it produces, how often, what a run costs, when it skips, and its switch. */
-function RoutineRow({ t, r, on, saving, onToggle, readOnly, busy, onRunHeld }: { t: AppDict; r: RoutineView; on: boolean; saving: boolean; onToggle: (id: RoutineId, on: boolean) => void; readOnly: boolean; busy: string; onRunHeld: (id: RoutineId) => void }) {
+function RoutineRow({ t, r, on, saving, onToggle, readOnly, busy, onRunHeld, onResume }: { t: AppDict; r: RoutineView; on: boolean; saving: boolean; onToggle: (id: RoutineId, on: boolean) => void; readOnly: boolean; busy: string; onRunHeld: (id: RoutineId) => void; onResume: (id: RoutineId) => void }) {
   const k = t.tasks;
   const what = t.generate.types[r.type];
   return (
@@ -49,6 +49,13 @@ function RoutineRow({ t, r, on, saving, onToggle, readOnly, busy, onRunHeld }: {
           <div className="mt-2 rounded-lg border border-border-strong p-2 text-xs" data-held={r.id}>
             <p>{k.held}</p>
             <button type="button" disabled={!!busy} onClick={() => onRunHeld(r.id)} className="btn btn-secondary btn-xs mt-2 disabled:opacity-50">{busy === r.id ? "…" : k.runHeld}</button>
+          </div>
+        )}
+        {/* Rule 4722: the rails paused it after failures in a row; switching it on again (schedule.write) resumes it. */}
+        {r.paused && (
+          <div className="mt-2 rounded-lg border border-border-strong p-2 text-xs" data-paused={r.id}>
+            <p>{k.railPaused}</p>
+            {!readOnly && <button type="button" disabled={saving} onClick={() => onResume(r.id)} className="btn btn-secondary btn-xs mt-2 disabled:opacity-50">{k.railResume}</button>}
           </div>
         )}
       </div>
@@ -85,6 +92,8 @@ export default function TasksPanel({ t, initial, routines, readOnly = false }: {
   }
   const toggle = (key: ScheduleKey) => put({ [key]: !s[key] }, key);
   const toggleRoutine = (id: RoutineId, on: boolean) => put({ routines: { [id]: on } }, id);
+  /** Resume a routine the rails paused: the same switch on, then the server's view again (the pause note goes). */
+  const resumeRoutine = (id: RoutineId) => void put({ routines: { [id]: true } }, id).then(() => r.refresh());
   /** The owner's Run of a held routine (rule 2479): the server runs it on its own claim, so it is never charged twice. */
   async function runHeld(id: RoutineId) {
     setBusy(id);
@@ -146,7 +155,7 @@ export default function TasksPanel({ t, initial, routines, readOnly = false }: {
           <h2 className="font-display text-lg font-medium">{k.routines}</h2>
           <p className="mt-1 text-sm text-foreground-muted">{k.routinesSub}</p>
           <ul className="mt-3 divide-y divide-foreground/10">
-            {routines.map((x) => <RoutineRow key={x.id} t={t} r={x} on={s.routines?.[x.id] !== false /* on unless the owner switched it off, as `routineOn` in routines.ts (rule 1486) */} saving={!!saving} onToggle={toggleRoutine} readOnly={readOnly} busy={busy} onRunHeld={runHeld} />)}
+            {routines.map((x) => <RoutineRow key={x.id} t={t} r={x} on={s.routines?.[x.id] !== false /* on unless the owner switched it off, as `routineOn` in routines.ts (rule 1486) */} saving={!!saving} onToggle={toggleRoutine} readOnly={readOnly} busy={busy} onRunHeld={runHeld} onResume={resumeRoutine} />)}
           </ul>
         </div>
       </div>
