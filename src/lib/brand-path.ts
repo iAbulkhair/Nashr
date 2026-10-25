@@ -35,6 +35,8 @@ export const BRAND_SECTIONS: readonly string[] = [
   "files",
   "generate",
   "reports",
+  // The workspace overview (rule 3507): charts of the brand's own numbers.
+  "overview",
   "activity",
   "todo",
   "inspo",

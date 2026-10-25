@@ -25,6 +25,7 @@ import { mfaKeys } from "./mfa";
 import { movePasskeys, passkeyKeys } from "./passkeys";
 import { revokeAllDevices } from "./devices";
 import { addressBlocked } from "./email-hold";
+import { avatarUrls, forgetAvatar } from "./avatar";
 
 /**
  * Teams (seats): memberships, invites and seat accounting (docs/superpowers/specs/2026-09-29-teams-design.md;
@@ -374,7 +375,7 @@ export async function forgetPerson(pid: PersonId, email: string, opts: { loginLo
   // The person's passkeys go with the person whoever holds the address now (rule 2425, pre-flight ruling 6): they are
   // keyed by pid, and `passkeyKeys` lists only reverse entries that still name this pid.
   const keys = [personKey.person(pid), personKey.orgs(pid), personKey.lastOrg(pid), ...passkeys, ...(own ? [...mfaKeys(email), accountKey.emailChange(email), accountKey.emailChangeTries(email), accountKey.googleSub(email), accountKey.invitesFor(email), ...google] : [])];
-  await Promise.all([...keys.map((k) => db.del(k)), own ? revokeAllDevices(email) : null, releaseLogin(email, pid, { locked: true })]);
+  await Promise.all([...keys.map((k) => db.del(k)), own ? revokeAllDevices(email) : null, releaseLogin(email, pid, { locked: true }), forgetAvatar(pid)]);
 }
 
 /**
@@ -1452,6 +1453,10 @@ export async function teamView(u: User) {
   const seesSpend = can(u, "team.cap");
   // Scope, approve toggle and cap (rules 3756-3770) are shown to those who may change them; to the rest only roles.
   const access = (m: MemberView) => (manage ? { ...(m.brands ? { brands: m.brands } : {}), ...(m.approves ? { approves: true as const } : {}), ...(typeof m.creditCap === "number" ? { creditCap: m.creditCap } : {}), ...(seesSpend ? { spent: personSpendFor(u, m.pid) } : {}) } : {});
+  // Rule 3502: every listed person's picture in ONE mget (`avatarUrls`); a person without one shows an initial.
+  const ownerPid = ownerOf(u);
+  const faces = await avatarUrls([ownerPid, ...members.map((m) => m.pid)]);
+  const face = (pid: PersonId) => (faces.has(pid) ? { avatar: faces.get(pid)! } : {});
   const used = seatCount(members, invites);
   const limit = seatLimit(u);
   const mayBuy = can(u, "billing.seats") && extraSeatsSold(u.plan) && !billingLocked(u.billing) && used <= limit;
@@ -1473,8 +1478,8 @@ export async function teamView(u: User) {
       ...seatChargeView(how),
     },
     members: [
-      { email: u.email, name: u.name, role: "owner" as const },
-      ...members.map((m) => ({ email: m.email, name: m.name, role: m.role, acceptedAt: m.acceptedAt, ...(m.disabled ? { disabled: m.disabled } : {}), ...access(m) })),
+      { email: u.email, name: u.name, role: "owner" as const, ...face(ownerPid) },
+      ...members.map((m) => ({ email: m.email, name: m.name, role: m.role, acceptedAt: m.acceptedAt, ...(m.disabled ? { disabled: m.disabled } : {}), ...access(m), ...face(m.pid) })),
     ],
     invites: can(u, "team.invites.view")
       ? invites.map((i) => ({ id: i.id, email: i.email, role: i.role, expiresAt: i.expiresAt, invitedBy: i.invitedBy, ...(manage && i.brands ? { brands: i.brands } : {}), ...(manage && i.approves ? { approves: true as const } : {}) }))

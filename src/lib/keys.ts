@@ -226,6 +226,16 @@ export const personKey = {
    * `at` when it was undone. A revert link of a move made between the two is dead. 30 days.
    */
   emailReverted: (p: PersonId) => `emailreverted:${p}`,
+  /** json `{ name, at }`: the person's profile picture in the media store (src/lib/avatar.ts, rule 3502); no TTL, deleted with the person. */
+  avatar: (p: PersonId) => `avatar:${p}`,
+  /** lock: one person's picture change (a leaf lock: nothing else is taken while it is held). */
+  avatarLock: (p: PersonId) => `lock:avatar:${p}`,
+  /** rate bucket (`allow` adds `rate:`): picture changes of one person, 20 an hour (POST /api/account/avatar, rule 3502). */
+  avatarSetBucket: (p: PersonId) => `avatarset:${p}`,
+  /** rate bucket: picture upload plans of one person, 30 an hour (POST /api/account/avatar/upload, rule 3501). */
+  avatarPlanBucket: (p: PersonId) => `avatarplan:${p}`,
+  /** The owner part of a person's upload ticket (`globalKey.uploadTicket`): built from the session's person only (rule 3501). */
+  uploadOwner: (p: PersonId) => `p:${p}`,
 } as const;
 
 export const accountKey = {
@@ -343,6 +353,23 @@ export const accountKey = {
    * that person exists; 30 days (account-id R2, D1, rule 2743). Read and written only while `OPAQUE_IDS` is on.
    */
   emailHold: (login: string) => `emailhold:${login}`,
+  /**
+   * json `LogoRecord` `{ name, at }`: the workspace's logo in the media store (src/lib/workspace-logo.ts, rule 3610), one per
+   * ACCOUNT (every brand of the workspace shows it); the account is the session's (`aidOf(u)`), never one from a request.
+   * No TTL, deleted with the account.
+   */
+  logo: (a: AccountId) => `wslogo:${a}`,
+  /** lock: one workspace's logo change (a leaf lock: nothing else is taken while it is held, rule 3610). */
+  logoLock: (a: AccountId) => `lock:wslogo:${a}`,
+  /** rate bucket (`allow` adds `rate:`): logo changes of one workspace, 20 an hour (POST /api/account/logo, rule 3611). */
+  logoSetBucket: (a: AccountId) => `wslogoset:${a}`,
+  /** rate bucket: logo upload plans of one workspace, 30 an hour (POST /api/account/logo/upload, rule 3611). */
+  logoPlanBucket: (a: AccountId) => `wslogoplan:${a}`,
+  /**
+   * The owner part of a workspace logo's upload ticket (`globalKey.uploadTicket`, rule 3611): `w:{aid}` from the session's
+   * account only, a space of its own beside a person's `p:{pid}`, so a ticket of one kind or owner never redeems as another.
+   */
+  logoUploadOwner: (a: AccountId) => `w:${a}`,
   /** json `SavedCard`: the account's Geidea card token and card-on-file agreement (rules 3906, 3910). Never shown or logged. */
   payCard: (email: string) => `pay:card:${email}`,
   /** string: the reference of the account's last Geidea checkout, read by the billing page's status (rule 3909). 7 days. */
@@ -465,6 +492,22 @@ export const globalKey = {
   emailRevertIpBucket: (ip: string) => `emailrevert:ip:${ip}`,
   /** json `{ email, kind }`: a password reset link, under the SHA-256 hex of its token; 1 hour (POST /api/auth/forgot). */
   passwordReset: (tokenHash: string) => `pwreset:${tokenHash}`,
+  /**
+   * json `UploadTicket` (src/lib/upload.ts, rule 3501): one signed direct upload the server granted, 15 minutes. `owner`
+   * is built by the server from the session (`p:{pid}` for a person's picture), `name` is the 128-bit name the server
+   * generated; a completion only finds a ticket under the caller's own owner, as `/m/` finds `mfile:{scope}:{name}`.
+   */
+  uploadTicket: (owner: string, name: string) => `upload:${owner}:${name}`,
+  /**
+   * string `AccountId`: the readable slug `claimSlug` reserved for one workspace (src/lib/ws-slug.ts, rule 3504), taken
+   * with SET NX, no TTL, deleted with the account. The slug is made by the server from the workspace's name; a slug from
+   * a request is never looked up here.
+   */
+  wsSlug: (slug: string) => `wsslug:${slug}`,
+  /** rate bucket: profile pictures served to one client address, 1200 an hour (GET /api/avatar/{name}, rule 3503). */
+  avatarGetBucket: (ip: string) => `avatarget:${ip}`,
+  /** rate bucket: workspace logos served to one client address, 1200 an hour (GET /api/logo/{name}, rule 3612). */
+  logoGetBucket: (ip: string) => `wslogoget:${ip}`,
 } as const;
 
 /**

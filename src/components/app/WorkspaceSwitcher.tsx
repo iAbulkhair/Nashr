@@ -7,6 +7,7 @@ import type { WorkspaceRow } from "@/lib/workspaces";
 import { appHref, switchTarget } from "@/lib/ws-path";
 import Menu, { type MenuItem } from "@/components/ui/Menu";
 import { Icon } from "./Icons";
+import WorkspaceLogo from "./WorkspaceLogo";
 import { useWsHandle } from "./WorkspaceContext";
 
 /**
@@ -59,7 +60,7 @@ export default function WorkspaceSwitcher({ t, lang, onNavigate }: { t: AppDict[
   const items: MenuItem[] = [
     ...rows.filter((w) => w.handle !== current?.handle).map((w) => ({
       key: w.handle,
-      label: <span className="flex min-w-0 flex-1 items-center justify-between gap-2"><span className="clip" dir="auto">{w.name}</span><span className="shrink-0 text-xs">{t.roles[w.role]}</span></span>,
+      label: <span className="flex min-w-0 flex-1 items-center justify-between gap-2"><span className="flex min-w-0 items-center gap-2"><WorkspaceLogo src={w.logo} name={w.name} size={20} className="text-xs" /><span className="clip" dir="auto">{w.name}</span></span><span className="shrink-0 text-xs">{t.roles[w.role]}</span></span>,
       onSelect: () => void open(w.handle),
     })),
     ...(waiting > 0 ? [{ key: "invites", href: appHref(lang, "/workspaces"), label: t.invites.replace("{n}", String(waiting)), onSelect: onNavigate }] : []),
@@ -78,6 +79,7 @@ export default function WorkspaceSwitcher({ t, lang, onNavigate }: { t: AppDict[
             onClick={(e) => { loadInvites(); props.onClick?.(e); }}
             onKeyDown={(e) => { if (e.key === "Enter" || e.key === " " || e.key === "ArrowDown" || e.key === "ArrowUp") loadInvites(); props.onKeyDown?.(e); }}
             aria-label={`${t.switcher}: ${current?.name ?? ""}`} className="flex min-h-[var(--hit-min)] w-full items-center gap-2 rounded-lg px-2 text-start text-sm text-foreground hover:bg-background-muted/60 pointer-fine:min-h-9">
+            {current && <WorkspaceLogo src={current.logo} name={current.name} size={28} className="text-sm" />}
             <span className="min-w-0 flex-1">
               <span className="block text-xs text-foreground-muted">{t.switcher}</span>
               <span className="flex min-w-0 items-center gap-1.5">
