@@ -26,7 +26,7 @@ import { appOrigin } from "@/lib/origin";
 import { brandIdOfScope } from "@/lib/brands";
 import { settingsPath } from "@/lib/settings-nav";
 import { dropSnapshotIfStoreChanged, storeIdentity } from "@/lib/store-sales";
-import { connectCalendar } from "@/lib/secretary-gcal";
+import { connectCalendar, connectCalendarVia } from "@/lib/secretary-gcal";
 import type { CalProvider } from "@/lib/connectors/registry";
 import { appHrefIn } from "@/lib/ws-href";
 import { appHref } from "@/lib/ws-path";
@@ -57,7 +57,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ provider: strin
   const page = cal ? "/todo" : brand ? settingsPath("connections") : "/integrations";
   const back = (q: string) => NextResponse.redirect(`${origin}${st ? appHrefIn(st.email, lang, `${page}?${q}`, brand) : appHref(lang, `${page}?${q}`)}`);
   // A Composio flow comes back with no code: the account was created at start and is verified below.
-  if (!st || (!code && (cal || st.via !== "composio"))) {
+  if (!st || (!code && st.via !== "composio")) {
     const err = url.searchParams.get("error");
     if (cal) return back(`cal_error=${err === "access_denied" ? "denied" : "invalid_state"}`);
     return back(`error=${encodeURIComponent(err ?? "invalid_state")}`);
@@ -75,6 +75,26 @@ export async function GET(req: Request, ctx: { params: Promise<{ provider: strin
   if ((st.actor || u.email) !== (u.actor?.email ?? "")) return back(mismatch);
   // Re-checked here, not only at start: a role removed while the provider's page was open does not finish the connection.
   if (!can(u, cal ? "calendar.link" : "connectors")) return back(cal ? "cal_error=forbidden" : "error=forbidden");
+  if (cal && st.via === "composio") {
+    // Reem's calendar through Composio (rule 4260): the account is checked ACTIVE and this workspace's, then `connectCalendarVia`
+    // writes the link. Like the direct branch below it always returns, so this provider never reaches `saveConnection`.
+    const toolkit = st.toolkit ?? "";
+    if (!isToolkit(toolkit) || !(PROVIDER_TOOLKITS[p.id] ?? []).includes(toolkit) || !st.accountId) return back("cal_error=invalid_state");
+    let linked = false;
+    try {
+      await composioVerify(st.email, toolkit, st.accountId);
+      const r = await connectCalendarVia(st.email, u.actor!.email, st.accountId, Date.now());
+      linked = r.ok;
+      // Not linked: the account Composio made would otherwise stay ACTIVE there with nothing in our records.
+      if (!r.ok) await composioDiscard(st.accountId);
+      return back(r.ok ? "cal=choose" : `cal_error=${r.code}`);
+    } catch (e) {
+      if (!linked) await composioDiscard(st.accountId);
+      const msg = e instanceof Error ? e.message : "";
+      console.error("calendar composio callback failed", /^[a-z_]+$/.test(msg) ? msg : "error");
+      return back(msg === "connect_failed" ? "cal_error=token_failed" : "cal_error=provider_error");
+    }
+  }
   if (cal) {
     // The calendar link is written by `connectCalendar`; this branch always returns, so a calendar provider never reaches
     // `saveConnection` below (ruling R4). Only the exception's name is logged: its message can carry the provider's text.

@@ -27,6 +27,12 @@
  * rename on a clash, so an export never overwrites the customer's file; OneDrive's land in "/Thakeen". What a download
  * returns is untrusted: cloud-drives.ts checks its size, its magic bytes or its UTF-8 before anything keeps it.
  *
+ * Google Calendar is Reem's marketing calendar read through Composio instead of Thakeen's own Google app (rules 4260-4279,
+ * src/lib/secretary-gcal-via.ts): the list of the account's own calendars and one events read, `write: {}`, so no tool here
+ * creates, moves, edits or deletes an event, shares a calendar or sends an invitation. The events read always carries
+ * `fields`, a constant selector with the same event fields the direct path asks Google for (no description, attendee
+ * names, place or meeting link). What it returns is untrusted: `keepGoogle` reads each item.
+ *
  * Not here on purpose: ad writes (money moves need their own spec, evaluation spec C-R1), comments and messages (untrusted
  * input with no feature to use it), Google Business Profile (Composio lists no toolkit for it), Calendly and Cal.com
  * (Reem B2 receives their webhooks directly, evaluation spec C-R4).
@@ -34,7 +40,7 @@
 export type Toolkit =
   | "facebook" | "instagram" | "twitter" | "linkedin" | "tiktok" | "whatsapp" | "youtube"
   | "metaads" | "snapchat" | "googleads" | "tiktok_ads" | "linkedin_ads" | "google_analytics" | "google_search_console"
-  | "googledocs" | "googlesheets" | "googledrive" | "dropbox" | "one_drive";
+  | "googledocs" | "googlesheets" | "googledrive" | "dropbox" | "one_drive" | "googlecalendar";
 
 type Tools = Readonly<Record<string, readonly string[]>>;
 /**
@@ -216,6 +222,18 @@ export const TOOLKITS: Readonly<Record<Toolkit, ToolkitEntry>> = {
     write: { ONE_DRIVE_ONEDRIVE_UPLOAD_FILE: ["file", "folder", "conflict_behavior"] },
     fixed: { ONE_DRIVE_ONEDRIVE_UPLOAD_FILE: { folder: "/Thakeen", conflict_behavior: "rename" } },
   },
+  // ---------- read only: Reem's marketing calendar (src/lib/secretary-gcal-via.ts), next to the direct Google app ----------
+  // Argument names read on docs.composio.dev/toolkits/googlecalendar on 2026-10-25. Free/busy and event writes are not listed:
+  // Reem works out free time from the synced meetings and does not write events.
+  googlecalendar: {
+    provider: "gcal",
+    authEnv: "COMPOSIO_AUTH_GOOGLECALENDAR",
+    read: {
+      GOOGLECALENDAR_LIST_CALENDARS: ["min_access_role", "max_results"],
+      GOOGLECALENDAR_EVENTS_LIST: ["calendarId", "timeMin", "timeMax", "singleEvents", "orderBy", "maxResults", "fields"],
+    },
+    write: {},
+  },
 };
 
 /** Which toolkits each provider connects through, in the order the Integrations card offers them. */
@@ -236,6 +254,7 @@ export const PROVIDER_TOOLKITS: Readonly<Record<string, readonly Toolkit[]>> = {
   google_drive: ["googledrive"],
   dropbox: ["dropbox"],
   onedrive: ["one_drive"],
+  gcal: ["googlecalendar"],
 };
 
 export const isToolkit = (s: string): s is Toolkit => Object.prototype.hasOwnProperty.call(TOOLKITS, s);
