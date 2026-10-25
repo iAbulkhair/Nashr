@@ -21,7 +21,7 @@ import LangToggle from "@/components/LangToggle";
 import Wordmark from "@/components/Wordmark";
 import LimitModal from "@/components/app/LimitModal";
 import { getBrand, pendingCount } from "@/lib/brand";
-import { listNotifs } from "@/lib/notifications";
+import { listNotifs, visibleNotifs } from "@/lib/notifications";
 import { WorkspaceProvider } from "@/components/app/WorkspaceContext";
 import { sc } from "@/lib/auth";
 import { can } from "@/lib/roles";
@@ -91,7 +91,7 @@ export default async function AppLayout({ children, params }: { children: React.
   // session's, never the request's.
   // The acting person's picture (rule 3502) in the same round: the session's person, never one from the request.
   // The workspace's logo (rule 3610) too: the session's account, never one from the request.
-  const [brand, notifs, toApprove, avatar, workspaceLogo] = await Promise.all([getBrand(sc(user)), listNotifs(acct(user)), pendingCount(sc(user)), user.actor ? getAvatar(user.actor.pid) : Promise.resolve(null), getLogo(aidOf(user))]);
+  const [brand, notifs, toApprove, avatar, workspaceLogo] = await Promise.all([getBrand(sc(user)), listNotifs(acct(user)).then((all) => visibleNotifs(all, user)), pendingCount(sc(user)), user.actor ? getAvatar(user.actor.pid) : Promise.resolve(null), getLogo(aidOf(user))]);
   const unread = notifs.filter((n) => !n.read).length;
   // `user` is the ACCOUNT (the owner's record); the person acting is `user.actor`. Plan and credits belong to the account,
   // the name, email and role shown are the actor's. The flags only hide controls; the routes enforce the same `can()`.

@@ -13,6 +13,13 @@ import { wipeAccount } from "@/lib/account";
 import { moveUnverifiedAccount } from "@/lib/verify-email";
 import type { PasskeySetValue } from "@/lib/stored";
 
+// Pins the R1/M1 shape (the rollback floor, rule 3814): both switches are on since the enable release (rules 3810-3829), and
+// this file turns them off. It proves how the set follows a LEGACY person (an owner's person id is its account id, a member's
+// its address) through the copy-to-a-new-record moves and through a removal that deletes the login; with the switches on an
+// owner moves in place (the person id never changes, so no set moves) and a removed member keeps the person.
+vi.mock("@/lib/multi-org", async (orig) => ({ ...(await orig<typeof import("@/lib/multi-org")>()), MULTI_ORG: false }));
+vi.mock("@/lib/account-id", async (orig) => ({ ...(await orig<typeof import("@/lib/account-id")>()), OPAQUE_IDS: false }));
+
 type Mail = { to: string; subject: string; text: string };
 let mails: Mail[] = [];
 vi.mock("@/lib/notify", async (orig) => ({

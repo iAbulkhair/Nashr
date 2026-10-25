@@ -77,13 +77,22 @@ test("the owner deletes the account from the Danger zone; members, invites and d
     expect((await deleted).status()).toBe(200);
     await page.waitForURL((u) => u.pathname === "/en" || u.pathname === "/en/");
 
-    // Everything is gone. The owner's session, even a copy of it, is refused; so is the member's. Neither can log in again.
+    // Everything is gone. The owner's session, even a copy of it, is refused; so is the member's, and the owner cannot log in again.
     expect((await page.request.get("/api/tasks")).status()).toBe(401);
     expect((await ownerCopy.get("/api/tasks")).status()).toBe(401);
     expect((await memberApi.get("/api/team")).status()).toBe(401);
-    for (const who of [owner, member]) {
-      const login = await request.post("/api/auth/login", { data: { email: who.email, password: who.password }, headers: { "x-forwarded-for": simulatedIp(`${seed}-${who.email}`) } });
-      expect(login.status(), `${who.email} can still log in`).toBe(401);
+    const ownerLogin = await request.post("/api/auth/login", { data: { email: owner.email, password: owner.password }, headers: { "x-forwarded-for": simulatedIp(`${seed}-${owner.email}`) } });
+    expect(ownerLogin.status(), `${owner.email} can still log in`).toBe(401);
+    // The member is a person of their own, kept with no workspace (rules 2124, 2126; spec decision 10): the login works
+    // and opens nothing of the deleted account.
+    const memberAgain = await playwright.request.newContext({ baseURL: baseURL! });
+    try {
+      const login = await memberAgain.post("/api/auth/login", { data: { email: member.email, password: member.password }, headers: { "x-forwarded-for": simulatedIp(`${seed}-${member.email}`) } });
+      expect(login.status(), await login.text()).toBe(200);
+      expect(((await (await memberAgain.get("/api/workspaces")).json()) as { workspaces: unknown[] }).workspaces).toEqual([]);
+      expect((await memberAgain.get("/api/team")).status()).toBe(401);
+    } finally {
+      await memberAgain.dispose();
     }
     // The pending invite died with the account: it previews as invalid and cannot be accepted.
     const peek = await request.post("/api/team/accept", { data: { token: pendingToken }, headers: { "x-forwarded-for": simulatedIp(seed) } });

@@ -1,5 +1,5 @@
-import { describe, expect, it, vi } from "vitest";
-import { addShadowMembership, json, newMember, newUser, params, signIn, withHeaders } from "./helpers/session";
+import { describe, expect, it } from "vitest";
+import { addShadowMembership, json, newMember, newUser, params, signIn, useWorkspace, withHeaders } from "./helpers/session";
 import * as proposalRoute from "@/app/api/brand/proposals/[id]/route";
 import { trackRounds } from "./helpers/rounds";
 import { acct, currentUser, currentUserUnverified, sc, sessionKey } from "@/lib/auth";
@@ -10,7 +10,6 @@ import { deleteMembership, withAccountTeamLock } from "@/lib/team";
 import { wsHandle } from "@/lib/ws-handle";
 import { WS_HEADER } from "@/lib/ws-path";
 
-vi.mock("@/lib/multi-org", async (orig) => ({ ...(await orig<typeof import("@/lib/multi-org")>()), MULTI_ORG: true }));
 
 /**
  * Multi-workspace M2 (docs/specs/2026-10-18-multi-org.md section 7 "Workspace in the link"), with `MULTI_ORG` on for
@@ -144,6 +143,7 @@ describe("rule 2113: the route wrapper checks the workspace too", () => {
   it("no handle: 409 workspace_missing before anything runs", async () => {
     const { u } = await ownerWithTwo();
     await signIn(u.email);
+    useWorkspace(null); // a client that names no workspace (the test client names the session's by default, rule 3811)
     const r = await post({});
     expect(r.status).toBe(409);
     expect(await r.json()).toEqual({ ok: false, error: "workspace_missing" });

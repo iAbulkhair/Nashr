@@ -15,11 +15,10 @@ import { wsHandle } from "@/lib/ws-handle";
 import { switchTarget } from "@/lib/ws-path";
 import { addShadowMembership, json, markVerified, newMember, newUser, signIn } from "./helpers/session";
 
-vi.mock("@/lib/multi-org", async (orig) => ({ ...(await orig<typeof import("@/lib/multi-org")>()), MULTI_ORG: true }));
 
 /**
  * Multi-workspace M2, the workspaces routes (docs/specs/2026-10-18-multi-org.md sections 7 "Switching" and 10), with
- * `MULTI_ORG` on for this file. Rule 2123: create needs a verified person, `wscreate` allows 3 per person per day, the
+ * `MULTI_ORG` on (the release switch since M2 enable). Rule 2123: create needs a verified person, `wscreate` allows 3 per person per day, the
  * owned cap is 3 unless `ownedCap` raises it, the trial is once per person, and the new `a_` account is in `users:all`
  * and `orgs:`, owned by the person (`ownerPid`), with the session and `lastorg:` moved to it. Rule 2112 (switch half):
  * a switch to an own workspace rewrites the session's `acct` (TTL kept) and `lastorg:`, never the brand choice; a

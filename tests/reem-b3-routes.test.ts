@@ -8,6 +8,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { json, newMember, newUser, params, signIn, signOut, type Fixture, seedActiveBrand } from "./helpers/session";
+import { acct } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { SEC_KEYS } from "@/lib/secretary";
 import { addBrand } from "@/lib/brands";
@@ -116,11 +117,11 @@ describe("rule 912: choosing the calendar needs proof or the owner's declaration
   it("a Gmail link refuses a choice without declare, and nothing is saved", async () => {
     fakeProviders();
     const o = await owner();
-    await putLink(o.email, seed(o.email, { accountDomain: undefined, account: "shop@gmail.com" }));
+    await putLink(acct(o), seed(o.email, { accountDomain: undefined, account: "shop@gmail.com" }));
     const res = await put({ choice: 0, rev: 1 });
     expect(res.status).toBe(400);
     expect((await body(res)).error).toBe("declaration_required");
-    const stored = (await getLink(o.email))!;
+    const stored = (await getLink(acct(o)))!;
     expect(stored).toMatchObject({ state: "choose", rev: 1 });
     expect(stored.calendarId).toBeUndefined();
     expect(stored.choices).toBeDefined();
@@ -129,26 +130,26 @@ describe("rule 912: choosing the calendar needs proof or the owner's declaration
   it("declare: true saves proof declaration with the owner's login and the text version, state ok, rev + 1, choices cleared, sync due now", async () => {
     fakeProviders();
     const o = await owner();
-    await putLink(o.email, seed(o.email, { accountDomain: undefined, account: "shop@gmail.com" }));
-    await putEvents(o.email, { syncedAt: 1, events: [{ start: "2026-10-05T10:00:00Z", end: "2026-10-05T11:00:00Z", title: "old calendar's", allDay: false }] });
+    await putLink(acct(o), seed(o.email, { accountDomain: undefined, account: "shop@gmail.com" }));
+    await putEvents(acct(o), { syncedAt: 1, events: [{ start: "2026-10-05T10:00:00Z", end: "2026-10-05T11:00:00Z", title: "old calendar's", allDay: false }] });
     const before = Date.now();
     const res = await put({ choice: 1, declare: true, rev: 1 });
     expect(res.status).toBe(200);
     const b = await body(res);
     expect(b.link).toMatchObject({ provider: "gcal", account: "shop@gmail.com", calendarName: "Campaigns", proof: "declaration", state: "ok", rev: 2 });
-    const stored = (await getLink(o.email))!;
+    const stored = (await getLink(acct(o)))!;
     expect(stored).toMatchObject({ state: "ok", proof: "declaration", calendarId: CAL2, calendarName: "Campaigns", rev: 2 });
     expect(stored.declaration).toMatchObject({ by: o.email, v: 1 });
     expect(Number.isNaN(Date.parse(stored.declaration!.at))).toBe(false);
     expect(stored.choices).toBeUndefined();
     expect(stored.lostReason).toBeUndefined();
-    const due = await db.zscore(SEC_KEYS.calDue, o.email);
+    const due = await db.zscore(SEC_KEYS.calDue, acct(o));
     expect(due).not.toBeNull();
     expect(due!).toBeGreaterThanOrEqual(before);
     expect(due!).toBeLessThanOrEqual(Date.now());
     // The earlier calendar's events must not be served as the new calendar's.
-    expect(await db.get(SEC_KEYS.calEvents(o.email))).toBeNull();
-    const log = await auditOf(o.email);
+    expect(await db.get(SEC_KEYS.calEvents(acct(o)))).toBeNull();
+    const log = await auditOf(acct(o));
     expect(log.find((l) => l.action === "cal_choose")).toMatchObject({ actor: "owner", login: o.email, diff: "provider=gcal" });
     expect(JSON.stringify(log)).not.toContain("shop@gmail.com");
     expect(JSON.stringify(log)).not.toContain(CAL2);
@@ -157,7 +158,7 @@ describe("rule 912: choosing the calendar needs proof or the owner's declaration
   it("a choice outside the stored choices, or not an index, is 400 bad_request", async () => {
     fakeProviders();
     const o = await owner();
-    await putLink(o.email, seed(o.email));
+    await putLink(acct(o), seed(o.email));
     for (const choice of [2, 99, -1, 0.5, "0", null, undefined, true]) {
       const res = await put({ choice, declare: true, rev: 1 });
       expect(res.status, JSON.stringify(choice)).toBe(400);
@@ -167,17 +168,17 @@ describe("rule 912: choosing the calendar needs proof or the owner's declaration
     expect((await put({ choice: 0, declare: false, rev: 1 })).status).toBe(400);
     expect((await put({ choice: 0, declare: true, rev: "1" })).status).toBe(400);
     expect((await put({ choice: 0, declare: true })).status).toBe(400);
-    expect((await getLink(o.email))!.rev).toBe(1);
+    expect((await getLink(acct(o)))!.rev).toBe(1);
   });
 
   it("choices older than 10 minutes, or none, are 409 choices_expired", async () => {
     fakeProviders();
     const o = await owner();
-    await putLink(o.email, seed(o.email, { choices: { ids: [CAL1], names: ["Marketing"], until: NOW() - 1 } }));
+    await putLink(acct(o), seed(o.email, { choices: { ids: [CAL1], names: ["Marketing"], until: NOW() - 1 } }));
     const res = await put({ choice: 0, declare: true, rev: 1 });
     expect(res.status).toBe(409);
     expect((await body(res)).error).toBe("choices_expired");
-    await putLink(o.email, seed(o.email, { choices: undefined }));
+    await putLink(acct(o), seed(o.email, { choices: undefined }));
     const res2 = await put({ choice: 0, declare: true, rev: 1 });
     expect(res2.status).toBe(409);
     expect((await body(res2)).error).toBe("choices_expired");
@@ -187,17 +188,17 @@ describe("rule 912: choosing the calendar needs proof or the owner's declaration
   it("a calendar the live list no longer shows as owned is 400 not_owned", async () => {
     fakeProviders({ owned: [{ id: CAL2, name: "Campaigns" }] });
     const o = await owner();
-    await putLink(o.email, seed(o.email));
+    await putLink(acct(o), seed(o.email));
     const res = await put({ choice: 0, declare: true, rev: 1 });
     expect(res.status).toBe(400);
     expect((await body(res)).error).toBe("not_owned");
-    expect(await getLink(o.email)).toMatchObject({ state: "choose", rev: 1 });
+    expect(await getLink(acct(o))).toMatchObject({ state: "choose", rev: 1 });
   });
 
   it("a second choice of another calendar asks for the declaration again; the stale rev is 409 stale", async () => {
     fakeProviders();
     const o = await owner();
-    await putLink(o.email, seed(o.email, { accountDomain: undefined, account: "shop@gmail.com" }));
+    await putLink(acct(o), seed(o.email, { accountDomain: undefined, account: "shop@gmail.com" }));
     expect((await put({ choice: 0, declare: true, rev: 1 })).status).toBe(200);
     expect((await list()).status).toBe(200);
     const stale = await put({ choice: 1, declare: true, rev: 1 });
@@ -206,20 +207,20 @@ describe("rule 912: choosing the calendar needs proof or the owner's declaration
     const again = await put({ choice: 1, rev: 2 });
     expect(again.status).toBe(400);
     expect((await body(again)).error).toBe("declaration_required");
-    expect(await getLink(o.email)).toMatchObject({ calendarId: CAL1, rev: 2 });
+    expect(await getLink(acct(o))).toMatchObject({ calendarId: CAL1, rev: 2 });
     expect((await put({ choice: 1, declare: true, rev: 2 })).status).toBe(200);
-    expect(await getLink(o.email)).toMatchObject({ calendarId: CAL2, rev: 3 });
+    expect(await getLink(acct(o))).toMatchObject({ calendarId: CAL2, rev: 3 });
   });
 
   it("the provider's hd matching the brand's website is proof domain with no declaration, and none is stored", async () => {
     fakeProviders();
     const o = await owner();
-    await saveBrand(o.email, brand("https://www.shop.brand.example/"));
-    await putLink(o.email, seed(o.email));
+    await saveBrand(acct(o), brand("https://www.shop.brand.example/"));
+    await putLink(acct(o), seed(o.email));
     const res = await put({ choice: 0, rev: 1 });
     expect(res.status).toBe(200);
     expect((await body(res)).link).toMatchObject({ proof: "domain", state: "ok" });
-    const stored = (await getLink(o.email))!;
+    const stored = (await getLink(acct(o)))!;
     expect(stored.proof).toBe("domain");
     expect(stored.declaration).toBeUndefined();
   });
@@ -227,27 +228,27 @@ describe("rule 912: choosing the calendar needs proof or the owner's declaration
   it("an hd that does not match the website still needs the declaration", async () => {
     fakeProviders();
     const o = await owner();
-    await saveBrand(o.email, brand("https://other.example"));
-    await putLink(o.email, seed(o.email));
+    await saveBrand(acct(o), brand("https://other.example"));
+    await putLink(acct(o), seed(o.email));
     expect((await body(await put({ choice: 0, rev: 1 }))).error).toBe("declaration_required");
   });
 
   it("a Google refresh with no id_token keeps the stored domain: an hd link stays proof domain, a Gmail link still demands a declaration (ruling R3)", async () => {
     fakeProviders({ newRefresh: null, refreshIdToken: null });
     const o = await owner();
-    await saveBrand(o.email, brand("https://brand.example"));
+    await saveBrand(acct(o), brand("https://brand.example"));
     const expired = sealTokens({ access: "OLD", refresh: REFRESH, expiresAt: NOW() - 1000 });
-    await putLink(o.email, seed(o.email, { tokens: expired }));
+    await putLink(acct(o), seed(o.email, { tokens: expired }));
     const res = await put({ choice: 0, rev: 1 });
     expect(res.status).toBe(200);
     expect((await body(res)).link).toMatchObject({ proof: "domain" });
     expect(calls.filter((c) => c.url.endsWith("/token")).length).toBe(1);
     // The refreshed access is stored, the refresh token the answer did not carry is kept.
-    expect(openTokens((await getLink(o.email))!)).toMatchObject({ access: "NEW-ACCESS", refresh: REFRESH });
+    expect(openTokens((await getLink(acct(o)))!)).toMatchObject({ access: "NEW-ACCESS", refresh: REFRESH });
 
     const g = await owner("calrt");
-    await saveBrand(g.email, brand("https://brand.example"));
-    await putLink(g.email, seed(g.email, { account: "shop@gmail.com", accountDomain: undefined, tokens: expired }));
+    await saveBrand(acct(g), brand("https://brand.example"));
+    await putLink(acct(g), seed(g.email, { account: "shop@gmail.com", accountDomain: undefined, tokens: expired }));
     const res2 = await put({ choice: 0, rev: 1 });
     expect(res2.status).toBe(400);
     expect((await body(res2)).error).toBe("declaration_required");
@@ -256,40 +257,40 @@ describe("rule 912: choosing the calendar needs proof or the owner's declaration
   it("a Google refresh that does return an id_token is re-proved: an hd that no longer matches drops proof domain; a rotated refresh token is stored", async () => {
     fakeProviders({ refreshIdToken: idToken({ email: "o@brand.example", email_verified: true, hd: "moved.example" }), newRefresh: "ROTATED" });
     const o = await owner();
-    await saveBrand(o.email, brand("https://brand.example"));
-    await putLink(o.email, seed(o.email, { tokens: sealTokens({ access: "OLD", refresh: REFRESH, expiresAt: NOW() + 60_000 }) }));
+    await saveBrand(acct(o), brand("https://brand.example"));
+    await putLink(acct(o), seed(o.email, { tokens: sealTokens({ access: "OLD", refresh: REFRESH, expiresAt: NOW() + 60_000 }) }));
     expect((await body(await put({ choice: 0, rev: 1 }))).error).toBe("declaration_required");
-    expect(openTokens((await getLink(o.email))!)).toMatchObject({ access: "NEW-ACCESS", refresh: "ROTATED" });
+    expect(openTokens((await getLink(acct(o)))!)).toMatchObject({ access: "NEW-ACCESS", refresh: "ROTATED" });
     const res = await put({ choice: 0, declare: true, rev: 1 });
     expect(res.status).toBe(200);
-    expect(await getLink(o.email)).toMatchObject({ proof: "declaration", accountDomain: "moved.example" });
+    expect(await getLink(acct(o))).toMatchObject({ proof: "declaration", accountDomain: "moved.example" });
   });
 
   it("Outlook: a work tenant re-proves through Graph every save, even with no refresh; a consumer account needs the declaration; only owned, editable calendars count", async () => {
     fakeProviders();
     const o = await owner();
-    await saveBrand(o.email, brand("https://brand.example"));
-    await putLink(o.email, seed(o.email, { provider: "mscal", choices: { ids: [CAL1, CAL2], names: ["Marketing", "Campaigns"], until: NOW() + 600_000 } }));
+    await saveBrand(acct(o), brand("https://brand.example"));
+    await putLink(acct(o), seed(o.email, { provider: "mscal", choices: { ids: [CAL1, CAL2], names: ["Marketing", "Campaigns"], until: NOW() + 600_000 } }));
     const res = await put({ choice: 1, rev: 1 });
     expect(res.status).toBe(200);
     expect((await body(res)).link).toMatchObject({ provider: "mscal", proof: "domain", calendarName: "Campaigns" });
     expect(calls.some((c) => c.url.startsWith("https://graph.microsoft.com/v1.0/organization"))).toBe(true);
     expect((await list()).status).toBe(200);
-    const names = ((await getLink(o.email))!.choices!).names;
+    const names = ((await getLink(acct(o)))!.choices!).names;
     expect(names).toEqual(["Marketing", "Campaigns"]);
 
     // The organization stops listing the domain: the stored work-tenant claim is not trusted.
     fakeProviders({ orgDomains: ["unrelated.example"] });
     const p = await owner("calrt");
-    await saveBrand(p.email, brand("https://brand.example"));
-    await putLink(p.email, seed(p.email, { provider: "mscal" }));
+    await saveBrand(acct(p), brand("https://brand.example"));
+    await putLink(acct(p), seed(p.email, { provider: "mscal" }));
     expect((await body(await put({ choice: 0, rev: 1 }))).error).toBe("declaration_required");
 
     // A personal Microsoft account never had a domain.
     fakeProviders();
     const c = await owner("calrt");
-    await saveBrand(c.email, brand("https://brand.example"));
-    await putLink(c.email, seed(c.email, { provider: "mscal", accountDomain: undefined }));
+    await saveBrand(acct(c), brand("https://brand.example"));
+    await putLink(acct(c), seed(c.email, { provider: "mscal", accountDomain: undefined }));
     expect((await body(await put({ choice: 0, rev: 1 }))).error).toBe("declaration_required");
     expect(calls.some((x) => x.url.startsWith("https://graph.microsoft.com/v1.0/organization"))).toBe(false);
   });
@@ -298,23 +299,23 @@ describe("rule 912: choosing the calendar needs proof or the owner's declaration
     const log = vi.spyOn(console, "error").mockImplementation(() => {});
     fakeProviders({ refreshStatus: 400, refreshBody: `{"error":"invalid_grant","error_description":"${PROVIDER_TEXT}"}` });
     const o = await owner();
-    await putLink(o.email, seed(o.email, { tokens: sealTokens({ access: "OLD", refresh: REFRESH, expiresAt: NOW() - 1000 }) }));
-    await putEvents(o.email, { syncedAt: Date.now(), events: [] });
+    await putLink(acct(o), seed(o.email, { tokens: sealTokens({ access: "OLD", refresh: REFRESH, expiresAt: NOW() - 1000 }) }));
+    await putEvents(acct(o), { syncedAt: Date.now(), events: [] });
     const res = await put({ choice: 0, declare: true, rev: 1 });
     expect(res.status).toBe(502);
     const text = JSON.stringify(await res.json());
     expect(text).toContain("provider_error");
     expect(text).not.toContain(PROVIDER_TEXT);
-    expect(await getLink(o.email)).toMatchObject({ state: "reconnect", lostReason: "token" });
-    expect(await db.get(SEC_KEYS.calEvents(o.email))).toBeNull();
-    expect((await auditOf(o.email)).find((l) => l.action === "cal_lost")).toMatchObject({ login: o.email, diff: "provider=gcal" });
+    expect(await getLink(acct(o))).toMatchObject({ state: "reconnect", lostReason: "token" });
+    expect(await db.get(SEC_KEYS.calEvents(acct(o)))).toBeNull();
+    expect((await auditOf(acct(o))).find((l) => l.action === "cal_lost")).toMatchObject({ login: o.email, diff: "provider=gcal" });
 
     fakeProviders({ refreshStatus: 503 });
     const p = await owner("calrt");
-    await putLink(p.email, seed(p.email, { tokens: sealTokens({ access: "OLD", refresh: REFRESH, expiresAt: NOW() - 1000 }) }));
+    await putLink(acct(p), seed(p.email, { tokens: sealTokens({ access: "OLD", refresh: REFRESH, expiresAt: NOW() - 1000 }) }));
     const res2 = await put({ choice: 0, declare: true, rev: 1 });
     expect(res2.status).toBe(502);
-    expect(await getLink(p.email)).toMatchObject({ state: "choose" });
+    expect(await getLink(acct(p))).toMatchObject({ state: "choose" });
     expect(JSON.stringify(log.mock.calls)).not.toContain(PROVIDER_TEXT);
   });
 
@@ -323,7 +324,7 @@ describe("rule 912: choosing the calendar needs proof or the owner's declaration
     const o = await owner();
     expect((await put({ choice: 0, declare: true, rev: 1 })).status).toBe(404);
     expect((await list()).status).toBe(404);
-    await putLink(o.email, seed(o.email, { state: "reconnect", lostReason: "token" }));
+    await putLink(acct(o), seed(o.email, { state: "reconnect", lostReason: "token" }));
     const res = await put({ choice: 0, declare: true, rev: 1 });
     expect(res.status).toBe(404);
     expect((await body(res)).error).toBe("not_linked");
@@ -336,40 +337,40 @@ describe("rule 912 (ruling R8): the calendar lock is owned, and a slow choose ca
   it("a busy calendar lock is 503 provider_error on the choice, the list and the unlink, and nothing is touched", async () => {
     fakeProviders();
     const o = await owner();
-    await putLink(o.email, seed(o.email));
-    expect(await db.lock(SEC_KEYS.lock(o.email, "callink"), 60)).toBe(true);
+    await putLink(acct(o), seed(o.email));
+    expect(await db.lock(SEC_KEYS.lock(acct(o), "callink"), 60)).toBe(true);
     const all = await Promise.all([put({ choice: 0, declare: true, rev: 1 }), list(), del()]);
     expect(all.map((r) => r.status)).toEqual([503, 503, 503]);
     for (const r of all) expect((await body(r)).error).toBe("provider_error");
-    expect(await getLink(o.email)).toMatchObject({ state: "choose", rev: 1 });
+    expect(await getLink(acct(o))).toMatchObject({ state: "choose", rev: 1 });
     expect(calls.length).toBe(0);
   });
 
   it("an unlink that lands while a choose waits on the provider wins: 409 stale and nothing is written back", async () => {
     const o = await owner();
-    await putLink(o.email, seed(o.email));
-    await scheduleSync(o.email, 0);
-    await db.zrem(SEC_KEYS.calDue, o.email);
-    fakeProviders({ onList: async () => { await db.del(SEC_KEYS.calLink(o.email)); } });
+    await putLink(acct(o), seed(o.email));
+    await scheduleSync(acct(o), 0);
+    await db.zrem(SEC_KEYS.calDue, acct(o));
+    fakeProviders({ onList: async () => { await db.del(SEC_KEYS.calLink(acct(o))); } });
     const res = await put({ choice: 0, declare: true, rev: 1 });
     expect(res.status).toBe(409);
     expect((await body(res)).error).toBe("stale");
-    expect(await getLink(o.email)).toBeNull();
-    expect(await db.zscore(SEC_KEYS.calDue, o.email)).toBeNull();
-    expect((await auditOf(o.email)).some((l) => l.action === "cal_choose")).toBe(false);
+    expect(await getLink(acct(o))).toBeNull();
+    expect(await db.zscore(SEC_KEYS.calDue, acct(o))).toBeNull();
+    expect((await auditOf(acct(o))).some((l) => l.action === "cal_choose")).toBe(false);
   });
 
   it("a rev that moved while a choose waited on the provider is 409 stale and the newer record stays", async () => {
     const o = await owner();
-    await putLink(o.email, seed(o.email));
-    fakeProviders({ onList: async () => { await putLink(o.email, { ...(await getLink(o.email))!, rev: 5 }); } });
+    await putLink(acct(o), seed(o.email));
+    fakeProviders({ onList: async () => { await putLink(acct(o), { ...(await getLink(acct(o)))!, rev: 5 }); } });
     const res = await put({ choice: 0, declare: true, rev: 1 });
     expect(res.status).toBe(409);
-    const stored = (await getLink(o.email))!;
+    const stored = (await getLink(acct(o)))!;
     expect(stored).toMatchObject({ rev: 5, state: "choose" });
     expect(stored.calendarId).toBeUndefined();
-    expect(await db.zscore(SEC_KEYS.calDue, o.email)).toBeNull();
-    expect((await auditOf(o.email)).some((l) => l.action === "cal_choose")).toBe(false);
+    expect(await db.zscore(SEC_KEYS.calDue, acct(o))).toBeNull();
+    expect((await auditOf(acct(o))).some((l) => l.action === "cal_choose")).toBe(false);
   });
 
   it("a refresh slower than 8 s is retry (nothing written), not a hang", async () => {
@@ -378,11 +379,11 @@ describe("rule 912 (ruling R8): the calendar lock is owned, and a slow choose ca
       vi.stubGlobal("fetch", vi.fn(() => new Promise<Response>(() => {})));
       const o = await newUser("calslow");
       const l = seed(o.email, { tokens: sealTokens({ access: "OLD", refresh: REFRESH, expiresAt: NOW() - 1000 }) });
-      await putLink(o.email, l);
-      const p = freshAccess(o.email, l, NOW());
+      await putLink(acct(o), l);
+      const p = freshAccess(acct(o), l, NOW());
       await vi.advanceTimersByTimeAsync(8_000);
       expect(await p).toEqual({ ok: false, retry: true });
-      expect(await getLink(o.email)).toEqual(l);
+      expect(await getLink(acct(o))).toEqual(l);
     } finally {
       vi.useRealTimers();
     }
@@ -396,41 +397,41 @@ describe("rule 912 (ruling R9): only invalid_grant, or a 401 from the calendar l
     vi.spyOn(console, "error").mockImplementation(() => {});
     fakeProviders({ refreshStatus: 401 });
     const o = await owner();
-    await putLink(o.email, seed(o.email, { state: "ok", proof: "domain", calendarId: CAL1, tokens: expired() }));
-    await putEvents(o.email, { syncedAt: Date.now(), events: [] });
+    await putLink(acct(o), seed(o.email, { state: "ok", proof: "domain", calendarId: CAL1, tokens: expired() }));
+    await putEvents(acct(o), { syncedAt: Date.now(), events: [] });
     const res = await put({ choice: 0, declare: true, rev: 1 });
     expect(res.status).toBe(502);
     expect((await list()).status).toBe(502);
-    expect(await getLink(o.email)).toMatchObject({ state: "ok", rev: 1 });
-    expect(await db.get(SEC_KEYS.calEvents(o.email))).not.toBeNull();
-    expect((await auditOf(o.email)).some((l) => l.action === "cal_lost")).toBe(false);
+    expect(await getLink(acct(o))).toMatchObject({ state: "ok", rev: 1 });
+    expect(await db.get(SEC_KEYS.calEvents(acct(o)))).not.toBeNull();
+    expect((await auditOf(acct(o))).some((l) => l.action === "cal_lost")).toBe(false);
   });
 
   it("a 401 from the calendar list after a fresh refresh marks the link reconnect, on the choice and on the list", async () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     fakeProviders({ listStatus: 401 });
     const o = await owner();
-    await putLink(o.email, seed(o.email, { tokens: expired() }));
+    await putLink(acct(o), seed(o.email, { tokens: expired() }));
     const res = await put({ choice: 0, declare: true, rev: 1 });
     expect(res.status).toBe(502);
     expect(JSON.stringify(await res.json())).not.toContain(PROVIDER_TEXT);
-    expect(await getLink(o.email)).toMatchObject({ state: "reconnect", lostReason: "token" });
-    expect((await auditOf(o.email)).find((l) => l.action === "cal_lost")).toMatchObject({ login: o.email, diff: "provider=gcal" });
+    expect(await getLink(acct(o))).toMatchObject({ state: "reconnect", lostReason: "token" });
+    expect((await auditOf(acct(o))).find((l) => l.action === "cal_lost")).toMatchObject({ login: o.email, diff: "provider=gcal" });
 
     const p = await owner("calrt");
-    await putLink(p.email, seed(p.email, { state: "ok", proof: "domain", calendarId: CAL1, choices: undefined, tokens: expired() }));
+    await putLink(acct(p), seed(p.email, { state: "ok", proof: "domain", calendarId: CAL1, choices: undefined, tokens: expired() }));
     const res2 = await list();
     expect(res2.status).toBe(502);
-    expect(await getLink(p.email)).toMatchObject({ state: "reconnect", lostReason: "token" });
+    expect(await getLink(acct(p))).toMatchObject({ state: "reconnect", lostReason: "token" });
   });
 
   it("another list failure (500) is provider_error and the link is unchanged", async () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     fakeProviders({ listStatus: 500 });
     const o = await owner();
-    await putLink(o.email, seed(o.email));
+    await putLink(acct(o), seed(o.email));
     expect((await put({ choice: 0, declare: true, rev: 1 })).status).toBe(502);
-    expect(await getLink(o.email)).toMatchObject({ state: "choose", rev: 1 });
+    expect(await getLink(acct(o))).toMatchObject({ state: "choose", rev: 1 });
   });
 });
 
@@ -440,7 +441,7 @@ describe("rule 920 (ruling R10): a founder's support session cannot link, choose
     vi.stubEnv("ADMIN_EMAILS", FOUNDER);
     fakeProviders();
     const o = await newUser("calimp");
-    await putLink(o.email, seed(o.email));
+    await putLink(acct(o), seed(o.email));
     await signIn(o.email, { imp: FOUNDER });
     const p = await put({ choice: 0, declare: true, rev: 1 });
     expect(p.status).toBe(403);
@@ -450,7 +451,7 @@ describe("rule 920 (ruling R10): a founder's support session cannot link, choose
     expect((await list()).status).toBe(403);
     const s = await start.GET(new Request("https://app.test/api/connect/gcal/start"), params({ provider: "gcal" }));
     expect(s.status).toBe(403);
-    expect(await getLink(o.email)).toMatchObject({ state: "choose", rev: 1 });
+    expect(await getLink(acct(o))).toMatchObject({ state: "choose", rev: 1 });
     expect(calls.length).toBe(0);
   });
 });
@@ -459,7 +460,7 @@ describe("rule 912: GET calendars lists the owned calendars live and keeps the i
   it("stores the ids and names for 10 minutes, answers indexes and names, and says whether a declaration is needed", async () => {
     fakeProviders();
     const o = await owner();
-    await putLink(o.email, seed(o.email, { choices: undefined }));
+    await putLink(acct(o), seed(o.email, { choices: undefined }));
     const before = Date.now();
     const res = await list();
     expect(res.status).toBe(200);
@@ -468,7 +469,7 @@ describe("rule 912: GET calendars lists the owned calendars live and keeps the i
     const url = calls.find((c) => c.url.includes("calendarList"))!.url;
     expect(url).toContain("minAccessRole=owner");
     expect(url).toContain("maxResults=50");
-    const stored = (await getLink(o.email))!;
+    const stored = (await getLink(acct(o)))!;
     expect(stored.choices!.ids).toEqual([CAL1, CAL2]);
     expect(stored.choices!.names).toEqual(["Marketing", "Campaigns"]);
     expect(stored.choices!.until).toBeGreaterThanOrEqual(before + 600_000);
@@ -479,19 +480,19 @@ describe("rule 912: GET calendars lists the owned calendars live and keeps the i
   it("needsDeclaration is false for a proven domain, and an account with no owned calendars gets an empty list", async () => {
     fakeProviders();
     const o = await owner();
-    await saveBrand(o.email, brand("https://brand.example"));
-    await putLink(o.email, seed(o.email, { choices: undefined }));
+    await saveBrand(acct(o), brand("https://brand.example"));
+    await putLink(acct(o), seed(o.email, { choices: undefined }));
     expect((await body(await list())).needsDeclaration).toBe(false);
     fakeProviders({ owned: [] });
     const res = await list();
     expect(await body(res)).toEqual({ ok: true, calendars: [], needsDeclaration: false });
-    expect((await getLink(o.email))!.choices!.ids).toEqual([]);
+    expect((await getLink(acct(o)))!.choices!.ids).toEqual([]);
   });
 
   it("keeps at most 50, and a provider failure is 502 with no provider text", async () => {
     fakeProviders({ owned: Array.from({ length: 70 }, (_, i) => ({ id: `id${i}`, name: `Cal ${i}` })) });
     const o = await owner();
-    await putLink(o.email, seed(o.email, { choices: undefined }));
+    await putLink(acct(o), seed(o.email, { choices: undefined }));
     expect((await body(await list())).calendars!.length).toBe(50);
     fakeProviders({ listStatus: 500 });
     const res = await list();
@@ -504,9 +505,9 @@ describe("rule 920: the answers carry nothing secret; the routes are owner only,
   it("no answer holds a token, a calendar id, the declaration login or the word tokens", async () => {
     fakeProviders();
     const o = await owner();
-    await saveBrand(o.email, brand("https://brand.example"));
+    await saveBrand(acct(o), brand("https://brand.example"));
     const declared = seed(o.email, { state: "ok", proof: "declaration", declaration: { by: DECLARER, at: "2026-10-05T10:00:00.000Z", v: 1 }, calendarId: CAL1, calendarName: "Marketing", rev: 4, lastSyncAt: Date.now() });
-    await putLink(o.email, declared);
+    await putLink(acct(o), declared);
     const answers = [await get(), await list(), await put({ choice: 0, declare: true, rev: 4 })];
     expect(answers.map((r) => r.status)).toEqual([200, 200, 200]);
     answers.push(await del());
@@ -521,10 +522,10 @@ describe("rule 920: the answers carry nothing secret; the routes are owner only,
     fakeProviders();
     const o = await owner();
     const now = Date.now();
-    await putLink(o.email, seed(o.email, { state: "ok", proof: "domain", calendarId: CAL1, calendarName: "Marketing", choices: undefined, rev: 3, lastSyncAt: now - 60_000 }));
+    await putLink(acct(o), seed(o.email, { state: "ok", proof: "domain", calendarId: CAL1, calendarName: "Marketing", choices: undefined, rev: 3, lastSyncAt: now - 60_000 }));
     // Riyadh, the default zone, is UTC+3: 09:00Z is 12:00 and 07:00Z is 10:00 local.
     const day = new Date(now + 3 * 3_600_000).toISOString().slice(0, 10);
-    await putEvents(o.email, { syncedAt: now, events: [
+    await putEvents(acct(o), { syncedAt: now, events: [
       { start: `${day}T09:00:00.000Z`, end: `${day}T09:30:00.000Z`, title: "Standup", allDay: false },
       { start: `${day}T07:00:00.000Z`, end: `${day}T08:00:00.000Z`, title: "", allDay: false, private: true },
     ] });
@@ -537,15 +538,15 @@ describe("rule 920: the answers carry nothing secret; the routes are owner only,
     fakeProviders();
     const o = await owner();
     expect(await body(await get())).toEqual({ ok: true, link: null });
-    await putLink(o.email, seed(o.email, { state: "ok", proof: "domain", calendarId: CAL1, choices: undefined }));
-    await putEvents(o.email, { syncedAt: Date.now() - 46 * 60_000, events: [{ start: new Date(Date.now() - 60_000).toISOString(), end: new Date(Date.now() + 3_600_000).toISOString(), title: "Old", allDay: false }] });
+    await putLink(acct(o), seed(o.email, { state: "ok", proof: "domain", calendarId: CAL1, choices: undefined }));
+    await putEvents(acct(o), { syncedAt: Date.now() - 46 * 60_000, events: [{ start: new Date(Date.now() - 60_000).toISOString(), end: new Date(Date.now() + 3_600_000).toISOString(), title: "Old", allDay: false }] });
     expect(((await body(await get())).link as { today: unknown[] }).today).toEqual([]);
   });
 
   it("the calendars answer gives the indexes 0..n-1 and names only", async () => {
     fakeProviders();
     const o = await owner();
-    await putLink(o.email, seed(o.email, { choices: undefined }));
+    await putLink(acct(o), seed(o.email, { choices: undefined }));
     const b = await body(await list());
     expect(b.calendars!.map((c) => c.choice)).toEqual([0, 1]);
     expect(Object.keys(b.calendars![0]).sort()).toEqual(["choice", "name"]);
@@ -556,7 +557,7 @@ describe("rule 920: the answers carry nothing secret; the routes are owner only,
     const o = await newUser("calrole");
     const admin = await newMember(o, "admin");
     const member = await newMember(o, "member");
-    await putLink(o.email, seed(o.email));
+    await putLink(acct(o), seed(o.email));
     const all = () => [get(), list(), put({ choice: 0, declare: true, rev: 1 }), del()];
     await signIn(admin.email);
     expect((await Promise.all(all())).map((r) => r.status)).toEqual([403, 403, 403, 403]);
@@ -564,14 +565,14 @@ describe("rule 920: the answers carry nothing secret; the routes are owner only,
     expect((await Promise.all(all())).map((r) => r.status)).toEqual([403, 403, 403, 403]);
     signOut();
     expect((await Promise.all(all())).map((r) => r.status)).toEqual([401, 401, 401, 401]);
-    expect(await getLink(o.email)).toMatchObject({ state: "choose", rev: 1 });
+    expect(await getLink(acct(o))).toMatchObject({ state: "choose", rev: 1 });
     expect(calls.length).toBe(0);
   });
 
   it("a body field the route does not know, scope or email included, is 400 bad_request", async () => {
     fakeProviders();
     const o = await owner();
-    await putLink(o.email, seed(o.email));
+    await putLink(acct(o), seed(o.email));
     const other = await newUser("calother");
     for (const extra of [{ scope: other.email }, { email: other.email }, { calendarId: CAL1 }, { choices: [] }]) {
       const res = await put({ choice: 0, declare: true, rev: 1, ...extra });
@@ -580,8 +581,8 @@ describe("rule 920: the answers carry nothing secret; the routes are owner only,
     }
     expect((await link.PUT(new Request("https://nashr.test/api/secretary/calendar-link", { method: "PUT", body: "not json" }))).status).toBe(400);
     expect((await put([0])).status).toBe(400);
-    expect(await getLink(o.email)).toMatchObject({ state: "choose", rev: 1 });
-    expect(await getLink(other.email)).toBeNull();
+    expect(await getLink(acct(o))).toMatchObject({ state: "choose", rev: 1 });
+    expect(await getLink(acct(other))).toBeNull();
   });
 
   it("the 121st read in the hour is 429, the 31st list is 429, the 31st write (PUT or DELETE) is 429", async () => {
@@ -593,7 +594,7 @@ describe("rule 920: the answers carry nothing secret; the routes are owner only,
     expect((await body(over)).error).toBe("too_many");
 
     const l = await owner("callist");
-    await putLink(l.email, seed(l.email, { choices: undefined }));
+    await putLink(acct(l), seed(l.email, { choices: undefined }));
     for (let i = 0; i < 30; i++) expect((await list()).status).toBe(200);
     expect((await list()).status).toBe(429);
 
@@ -607,14 +608,14 @@ describe("rule 920: the answers carry nothing secret; the routes are owner only,
   it("another brand's link is not visible, listable, choosable or removable after switching brand", async () => {
     fakeProviders();
     const o = await owner(undefined);
-    await putLink(o.email, seed(o.email, { state: "ok", proof: "domain", calendarId: CAL1, choices: undefined }));
+    await putLink(acct(o), seed(o.email, { state: "ok", proof: "domain", calendarId: CAL1, choices: undefined }));
     const b = (await addBrand({ ...o, brandCap: 2 }, "Second")) as { id: string };
     await seedActiveBrand(o.email, b.id);
     expect(await body(await get())).toEqual({ ok: true, link: null });
     expect((await list()).status).toBe(404);
     expect((await put({ choice: 0, declare: true, rev: 1 })).status).toBe(404);
     expect((await del()).status).toBe(404);
-    expect(await getLink(o.email)).toMatchObject({ state: "ok", calendarId: CAL1 });
+    expect(await getLink(acct(o))).toMatchObject({ state: "ok", calendarId: CAL1 });
     await seedActiveBrand(o.email, "default");
     expect(((await body(await get())).link as { state: string }).state).toBe("ok");
   });
@@ -624,16 +625,16 @@ describe("rule 921 (unlink part): DELETE drops our side only and never calls a p
   it("removes the link, the events and the due member, audits cal_unlink, and makes no provider call", async () => {
     fakeProviders();
     const o = await owner();
-    await putLink(o.email, seed(o.email, { state: "ok", proof: "declaration", declaration: { by: o.email, at: "2026-10-05T10:00:00.000Z", v: 1 }, calendarId: CAL1, choices: undefined }));
-    await putEvents(o.email, { syncedAt: Date.now(), events: [{ start: "2026-10-05T10:00:00Z", end: "2026-10-05T11:00:00Z", title: "x", allDay: false }] });
-    await scheduleSync(o.email, Date.now() + 1000);
+    await putLink(acct(o), seed(o.email, { state: "ok", proof: "declaration", declaration: { by: o.email, at: "2026-10-05T10:00:00.000Z", v: 1 }, calendarId: CAL1, choices: undefined }));
+    await putEvents(acct(o), { syncedAt: Date.now(), events: [{ start: "2026-10-05T10:00:00Z", end: "2026-10-05T11:00:00Z", title: "x", allDay: false }] });
+    await scheduleSync(acct(o), Date.now() + 1000);
     const res = await del();
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ ok: true });
-    expect(await getLink(o.email)).toBeNull();
-    expect(await db.get(SEC_KEYS.calEvents(o.email))).toBeNull();
-    expect(await db.zscore(SEC_KEYS.calDue, o.email)).toBeNull();
-    expect((await auditOf(o.email)).find((l) => l.action === "cal_unlink")).toMatchObject({ actor: "owner", login: o.email, diff: "provider=gcal" });
+    expect(await getLink(acct(o))).toBeNull();
+    expect(await db.get(SEC_KEYS.calEvents(acct(o)))).toBeNull();
+    expect(await db.zscore(SEC_KEYS.calDue, acct(o))).toBeNull();
+    expect((await auditOf(acct(o))).find((l) => l.action === "cal_unlink")).toMatchObject({ actor: "owner", login: o.email, diff: "provider=gcal" });
     expect(calls.some((c) => c.url.includes("/revoke"))).toBe(false);
     expect(calls.some((c) => c.body.includes(REFRESH))).toBe(false);
     expect(calls.length).toBe(0);

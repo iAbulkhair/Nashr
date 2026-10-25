@@ -37,7 +37,7 @@ import { saveBrand, saveTask, type Brand, type Task } from "@/lib/brand";
 import { CHAT_MAX_DURATION_S, CHAT_RENDER_MIN_MS, chat, runTool } from "@/lib/chat";
 import { renderImage } from "@/lib/media/start";
 import { deadlineFor } from "@/lib/media/keys";
-import { currentUser, type User } from "@/lib/auth";
+import { currentUser, sc, type User } from "@/lib/auth";
 import { newUser, signIn } from "./helpers/session";
 import * as chatRoute from "@/app/api/chat/route";
 import * as mcpRoute from "@/app/api/mcp/route";
@@ -45,9 +45,9 @@ import * as mcpRoute from "@/app/api/mcp/route";
 const brand: Brand = { name: "Rose Coffee", website: "", industry: "coffee", dialect: "saudi", languages: ["ar"], tone: "warm", products: "coffee", audience: "Riyadh", offers: "", competitors: "", banned: "", preferred: "", channels: ["instagram"], city: "Riyadh", updatedAt: new Date().toISOString() };
 async function ownerWithTask(): Promise<{ u: User; t: Task }> {
   const u = await newUser("cd");
-  await saveBrand(u.email, brand);
+  await saveBrand(sc(u), brand);
   const t: Task = { id: `cd${Date.now()}`, type: "social", channel: "instagram", title: "Weekend offer", body: "Two for one.", status: "pending", createdAt: new Date().toISOString(), lang: "ar" };
-  await saveTask(u.email, t, true);
+  await saveTask(sc(u), t, true);
   // The owner signed in: the user a request resolves to carries its actor (`currentUser`), which says who asked.
   await signIn(u.email);
   return { u: (await currentUser())!, t };

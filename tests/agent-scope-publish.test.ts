@@ -25,6 +25,7 @@ vi.mock("@/lib/agent-scope-classify", async (orig) => ({
 const published: string[] = [];
 vi.mock("@/lib/connectors/publish", async (orig) => ({ ...(await orig<typeof import("@/lib/connectors/publish")>()), publishTask: async (_e: string, t: { id: string }, provider: string) => { published.push(t.id); return { provider, url: "https://t.me/x/1", status: "published" as const }; } }));
 
+import { acct } from "@/lib/account-id";
 import { adminSignIn, jar, json, newUser, signIn } from "./helpers/session";
 import { vjson } from "./helpers/version";
 import { currentUser, getUser, type User } from "@/lib/auth";
@@ -60,7 +61,7 @@ const releaseCall = (body: Record<string, unknown>) => release.POST(json("/api/a
 
 async function owner(prefix: string): Promise<User> {
   const u = await newUser(prefix);
-  await saveConnection(u.email, { provider: "telegram", data: { token: "t", chat: "c" }, connectedAt: new Date().toISOString() });
+  await saveConnection(acct(u), { provider: "telegram", data: { token: "t", chat: "c" }, connectedAt: new Date().toISOString() });
   await signIn(u.email);
   return (await currentUser())!;
 }
@@ -69,7 +70,7 @@ describe("rule 1410: the publish route checks the item before the send", () => {
   it("enforce + refusal: 409 agent_scope_held with the refusal, nothing sent, the item unchanged and publishable after an edit", async () => {
     await setModes(modes("enforce"));
     const u = await owner("asp1");
-    await saveTask(u.email, task("p1", "pending"), true);
+    await saveTask(acct(u), task("p1", "pending"), true);
     cls.decide = () => "off_topic";
     const r = await publish("p1");
     expect(r.status).toBe(409);
@@ -79,7 +80,7 @@ describe("rule 1410: the publish route checks the item before the send", () => {
     expect(published).toEqual([]);
     expect(cls.calls).toHaveLength(1);
     expect(cls.calls[0]).toMatchObject({ kind: "output", text: "p1\n\nنص المنشور" });
-    expect((await getTask(u.email, "p1"))!.status).toBe("pending");
+    expect((await getTask(acct(u), "p1"))!.status).toBe("pending");
     expect((await logOf(u.email))[0]).toMatchObject({ layer: "output", where: "publish", verdict: "off_topic", mode: "enforce", itemId: "p1" });
     // The owner edits the text and tries again: the new text is checked and goes out.
     cls.decide = () => "in";
@@ -90,7 +91,7 @@ describe("rule 1410: the publish route checks the item before the send", () => {
   it("enforce + classifier error: 503 agent_scope_unavailable, nothing sent (fails closed)", async () => {
     await setModes(modes("enforce"));
     const u = await owner("asp2");
-    await saveTask(u.email, task("p2", "pending"), true);
+    await saveTask(acct(u), task("p2", "pending"), true);
     cls.error = "timeout";
     const r = await publish("p2");
     expect(r.status).toBe(503);
@@ -101,8 +102,8 @@ describe("rule 1410: the publish route checks the item before the send", () => {
   it("shadow + classifier error or refusal: sent, and logged", async () => {
     await setModes(modes("shadow"));
     const u = await owner("asp3");
-    await saveTask(u.email, task("p3", "pending"), true);
-    await saveTask(u.email, task("p4", "pending"), true);
+    await saveTask(acct(u), task("p3", "pending"), true);
+    await saveTask(acct(u), task("p4", "pending"), true);
     cls.error = "api";
     expect((await publish("p3")).status).toBe(200);
     cls.error = null;
@@ -116,7 +117,7 @@ describe("rule 1410: the publish route checks the item before the send", () => {
   it("off: no classifier call", async () => {
     await setModes(modes("off"));
     const u = await owner("asp4");
-    await saveTask(u.email, task("p5", "pending"), true);
+    await saveTask(acct(u), task("p5", "pending"), true);
     cls.decide = () => "off_topic";
     expect((await publish("p5")).status).toBe(200);
     expect(cls.calls).toEqual([]);
@@ -124,12 +125,12 @@ describe("rule 1410: the publish route checks the item before the send", () => {
   it("chat publish_item enforce + refusal: Not sent, publishOnce not reached", async () => {
     await setModes(modes("enforce"));
     const u = await owner("asp5");
-    await saveTask(u.email, task("c1", "approved", { decidedAt: new Date().toISOString() }), true);
+    await saveTask(acct(u), task("c1", "approved", { decidedAt: new Date().toISOString() }), true);
     cls.decide = () => "pro_advice";
     const out = await runTool(u, "publish_item", { task_id: "c1", provider: "telegram" }, []);
     expect(out).toBe(`Not sent: ${agentScopeRefusalText("pro_advice", "ar", { brand: "", otherBrands: [] })}`);
     expect(published).toEqual([]);
-    expect((await getTask(u.email, "c1"))!.published).toBeUndefined();
+    expect((await getTask(acct(u), "c1"))!.published).toBeUndefined();
     expect((await logOf(u.email))[0]).toMatchObject({ where: "chat_publish", verdict: "pro_advice" });
     cls.decide = () => "in";
     expect(await runTool(u, "publish_item", { task_id: "c1", provider: "telegram" }, [])).toMatch(/Published/);
@@ -137,9 +138,9 @@ describe("rule 1410: the publish route checks the item before the send", () => {
   it("chat publish_item: an edit made while the check runs is not sent (the sent copy must have the checked text)", async () => {
     await setModes(modes("shadow"));
     const u = await owner("asp6");
-    await saveTask(u.email, task("c2", "approved", { decidedAt: new Date().toISOString() }), true);
+    await saveTask(acct(u), task("c2", "approved", { decidedAt: new Date().toISOString() }), true);
     // The owner edits the approved item (it stays approved) while the classifier is asked.
-    cls.during = async () => { cls.during = null; const cur = (await getTask(u.email, "c2"))!; await saveTask(u.email, { ...cur, editedBody: "نص عدّله المالك أثناء الفحص" }); };
+    cls.during = async () => { cls.during = null; const cur = (await getTask(acct(u), "c2"))!; await saveTask(acct(u), { ...cur, editedBody: "نص عدّله المالك أثناء الفحص" }); };
     const out = await runTool(u, "publish_item", { task_id: "c2", provider: "telegram" }, []);
     expect(out).toBe("Not published: the owner edited this item a moment ago. Ask again to publish the new text.");
     expect(published).toEqual([]);
@@ -153,21 +154,21 @@ describe("rule 1411: the founder's release", () => {
   beforeEach(() => jar().clear());
   it("founder only: 401 for no session and for the owner", async () => {
     const u = await owner("asr1");
-    await saveTask(u.email, task("r0", "pending"), true);
+    await saveTask(acct(u), task("r0", "pending"), true);
     expect((await releaseCall({ email: u.email, itemId: "r0" })).status).toBe(401);
     jar().clear();
     expect((await releaseCall({ email: u.email, itemId: "r0" })).status).toBe(401);
-    expect((await getTask(u.email, "r0"))!.agentScopeRelease).toBeUndefined();
+    expect((await getTask(acct(u), "r0"))!.agentScopeRelease).toBeUndefined();
   });
   it("stores the hash and logs; the released text publishes with no classifier call; an edit is checked again", async () => {
     await setModes(modes("enforce"));
     const u = await owner("asr2");
-    await saveTask(u.email, task("r1", "pending"), true);
+    await saveTask(acct(u), task("r1", "pending"), true);
     cls.decide = () => "off_topic";
     expect((await publish("r1")).status).toBe(409);
     await adminSignIn();
     expect((await releaseCall({ email: u.email, itemId: "r1" })).status).toBe(200);
-    const t = (await getTask(u.email, "r1"))!;
+    const t = (await getTask(acct(u), "r1"))!;
     expect(t.agentScopeRelease).toMatchObject({ hash: itemHash(t), by: "key" });
     expect(JSON.parse((await db.lrange("admin:log", 0, 0))[0])).toMatchObject({ actor: "key", email: u.email, what: "agent_scope_release", brandId: "default", itemId: "r1" });
     // The owner publishes the released text: no classifier call.
@@ -176,7 +177,7 @@ describe("rule 1411: the founder's release", () => {
     expect((await publish("r1")).status).toBe(200);
     expect(cls.calls).toEqual([]);
     // A second released item, edited after the release: checked again (one call) and held.
-    await saveTask(u.email, task("r2", "pending"), true);
+    await saveTask(acct(u), task("r2", "pending"), true);
     await adminSignIn();
     expect((await releaseCall({ email: u.email, itemId: "r2" })).status).toBe(200);
     await signIn(u.email);
@@ -188,9 +189,9 @@ describe("rule 1411: the founder's release", () => {
   it("a brand outside the account's list is 400; a missing account or item 404; a bad body 400", async () => {
     const u = await owner("asr3");
     // A second brand needs a plan with room for it since the brand caps (rule 1391: trial and Starter hold one).
-    const added = (await addBrand({ ...(await getUser(u.email))!, plan: "pro" }, "Second")) as { id: string };
+    const added = (await addBrand({ ...(await getUser(acct(u)))!, plan: "pro" }, "Second")) as { id: string };
     expect(added.id).toBeTruthy();
-    await saveTask(u.email, task("r3", "pending"), true);
+    await saveTask(acct(u), task("r3", "pending"), true);
     await adminSignIn();
     expect((await releaseCall({ email: u.email, brandId: "nope", itemId: "r3" })).status).toBe(400);
     expect((await releaseCall({ email: u.email, brandId: "../x", itemId: "r3" })).status).toBe(400);

@@ -23,7 +23,6 @@ import * as convRoute from "@/app/api/conversations/route";
 import * as brandRoute from "@/app/api/brand/route";
 import * as brandsRoute from "@/app/api/brands/route";
 
-vi.mock("@/lib/multi-org", async (orig) => ({ ...(await orig<typeof import("@/lib/multi-org")>()), MULTI_ORG: true }));
 
 /**
  * Rule 2110, the handle half (docs/specs/2026-10-18-multi-org.md section 8, item 5; release M2, decision 7), with

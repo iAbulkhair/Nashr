@@ -99,6 +99,8 @@ export const WORKSPACE_FREE: readonly string[] = [
   // The person's picture (rule 3502): the person's, never a workspace's.
   "/api/account/avatar",
   "/api/account/avatar/",
+  // Rule 3826: the Security page (a person page, no handle) adds, renames and removes the person's passkeys (`passkeys:{pid}`).
+  "/api/account/passkeys",
   "/api/admin/",
   "/api/oauth/",
   "/api/staging-access",
@@ -112,6 +114,7 @@ export const WORKSPACE_FREE: readonly string[] = [
   "/api/media/hook/",
   "/api/secretary/booking/",
   "/api/billing/paymob/",
+  "/api/billing/geidea/",
   "/api/shopify/compliance",
   "/api/cron/",
 ];
@@ -122,6 +125,13 @@ export function workspaceFree(pathname: string): boolean {
   return WORKSPACE_FREE.some((e) => (e.endsWith("/") ? path.startsWith(e) : path === e));
 }
 
+/**
+ * Rule 3826: a person-level handler on a path whose other handlers key a workspace. The Security page (a person page,
+ * `PERSON_PAGES`, so its requests carry no handle) changes the person's password with PATCH /api/account; DELETE there
+ * wipes a workspace and stays inside the guard.
+ */
+export const WORKSPACE_FREE_METHODS: Readonly<Record<string, readonly string[]>> = { "/api/account": ["PATCH"] };
+
 const STATE_CHANGING = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
 /**
@@ -131,8 +141,10 @@ const STATE_CHANGING = new Set(["POST", "PUT", "PATCH", "DELETE"]);
  * The caller checks `MULTI_ORG` first.
  */
 export function workspaceMissing(method: string, pathname: string, hasSession: boolean, handle: string | null): boolean {
-  if (!hasSession || !STATE_CHANGING.has(method.toUpperCase())) return false;
+  const m = method.toUpperCase();
+  if (!hasSession || !STATE_CHANGING.has(m)) return false;
   if (!pathname.startsWith("/api/") || workspaceFree(pathname)) return false;
+  if (WORKSPACE_FREE_METHODS[pathname.length > 1 ? pathname.replace(/\/+$/, "") : pathname]?.includes(m)) return false;
   return !asHandle(handle);
 }
 

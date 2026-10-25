@@ -1,4 +1,4 @@
-import { test as setup, expect } from "@playwright/test";
+import { test as setup, expect } from "./fixtures/app";
 import { OWNER, SEEDED_BRAND, signUpOrLogIn } from "./fixtures/accounts";
 
 export const OWNER_STATE = "e2e/.auth/owner.json";

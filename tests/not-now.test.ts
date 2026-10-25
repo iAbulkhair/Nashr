@@ -2,9 +2,10 @@ import { describe, expect, it } from "vitest";
 import { readFileSync } from "fs";
 import { newUser, params, settle, signIn } from "./helpers/session";
 import { vjson } from "./helpers/version";
-import { getUser } from "@/lib/auth";
+import { getUser, acct } from "@/lib/auth";
 import { getTask, listLite, listTasks, pendingCount, pendingIds, rebuildPending, saveTask, waitingIds, type Brand, type Task } from "@/lib/brand";
 import { db } from "@/lib/db";
+import { handleOf } from "@/lib/ws-handle";
 import { followUps, listNotifs } from "@/lib/notifications";
 import { getSchedule, runDaily, saveSchedule } from "@/lib/schedule";
 import { kpis } from "@/lib/stats";
@@ -21,7 +22,9 @@ const ago = (days: number) => new Date(Date.now() - days * DAY).toISOString();
 const brand: Brand = { name: "مقهى الفنجان", website: "", industry: "مقاهي", dialect: "saudi", languages: ["ar"], tone: "ودود", products: "قهوة مختصة", audience: "الرياض", offers: "", competitors: "", banned: "", preferred: "", channels: ["instagram"], city: "الرياض", updatedAt: "2026-09-29T00:00:00.000Z" };
 const task = (id: string, over: Partial<Task> = {}): Task => ({ id, type: "social", channel: "instagram", title: `title ${id}`, body: "قهوة اليوم من محمصتنا في الرياض", status: "pending", createdAt: new Date().toISOString(), lang: "ar", ...over });
 const patch = async (id: string, body: unknown) => { const res = await taskRoute.PATCH(await vjson(`/api/tasks/${id}`, "PATCH", body), params({ id })); await settle(); return res; };
-const owner = async (prefix: string) => { const u = await newUser(prefix); await db.set(`brand:${u.email}`, brand); await signIn(u.email); return u; };
+// A session user and a cron roster entry carry their scope; runTool and runDaily read `user.scope ?? user.email`.
+const live = async (u: { email: string }) => ({ ...(await getUser(acct(u)))!, scope: acct(u) });
+const owner = async (prefix: string) => { const u = await newUser(prefix); await db.set(`brand:${acct(u)}`, brand); await signIn(u.email); return u; };
 let n = 0;
 const scope = () => `notnow${++n}@test.example`;
 
@@ -59,12 +62,12 @@ describe("rules 2340-2341: the stored shape and the Not now subset", () => {
 describe("rule 2342: what counts as waiting", () => {
   it("the KPIs, the 48-hour nudge and the chat's list_inbox leave set-aside items out", async () => {
     const u = await owner("nnk");
-    await saveTask(u.email, task("w", { createdAt: ago(3) }), true);
-    await saveTask(u.email, task("x", { createdAt: ago(3), notNow: { at: ago(1), by: "owner" } }), true);
-    expect((await kpis(u.email)).pending).toBe(1);
-    const nudges = (await followUps((await getUser(u.email))!, u.email)).filter((x) => x.kind === "pending");
+    await saveTask(acct(u), task("w", { createdAt: ago(3) }), true);
+    await saveTask(acct(u), task("x", { createdAt: ago(3), notNow: { at: ago(1), by: "owner" } }), true);
+    expect((await kpis(acct(u))).pending).toBe(1);
+    const nudges = (await followUps((await live(u)), acct(u))).filter((x) => x.kind === "pending");
     expect(nudges.map((x) => x.title)).toEqual([expect.stringContaining("1 عنصر")]);
-    expect(await runTool((await getUser(u.email))!, "list_inbox", {}, [])).toMatch(/1 pending, 1 set aside under Not now/);
+    expect(await runTool((await live(u)), "list_inbox", {}, [])).toMatch(/1 pending, 1 set aside under Not now/);
   });
   it("the source of every waiting count reads isWaiting or waitingIds, never status === \"pending\" alone", () => {
     const read = (p: string) => readFileSync(p, "utf8");
@@ -105,22 +108,22 @@ describe("rule 2343: the 14-day move", () => {
   });
   it("runDaily stamps the workspace's start on its first run, so an old backlog is not moved on release day", async () => {
     const u = await owner("nnd");
-    await saveTask(u.email, task("backlog", { createdAt: ago(40) }), true);
-    expect((await getSchedule(u.email)).notNowFrom).toBeUndefined();
-    await runDaily((await getUser(u.email))!);
-    expect((await getSchedule(u.email)).notNowFrom).toEqual(expect.any(String));
-    expect((await getTask(u.email, "backlog"))?.notNow).toBeUndefined();
+    await saveTask(acct(u), task("backlog", { createdAt: ago(40) }), true);
+    expect((await getSchedule(acct(u))).notNowFrom).toBeUndefined();
+    await runDaily((await live(u)));
+    expect((await getSchedule(acct(u))).notNowFrom).toEqual(expect.any(String));
+    expect((await getTask(acct(u), "backlog"))?.notNow).toBeUndefined();
     // Fifteen days after the start, the next run moves it and says so once.
-    await saveSchedule(u.email, { notNowFrom: ago(NOT_NOW_DAYS + 1) });
-    const brief = await runDaily((await getUser(u.email))!);
-    expect((await getTask(u.email, "backlog"))?.notNow?.by).toBe("auto");
+    await saveSchedule(acct(u), { notNowFrom: ago(NOT_NOW_DAYS + 1) });
+    const brief = await runDaily((await live(u)));
+    expect((await getTask(acct(u), "backlog"))?.notNow?.by).toBe("auto");
     expect(brief?.pending).toBe(0);
-    expect(await pendingCount(u.email)).toBe(0);
-    const moved = (await listNotifs(u.email)).filter((x) => x.title.includes("انتقل إلى «ليس الآن»"));
+    expect(await pendingCount(acct(u))).toBe(0);
+    const moved = (await listNotifs(acct(u))).filter((x) => x.title.includes("انتقل إلى «ليس الآن»"));
     expect(moved).toHaveLength(1);
-    expect(moved[0].href).toBe("/ar/app/b/default?view=notnow");
-    await runDaily((await getUser(u.email))!);
-    expect((await listNotifs(u.email)).filter((x) => x.title.includes("انتقل إلى «ليس الآن»"))).toHaveLength(1);
+    expect(moved[0].href).toBe(`/ar/app/w/${handleOf(u)}/b/default?view=notnow`);
+    await runDaily((await live(u)));
+    expect((await listNotifs(acct(u))).filter((x) => x.title.includes("انتقل إلى «ليس الآن»"))).toHaveLength(1);
   });
   it("the schedule route cannot set the start: only runDaily writes notNowFrom", () => {
     expect(readFileSync("src/app/api/schedule/route.ts", "utf8")).not.toMatch(/notNowFrom/);
@@ -133,45 +136,45 @@ describe("rule 2344: the warning at 75%", () => {
     expect(soonNotNow([{ status: "pending", createdAt: ago(9) }], Date.now())).toHaveLength(0);
     expect(soonNotNow([{ status: "pending", createdAt: ago(15) }], Date.now())).toHaveLength(0);
     const u = await owner("nnw");
-    await saveSchedule(u.email, { notNowFrom: ago(60) });
-    await saveTask(u.email, task("s1", { createdAt: ago(11) }), true);
-    const first = (await followUps((await getUser(u.email))!, u.email)).filter((x) => x.title.includes("ينتقل إلى «ليس الآن»"));
+    await saveSchedule(acct(u), { notNowFrom: ago(60) });
+    await saveTask(acct(u), task("s1", { createdAt: ago(11) }), true);
+    const first = (await followUps((await live(u)), acct(u))).filter((x) => x.title.includes("ينتقل إلى «ليس الآن»"));
     expect(first.map((x) => x.title)).toEqual(["1 عنصر ينتقل إلى «ليس الآن» خلال 3 يوم"]);
-    expect((await followUps((await getUser(u.email))!, u.email)).filter((x) => x.title.includes("ينتقل إلى «ليس الآن»"))).toHaveLength(0);
+    expect((await followUps((await live(u)), acct(u))).filter((x) => x.title.includes("ينتقل إلى «ليس الآن»"))).toHaveLength(0);
   });
 });
 
 describe("rule 2345: PATCH notNow", () => {
   it("sets aside and brings back a pending item; bringing back restarts the clock", async () => {
     const u = await owner("nnp");
-    await saveTask(u.email, task("p", { createdAt: ago(20) }), true);
+    await saveTask(acct(u), task("p", { createdAt: ago(20) }), true);
     expect((await patch("p", { notNow: true })).status).toBe(200);
-    expect((await getTask(u.email, "p"))?.notNow).toEqual({ at: expect.any(String), by: "owner" });
-    expect(await pendingCount(u.email)).toBe(0);
-    expect((await getTask(u.email, "p"))?.decidedAt).toBeUndefined();
+    expect((await getTask(acct(u), "p"))?.notNow).toEqual({ at: expect.any(String), by: "owner" });
+    expect(await pendingCount(acct(u))).toBe(0);
+    expect((await getTask(acct(u), "p"))?.decidedAt).toBeUndefined();
     expect((await patch("p", { notNow: false })).status).toBe(200);
-    const back = (await getTask(u.email, "p"))!;
+    const back = (await getTask(acct(u), "p"))!;
     expect(back.notNow).toBeUndefined();
     expect(back.touchedAt).toEqual(expect.any(String));
     expect(dueForNotNow([back], Date.now())).toHaveLength(0);
-    expect(await pendingCount(u.email)).toBe(1);
+    expect(await pendingCount(acct(u))).toBe(1);
   });
   it("refuses a decided item with 409 not_pending and changes nothing", async () => {
     const u = await owner("nnr");
-    await saveTask(u.email, task("d", { status: "approved" }), true);
+    await saveTask(acct(u), task("d", { status: "approved" }), true);
     const res = await patch("d", { notNow: true });
     expect(res.status).toBe(409);
     expect((await res.json()).error).toBe("not_pending");
-    expect((await getTask(u.email, "d"))?.notNow).toBeUndefined();
+    expect((await getTask(acct(u), "d"))?.notNow).toBeUndefined();
   });
   it("a decision takes the item out of Not now; an edit or a date restarts the clock", async () => {
     const u = await owner("nnx");
-    await saveTask(u.email, task("r", { notNow: { at: ago(1), by: "auto" } }), true);
+    await saveTask(acct(u), task("r", { notNow: { at: ago(1), by: "auto" } }), true);
     expect((await patch("r", { status: "rejected", note: "لا" })).status).toBe(200);
-    expect((await getTask(u.email, "r"))?.notNow).toBeUndefined();
-    await saveTask(u.email, task("e", { createdAt: ago(12) }), true);
+    expect((await getTask(acct(u), "r"))?.notNow).toBeUndefined();
+    await saveTask(acct(u), task("e", { createdAt: ago(12) }), true);
     expect((await patch("e", { scheduledFor: "2026-12-01" })).status).toBe(200);
-    expect(dueForNotNow([(await getTask(u.email, "e"))!], Date.now() + 5 * DAY)).toHaveLength(0);
+    expect(dueForNotNow([(await getTask(acct(u), "e"))!], Date.now() + 5 * DAY)).toHaveLength(0);
   });
 });
 

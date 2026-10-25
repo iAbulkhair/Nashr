@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { newUser } from "./helpers/session";
+import { acct, sc } from "@/lib/auth";
 import { db } from "@/lib/db";
 
 /**
@@ -84,8 +85,9 @@ describe("rule 351: lifecycle mail waits for a sender that can reach customers",
     const { saveUser, getUser } = await import("@/lib/auth");
     const { saveBrand } = await import("@/lib/brand");
     await saveUser({ ...u, createdAt: new Date(Date.now() - 1.5 * 864e5).toISOString(), trialEnds: new Date(Date.now() + 5 * 864e5).toISOString() });
-    await saveBrand(u.email, { name: "محمصة", website: "", industry: "قهوة", dialect: "saudi", languages: ["ar"], tone: "", products: "قهوة", audience: "", offers: "", competitors: "", banned: "", preferred: "", channels: [], city: "", updatedAt: new Date().toISOString() });
-    return (await getUser(u.email))!;
+    await saveBrand(sc(u), { name: "محمصة", website: "", industry: "قهوة", dialect: "saudi", languages: ["ar"], tone: "", products: "قهوة", audience: "", offers: "", competitors: "", banned: "", preferred: "", channels: [], city: "", updatedAt: new Date().toISOString() });
+    // As the daily job hands it over (`dailyRoster` / `runAsAccount`): the account's record with its brand scope.
+    return { ...(await getUser(acct(u)))!, scope: sc(u) };
   };
 
   it("with RESEND_API_KEY but no MAIL_FROM, nothing is sent and no marker is taken", async () => {
@@ -95,7 +97,7 @@ describe("rule 351: lifecycle mail waits for a sender that can reach customers",
     const { runLifecycle } = await import("@/lib/lifecycle");
     const { onceKey } = await import("@/lib/notify");
     expect(await runLifecycle(u)).toEqual([]);
-    expect(await db.get(onceKey(u.email, "lifecycle:day1"))).toBeFalsy();
+    expect(await db.get(onceKey(acct(u), "lifecycle:day1"))).toBeFalsy();
     expect(sends).toHaveLength(0);
   });
 
@@ -138,24 +140,24 @@ describe("rule 352: the signup nudge uses the same claim-then-confirm guard", ()
     const run = async (): Promise<{ mine: string; nudges: number }> => {
       // A run marks each workspace done for the day; a later day's run is what retries, so the day markers are cleared.
       const day = new Date().toISOString().slice(0, 10);
-      await Promise.all([db.del(`crondone:daily:${day}:${u.email}`), db.del(`crontry:daily:${day}:${u.email}`)]);
+      await Promise.all([db.del(`crondone:daily:${day}:${sc(u)}`), db.del(`crontry:daily:${day}:${sc(u)}`)]);
       const r = await daily.GET(new Request("https://nashr.test/api/cron/daily?chain=1", { headers: { authorization: "Bearer cron-secret-mail-once" } }));
       expect(r.status).toBe(200);
       const body = (await r.json()) as Report;
-      return { mine: body.results[u.email] ?? "", nudges: body.nudges };
+      return { mine: body.results[sc(u)] ?? "", nudges: body.nudges };
     };
 
     send = refuse;
     const first = await run();
     expect(first.mine).toBe("mail_refused:nudge");
     expect(first.nudges, "a refused nudge is not counted as sent").toBe(0);
-    expect(await db.get(onceKey(u.email, "nudge1")), "and leaves no 400-day marker").toBeFalsy();
+    expect(await db.get(onceKey(acct(u), "nudge1")), "and leaves no 400-day marker").toBeFalsy();
 
     send = accept;
     const second = await run();
     expect(second.mine).toBe("nudge");
     expect(second.nudges).toBeGreaterThanOrEqual(1);
-    expect(await db.get(onceKey(u.email, "nudge1"))).toBeTruthy();
+    expect(await db.get(onceKey(acct(u), "nudge1"))).toBeTruthy();
 
     const third = await run();
     expect(third.mine).toBe("no_brand");
@@ -167,19 +169,21 @@ describe("rule 352: the signup nudge uses the same claim-then-confirm guard", ()
     mailOn();
     const { sendOnce, onceKey, onceClaimKey, onceRepairKey, ONCE_INDEX } = await import("@/lib/notify");
     const { wipeAccount } = await import("@/lib/account");
-    const email = (await newUser("once-wipe")).email;
-    await sendOnce(email, "nudge1", "s", "t");
-    await db.lock(onceClaimKey(email, "lifecycle:day2"), 120);
-    await db.sadd(ONCE_INDEX(email), "lifecycle:day2");
+    const owner = await newUser("once-wipe");
+    // Every key is the ACCOUNT id; the mail goes to the sign-in address.
+    const id = acct(owner);
+    await sendOnce(id, "nudge1", "s", "t", undefined, owner.email);
+    await db.lock(onceClaimKey(id, "lifecycle:day2"), 120);
+    await db.sadd(ONCE_INDEX(id), "lifecycle:day2");
     // A repaired old-guard marker leaves a repair flag (rule 363); it goes with the account too.
-    await burn(email, "lifecycle:day1");
-    expect(await sendOnce(email, "lifecycle:day1", "s", "t")).toBe("sent");
-    await wipeAccount(email);
-    expect(await db.get(onceKey(email, "nudge1"))).toBeFalsy();
-    expect(await db.get(onceKey(email, "lifecycle:day1"))).toBeFalsy();
-    expect(await db.get(onceRepairKey(email, "lifecycle:day1")), "the repair flag is removed").toBeFalsy();
-    expect(await db.get(onceClaimKey(email, "lifecycle:day2"))).toBeFalsy();
-    expect(await db.smembers(ONCE_INDEX(email))).toEqual([]);
+    await burn(id, "lifecycle:day1");
+    expect(await sendOnce(id, "lifecycle:day1", "s", "t", undefined, owner.email)).toBe("sent");
+    await wipeAccount(id);
+    expect(await db.get(onceKey(id, "nudge1"))).toBeFalsy();
+    expect(await db.get(onceKey(id, "lifecycle:day1"))).toBeFalsy();
+    expect(await db.get(onceRepairKey(id, "lifecycle:day1")), "the repair flag is removed").toBeFalsy();
+    expect(await db.get(onceClaimKey(id, "lifecycle:day2"))).toBeFalsy();
+    expect(await db.smembers(ONCE_INDEX(id))).toEqual([]);
   });
 });
 
@@ -289,8 +293,9 @@ describe("rule 365: the senders repair only accounts that still qualify", () => 
     const { saveUser, getUser } = await import("@/lib/auth");
     const { saveBrand } = await import("@/lib/brand");
     await saveUser({ ...u, createdAt: new Date(Date.now() - ageDays * 864e5).toISOString(), trialEnds: new Date(Date.now() + 5 * 864e5).toISOString() });
-    await saveBrand(u.email, { name: "محمصة", website: "", industry: "قهوة", dialect: "saudi", languages: ["ar"], tone: "", products: "قهوة", audience: "", offers: "", competitors: "", banned: "", preferred: "", channels: [], city: "", updatedAt: new Date().toISOString() });
-    return (await getUser(u.email))!;
+    await saveBrand(sc(u), { name: "محمصة", website: "", industry: "قهوة", dialect: "saudi", languages: ["ar"], tone: "", products: "قهوة", audience: "", offers: "", competitors: "", banned: "", preferred: "", channels: [], city: "", updatedAt: new Date().toISOString() });
+    // As the daily job hands it over (`dailyRoster` / `runAsAccount`): the account's record with its brand scope.
+    return { ...(await getUser(acct(u)))!, scope: sc(u) };
   };
 
   it("a burned day-one note goes out once while its window lasts; one past its window keeps its marker", async () => {
@@ -298,16 +303,16 @@ describe("rule 365: the senders repair only accounts that still qualify", () => 
     const { runLifecycle } = await import("@/lib/lifecycle");
     const { onceKey, onceRepairKey } = await import("@/lib/notify");
     const due = await withBrand("repair-life-due", 1.5);
-    await burn(due.email, "lifecycle:day1");
+    await burn(acct(due), "lifecycle:day1");
     expect(await runLifecycle(due)).toEqual(["day1"]);
     expect(await runLifecycle(due)).toEqual([]);
     expect(sends.filter((to) => to === due.email)).toHaveLength(1);
 
     const late = await withBrand("repair-life-late", 6);
-    await burn(late.email, "lifecycle:day1");
+    await burn(acct(late), "lifecycle:day1");
     expect(await runLifecycle(late)).toEqual([]);
-    expect(await db.get(onceKey(late.email, "lifecycle:day1")), "no longer due: not repaired").toBeTruthy();
-    expect(await db.get(onceRepairKey(late.email, "lifecycle:day1"))).toBeFalsy();
+    expect(await db.get(onceKey(acct(late), "lifecycle:day1")), "no longer due: not repaired").toBeTruthy();
+    expect(await db.get(onceRepairKey(acct(late), "lifecycle:day1"))).toBeFalsy();
     expect(sends.filter((to) => to === late.email)).toHaveLength(0);
   });
 
@@ -319,26 +324,26 @@ describe("rule 365: the senders repair only accounts that still qualify", () => 
     const daily = await import("@/app/api/cron/daily/route");
     const noBrand = await newUser("repair-nudge");
     await saveUser({ ...noBrand, createdAt: new Date(Date.now() - 5 * 864e5).toISOString() });
-    await burn(noBrand.email, "nudge1");
+    await burn(acct(noBrand), "nudge1");
     const built = await withBrand("repair-nudge-built", 20);
-    await burn(built.email, "nudge1");
+    await burn(acct(built), "nudge1");
     const run = async (): Promise<Record<string, string>> => {
       const day = new Date().toISOString().slice(0, 10);
-      await Promise.all([noBrand.email, built.email].flatMap((e) => [db.del(`crondone:daily:${day}:${e}`), db.del(`crontry:daily:${day}:${e}`)]));
+      await Promise.all([sc(noBrand), sc(built)].flatMap((e) => [db.del(`crondone:daily:${day}:${e}`), db.del(`crontry:daily:${day}:${e}`)]));
       const r = await daily.GET(new Request("https://nashr.test/api/cron/daily?chain=1", { headers: { authorization: "Bearer cron-secret-mail-repair" } }));
       expect(r.status).toBe(200);
       return ((await r.json()) as { results: Record<string, string> }).results;
     };
     const first = await run();
-    expect(first[noBrand.email]).toBe("nudge");
-    expect((await run())[noBrand.email]).toBe("no_brand");
+    expect(first[sc(noBrand)]).toBe("nudge");
+    expect((await run())[sc(noBrand)]).toBe("no_brand");
     expect(sends.filter((to) => to === noBrand.email), "the burned nudge goes out once").toHaveLength(1);
     // The brand account may get its daily brief; what matters is that the nudge path never ran for it.
-    expect(first[built.email] ?? "").not.toMatch(/nudge/);
-    const marker = await db.get(onceKey(built.email, "nudge1"));
+    expect(first[sc(built)] ?? "").not.toMatch(/nudge/);
+    const marker = await db.get(onceKey(acct(built), "nudge1"));
     expect(marker, "an account that built a brand no longer qualifies: its old marker stands").toBeTruthy();
     expect(confirmedMarker(marker)).toBe(false);
-    expect(await db.get(onceRepairKey(built.email, "nudge1"))).toBeFalsy();
+    expect(await db.get(onceRepairKey(acct(built), "nudge1"))).toBeFalsy();
   });
 });
 
@@ -393,12 +398,12 @@ describe("rule 367: only markers the old guard wrote before REPAIR_BEFORE are re
     const daily = await import("@/app/api/cron/daily/route");
     const u = await newUser("repair-cutoff-cron");
     await saveUser({ ...u, createdAt: new Date(Date.now() - 5 * 864e5).toISOString() });
-    await burn(u.email, "nudge1", "2026-10-02T09:00:00.000Z");
+    await burn(acct(u), "nudge1", "2026-10-02T09:00:00.000Z");
     const r = await daily.GET(new Request("https://nashr.test/api/cron/daily?chain=1", { headers: { authorization: "Bearer cron-secret-mail-cutoff" } }));
     expect(r.status).toBe(200);
     const results = ((await r.json()) as { results: Record<string, string> }).results;
-    expect(results[u.email]).toBe("no_brand");
-    expect(await db.get(onceKey(u.email, "nudge1"))).toBeTruthy();
+    expect(results[sc(u)]).toBe("no_brand");
+    expect(await db.get(onceKey(acct(u), "nudge1"))).toBeTruthy();
     expect(sends.filter((to) => to === u.email)).toHaveLength(0);
   });
 });

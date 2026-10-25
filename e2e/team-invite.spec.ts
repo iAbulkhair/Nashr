@@ -10,8 +10,8 @@ import { simulatedIp } from "./fixtures/accounts";
  * the token sits after `#t=` where it never reaches a log.
  *
  * Each test signs its own owner up: seats, invites and members are per account, and the trial plan allows five invites a day
- * and three seats, so one owner cannot serve two tests. `MULTI_ORG` is off on the e2e server, so a new member picks a name
- * and a password on the join page (the legacy accept path); a member never signs up on their own.
+ * and three seats, so one owner cannot serve two tests. A new member picks a name and a password on the join page; a
+ * member never signs up on their own.
  */
 test.use({ storageState: { cookies: [], origins: [] } });
 
@@ -307,9 +307,17 @@ test("a member leaves the account from the Members page and is signed out", asyn
     const view = (await (await owner.get("/api/team")).json()) as View;
     expect(view.members.map((m) => m.email)).toEqual([account.email]);
     expect(view.seats.used).toBe(1);
-    // Signing in with the old password no longer works.
-    const login = await owner.post("/api/auth/login", { data: { email: member.email, password: member.password }, headers: { "x-forwarded-for": simulatedIp(seed) } });
-    expect(login.status()).toBeGreaterThanOrEqual(400);
+    // The person is kept with no workspace (rules 2124, 2126; spec decision 10): the login works and opens nothing of
+    // the account they left.
+    const again = await playwright.request.newContext({ baseURL: baseURL! });
+    try {
+      const login = await again.post("/api/auth/login", { data: { email: member.email, password: member.password }, headers: { "x-forwarded-for": simulatedIp(seed) } });
+      expect(login.status(), await login.text()).toBe(200);
+      expect(((await (await again.get("/api/workspaces")).json()) as { workspaces: unknown[] }).workspaces).toEqual([]);
+      expect((await again.get("/api/team")).status()).toBe(401);
+    } finally {
+      await again.dispose();
+    }
   } finally {
     await memberApi.dispose();
   }

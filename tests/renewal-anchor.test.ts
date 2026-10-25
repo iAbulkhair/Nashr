@@ -1,7 +1,7 @@
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { adminSignIn, jar, json, newUser } from "./helpers/session";
-import { getUser, saveUser, type Plan, type User } from "@/lib/auth";
+import { acct, getUser, saveUser, type Plan, type User } from "@/lib/auth";
 import { anchorOf, monthKey, renewIfDue } from "@/lib/credits";
 import { ksaDay } from "@/lib/partner-rules";
 import { addDays, addMonths, type Billing } from "@/lib/billing-state";
@@ -96,27 +96,27 @@ describe("the allowance renews on the plan's own day (rule 2936)", () => {
 describe("the stored day is written where a period starts (rule 2936)", () => {
   async function account(p: Plan, extra: Partial<User> = {}): Promise<User> {
     const u = await newUser("renewanchor");
-    await saveUser({ ...(await getUser(u.email))!, plan: p, ...extra });
-    return (await getUser(u.email))!;
+    await saveUser({ ...(await getUser(acct(u)))!, plan: p, ...extra });
+    return (await getUser(acct(u)))!;
   }
   const call = (email: string, body: Record<string, unknown>) => plan.POST(json("/api/admin/plan", "POST", { email, ...body }));
 
   it("the founder's set-plan stores today as the renewal and its day as the plan's day; nothing renews on the next 1st", async () => {
     const u = await account("trial");
     expect((await call(u.email, { plan: "pro" })).status).toBe(200);
-    const after = (await getUser(u.email))!;
+    const after = (await getUser(acct(u)))!;
     const today = ksaDay();
     expect(after).toMatchObject({ renewedOn: today, renewAnchor: anchorOf(today), renewedAt: monthKey() });
-    expect(await renewIfDue(u.email)).toBe(false);
+    expect(await renewIfDue(acct(u))).toBe(false);
     expect(renewalDue(after, addMonths(today.slice(0, 7) + "-01", 1)), "the next 1st gives nothing").toBe(false);
   });
 
   it("renewIfDue writes the day and the month, once", async () => {
     const today = ksaDay();
     const u = await account("pro", { credits: 3, renewedAt: "2000-01", renewedOn: addMonths(today, -1), renewAnchor: anchorOf(today), handPlan: { paidThrough: addDays(today, 40), by: "key", at: new Date().toISOString() } });
-    expect(await renewIfDue(u.email)).toBe(true);
-    expect((await getUser(u.email))!).toMatchObject({ renewedOn: today, renewedAt: monthKey() });
-    expect(await renewIfDue(u.email)).toBe(false);
+    expect(await renewIfDue(acct(u))).toBe(true);
+    expect((await getUser(acct(u)))!).toMatchObject({ renewedOn: today, renewedAt: monthKey() });
+    expect(await renewIfDue(acct(u))).toBe(false);
   });
 
   it("an online plan payment stores the day it starts", () => {

@@ -52,7 +52,7 @@ vi.mock("@/lib/generate-batch", async (orig) => {
   };
 });
 
-import { getUser, saveUser, type User } from "@/lib/auth";
+import { acct, getUser, saveUser, type User } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { AGENTS, agentById, agentForTask, type AgentId } from "@/lib/agents";
 import { TASK_TYPES } from "@/lib/tasks";
@@ -79,13 +79,13 @@ const ownerBy = (u: User) => ({ kind: "owner" as const, email: u.email });
 
 async function owner(prefix: string, credits = 300): Promise<User> {
   const u = await newUser(prefix);
-  await db.set(`brand:${u.email}`, BRAND);
-  await saveUser({ ...(await getUser(u.email))!, plan: "starter", credits });
-  const back = (await getUser(u.email))!;
-  back.scope = back.email;
+  await db.set(`brand:${acct(u)}`, BRAND);
+  await saveUser({ ...(await getUser(acct(u)))!, plan: "starter", credits });
+  const back = (await getUser(acct(u)))!;
+  back.scope = acct(back);
   return back;
 }
-const credits = async (email: string) => (await getUser(email))!.credits;
+const credits = async (id: string) => (await getUser(id))!.credits;
 /** A tool call as a chat turn makes it, in this agent's turn, with the founder's role mode. */
 const call = (u: User, agent: AgentId | undefined, name: string, input: Record<string, unknown>, role: AgentScopeModes["role"] | null, actions: string[] = [], ctx: Partial<ToolCtx> = {}) =>
   runTool(u, name, input, actions, [], undefined, { agent, by: ownerBy(u), lang: "en", ...(role === null ? {} : { modes: modes({ role }) }), ...ctx });
@@ -188,26 +188,26 @@ describe("rule 797: Layer 1, the scope paragraph in the prompts", () => {
     const sent = async () => (sdk.gens.at(-1) as { text: string }[])[0].text;
     // The caller's modes win, whatever is stored.
     await db.set(AGENT_SCOPE_KEYS.modes, { prompt: "off", input: "off", role: "off", output: "off" });
-    let r = await (await import("@/lib/generate-batch")).generateBatch(u, u.email, { type: "sales_script", source: "manual", via: "app", agentScope: modes({ prompt: "on" }) });
+    let r = await (await import("@/lib/generate-batch")).generateBatch(u, acct(u), { type: "sales_script", source: "manual", via: "app", agentScope: modes({ prompt: "on" }) });
     expect(r.ok).toBe(true);
     expect(await sent()).toContain(PARAGRAPH);
     // A caller that passes none (routines, the weekly plan, handoffs): the founder's stored switch applies, read once.
     const get = vi.spyOn(db, "get");
-    r = await (await import("@/lib/generate-batch")).generateBatch(u, u.email, { type: "sales_script", source: "manual", via: "app" });
+    r = await (await import("@/lib/generate-batch")).generateBatch(u, acct(u), { type: "sales_script", source: "manual", via: "app" });
     expect(r.ok).toBe(true);
     expect(await sent()).not.toContain("SCOPE:");
     expect(get.mock.calls.filter(([k]) => k === AGENT_SCOPE_KEYS.modes)).toHaveLength(1);
     await db.set(AGENT_SCOPE_KEYS.modes, { prompt: "on", input: "off", role: "off", output: "off" });
-    r = await (await import("@/lib/generate-batch")).generateBatch(u, u.email, { type: "sales_script", source: "manual", via: "app" });
+    r = await (await import("@/lib/generate-batch")).generateBatch(u, acct(u), { type: "sales_script", source: "manual", via: "app" });
     expect(r.ok).toBe(true);
     expect(await sent()).toContain(PARAGRAPH);
     // Nothing stored: the default is on.
     await db.del(AGENT_SCOPE_KEYS.modes);
-    await (await import("@/lib/generate-batch")).generateBatch(u, u.email, { type: "sales_script", source: "manual", via: "app" });
+    await (await import("@/lib/generate-batch")).generateBatch(u, acct(u), { type: "sales_script", source: "manual", via: "app" });
     expect(await sent()).toContain(PARAGRAPH);
     // A caller that passed modes triggers no read of them.
     get.mockClear();
-    await (await import("@/lib/generate-batch")).generateBatch(u, u.email, { type: "sales_script", source: "manual", via: "app", agentScope: modes({ prompt: "off" }) });
+    await (await import("@/lib/generate-batch")).generateBatch(u, acct(u), { type: "sales_script", source: "manual", via: "app", agentScope: modes({ prompt: "off" }) });
     expect(get.mock.calls.filter(([k]) => k === AGENT_SCOPE_KEYS.modes)).toHaveLength(0);
     expect(await sent()).not.toContain("SCOPE:");
   });
@@ -262,7 +262,7 @@ describe("rule 798: Layer 3, roles for every agent", () => {
 
   it("Majed is refused in every role mode, with the old text, no switch card and no charge (R7)", async () => {
     const u = await owner("l3-majed");
-    const before = await credits(u.email);
+    const before = await credits(acct(u));
     for (const role of ["off", "shadow", "enforce"] as const) {
       for (const [tool, input] of [["generate_content", { type: "social", notes: "n" }], ["draft_items", { type: "social", count: 2, brief: "b" }]] as const) {
         const actions: string[] = [];
@@ -275,7 +275,7 @@ describe("rule 798: Layer 3, roles for every agent", () => {
     // With no modes at all too: his rule is not behind any switch.
     expect(await call(u, "majed", "generate_content", { type: "social" }, null)).toBe(roleRefusalText("majed", "social"));
     expect(batch.calls).toEqual([]);
-    expect(await credits(u.email)).toBe(before);
+    expect(await credits(acct(u))).toBe(before);
     // He still writes his own types.
     expect(await call(u, "majed", "generate_content", { type: "decision_memo", notes: "n" }, "enforce")).toMatch(/^Created 0 decision_memo item/);
     expect(batch.calls).toHaveLength(1);
@@ -285,7 +285,7 @@ describe("rule 798: Layer 3, roles for every agent", () => {
 
   it("Noor + sales_script: off runs, shadow runs and logs wrong_agent, enforce refuses with switch:sami and no charge", async () => {
     const u = await owner("l3-noor");
-    const before = await credits(u.email);
+    const before = await credits(acct(u));
     const notes = "اكتب سكربت مكالمة لعميل جديد";
 
     const off: string[] = [];
@@ -306,7 +306,7 @@ describe("rule 798: Layer 3, roles for every agent", () => {
     expect(text).toContain("Sami");
     expect(enforce).toEqual(["switch:sami"]);
     expect(batch.calls).toHaveLength(2);
-    expect(await credits(u.email)).toBe(before);
+    expect(await credits(acct(u))).toBe(before);
     // Enforce is a refusal, not a shadow log: still only the one line.
     expect(await logOf(u.email)).toHaveLength(1);
   });
@@ -371,7 +371,7 @@ describe("rule 798: Layer 3, roles for every agent", () => {
 
   it("a chat turn in enforce: the reply carries switchTo, the stored message too, and nothing was charged", async () => {
     const u = await owner("l3-chat");
-    const before = await credits(u.email);
+    const before = await credits(acct(u));
     const use = (name: string, input: unknown) => sdk.reply([{ type: "tool_use", id: "tu1", name, input }], { stop_reason: "tool_use" });
     sdk.chat = [use("generate_content", { type: "social", notes: "٣ منشورات" }), sdk.reply([{ type: "text", text: "نور تكتب المنشورات. اضغط الزر." }])];
     const m = await chat(u, "اكتب لي منشورات", undefined, "sami", { agentScope: modes({ role: "enforce" }), lang: "en" });
@@ -380,7 +380,7 @@ describe("rule 798: Layer 3, roles for every agent", () => {
     expect(m.agent).toBe("sami");
     expect(sdk.streams).toBe(2);
     expect(batch.calls).toEqual([]);
-    expect(await credits(u.email)).toBe(before);
+    expect(await credits(acct(u))).toBe(before);
     const saved = (await history(u.scope ?? u.email)).at(-1)!;
     expect(saved.switchTo).toBe("noor");
     // A turn that has no refused call carries no card.
@@ -424,7 +424,7 @@ describe("rule 799: a tool the agent was not offered is Unknown tool. (R6)", () 
     expect(await call(u, "noor", "no_such_tool", {}, "enforce")).toBe("Unknown tool.");
     expect(set).not.toHaveBeenCalled();
     expect(rpush).not.toHaveBeenCalled();
-    expect(await db.lrange(`handoffs:${u.email}`, 0, -1)).toEqual([]);
+    expect(await db.lrange(`handoffs:${acct(u)}`, 0, -1)).toEqual([]);
   });
 
   it("the offered tools still run, and a turn with no agent keeps the old per-tool answers", async () => {

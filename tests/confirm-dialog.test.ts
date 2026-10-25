@@ -19,8 +19,10 @@ const PHYSICAL = /(?<![\w-])-?(?:ml|mr|pl|pr|left|right|rounded-l|rounded-r|bord
 describe("rule 695: the Team, Files, Governance and Wishlist panels confirm in the app's own dialog, never the browser's confirm()", () => {
   // GovernancePanel: the restore question, and the auto-run question it asks from two places through askAutoHandoff.
   // TeamPanel's fourth: offering the account's ownership (multi-workspace M3, rule 2750).
+  // TeamPanel's fifth: buying a paid extra seat before an invite over the limit (rule 3369).
+  // TeamPanel's sixth: the same seat question on a yearly plan, with the amount charged now (rule 4050).
   // WorkspacesPanel: deleting one's own login (multi-workspace M3, rule 2754).
-  const PANELS = { TeamPanel: 4, FilesPanel: 1, GovernancePanel: 2, WishlistPanel: 1, WorkspacesPanel: 1 } as const;
+  const PANELS = { TeamPanel: 6, FilesPanel: 1, GovernancePanel: 2, WishlistPanel: 1, WorkspacesPanel: 1 } as const;
 
   it("no panel calls the browser's confirm, and each asks through useConfirm and renders its dialog", () => {
     for (const [name, asks] of Object.entries(PANELS)) {
@@ -67,8 +69,13 @@ describe("rule 695: the Team, Files, Governance and Wishlist panels confirm in t
   it("deletes, removals and cancellations are destructive questions; their way out is the dictionary's 'Go back'", () => {
     for (const name of ["TeamPanel", "FilesPanel"]) {
       const src = app(name);
-      expect(count(src, /cancelLabel: t\.dialog\.back, destructive: true/g), name).toBe(PANELS[name as keyof typeof PANELS]);
+      // TeamPanel's paid-seat questions (rule 3369, and the yearly one of rule 4050) are purchases, not removals: the two
+      // non-destructive asks.
+      const nonDestructive = name === "TeamPanel" ? 2 : 0;
+      expect(count(src, /cancelLabel: t\.dialog\.back, destructive: true/g), name).toBe(PANELS[name as keyof typeof PANELS] - nonDestructive);
     }
+    expect(app("TeamPanel")).toMatch(/ask\(\{ title: T\.addSeatTitle, message: fill\(T\.addSeatConfirm, \{ email: to, price \}\), confirmLabel: T\.addSeatYes, cancelLabel: t\.dialog\.back \}\)/);
+    expect(app("TeamPanel")).toMatch(/ask\(\{ title: T\.addSeatTitle, message: fill\(T\.addSeatConfirmNow, \{ email: to, months: now\.months, price, total: sar\(now\.totalHalalas\) \}\), confirmLabel: fill\(T\.addSeatYesNow, \{ total: sar\(now\.totalHalalas\) \}\), cancelLabel: t\.dialog\.back \}\)/);
     expect(app("WishlistPanel")).toMatch(/confirmLabel: L\.del, cancelLabel: L\.back, destructive: true/);
     expect(appDict.ar.dialog.back).toMatch(/[؀-ۿ]/);
     expect(appDict.en.dialog.back).toBe("Go back");

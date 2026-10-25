@@ -171,6 +171,13 @@ export type User = {
    */
   seats?: number;
   /**
+   * Paid extra seats for the current period, above the included seats (`includedSeats`), at EXTRA_SEAT_MONTHLY_SAR each
+   * (rules 3360-3379). The one source of "seats paid for". Expand: absent reads as 0 (`paidExtraSeats`). Raised only by
+   * `createInvite` with the owner's confirmation; lowered only at renewal by `settleExtraSeats`; cleared when the plan
+   * ends on a refund. Written under lock:team:{aid} then lock:user, never from a request value.
+   */
+  extraSeats?: number;
+  /**
    * Founder-console override of the plan's active-brand count (`PLAN_BRANDS` in src/lib/pricing.ts, `brandCapFor`), a
    * whole number from 1 to 200. Written only by POST /api/admin/brand-cap under `withUserLock`. Optional and new
    * (rule 679 expand, rule 1393): older code ignores it, and a record without it reads as the plan's number.
@@ -450,11 +457,14 @@ export async function createUser(input: { email: string; name: string; phone: st
   const [{ createPersonRecord, withPersonLock }, { newPersonId }, { addressBlocked }] = await Promise.all([import("./person"), import("./multi-org"), import("./email-hold")]);
   // Tests may pick the shape (`"p"`, or `"legacy"` for a legacy owner while `MULTI_ORG` is mocked on); a route never does.
   const split = opts.person ? opts.person === "p" : MULTI_ORG;
+  // A test may also ask for `opaque: false`, an account made before R2 enable (its id is its address, as every account
+  // production holds from then); a route never does (rule 3815).
+  const opaque = opts.opaque ?? (OPAQUE_IDS || (split && MULTI_ORG));
   // L3 (account-id R2, rule 2740): an account that moved in place keeps `user:{old}` holding its new address. An id
   // derived from this address would overwrite it, so such an address gets an opaque id whatever `OPAQUE_IDS` says.
-  const moved = !(opts.opaque || OPAQUE_IDS || (split && MULTI_ORG)) && (await addressBlocked(email)) === "moved";
+  const moved = !opaque && (await addressBlocked(email)) === "moved";
   const account: User = {
-    id: idForNewAccount(email, opts.opaque || OPAQUE_IDS || (split && MULTI_ORG) || moved),
+    id: idForNewAccount(email, opaque || moved),
     email,
     name: input.name.trim().slice(0, 80),
     phone: input.phone.trim() ? normalizePhone(input.phone) : "",
@@ -1369,7 +1379,7 @@ export function markFreshCode(req: Request): void {
  * request (a wrong value is Next's 404 in `currentUser`) must not turn a staff, key or founder session away. The brand
  * is not read from the result: only `isFounderActor` is.
  */
-async function sessionAccountForConsole(): Promise<User | null> {
+export async function sessionAccountForConsole(): Promise<User | null> {
   const s = await readSession();
   return s ? resolveSession(s) : null;
 }

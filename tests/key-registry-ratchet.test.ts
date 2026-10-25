@@ -190,7 +190,7 @@ const RAW_KEYS: Record<string, number> = {
   "src/lib/admin-stats.ts": 4,
   "src/lib/agent-scope.ts": 1,
   "src/lib/auth.ts": 4,
-  "src/lib/billing.ts": 15,
+  "src/lib/billing.ts": 12,
   "src/lib/booking-token.ts": 4,
   "src/lib/brand-proposals.ts": 5,
   "src/lib/brand-rules.ts": 2,
@@ -307,9 +307,11 @@ const STORED_PERSON_ID: Record<string, number> = {
   "src/lib/feed-token.ts": 1, // linkIds (multi-workspace M1): a feed or booking link record's pid, written by createFeed/createBook from the session's actor
   "src/lib/email-hold.ts": 2, // addressBlocked: the hold record's pid (only to ask whether that person still exists); takeRevert: the revert record's pid (its emailreverted: stamp), both written by holdOldAddress from a locked move's pid (account-id R2, rules 2743-2744)
   "src/lib/email-move.ts": 1, // revertEmailMove: the revert record's pid, written by holdOldAddress; the move re-checks it against getLogin(old).pid under the locks (rule 2744)
+  "src/lib/conversions/multi-org-index.ts": 2, // S1 (rule 4100: moved from scripts/, which the scan does not read): the account record's ownerPid (else its id) and each roster entry, all read from records
   "src/lib/passkeys.ts": 1, // resolvePasskeyLogin (customer passkeys, pre-flight ruling 3): the pid a `pkcred:` reverse entry names, written by addPasskey/movePasskeys, forward-checked (getPerson, getLogin(person.email).pid, the credential in that pid's set)
 };
 const STORED_ACCOUNT_ID: Record<string, number> = {
+  "src/lib/conversions/multi-org-index.ts": 1, // S1 (rule 4100: moved from scripts/): each id in users:all, the account's own record key
   "src/lib/membership.ts": 6, // aidOf: a resolved account's own id; listOrgs: an orgs:{pid} entry (re-checked); legacyHomeOf/legacyHomeFrom: a legacy owner's own id (twice), a legacy memberOf; pickAccount: lastorg:{pid} (re-checked)
   "src/lib/auth.ts": 4, // getLogin: a legacy owner's own id, a legacy member's memberOf; resolveIds: the session's acct (re-checked against the account record and roleIn); resolveLegacy (customer roles, rule 3752): the legacy member's own memberOf, to read its membership row in the same round
   "src/lib/mcp.ts": 1, // userFromBearer: the token record's address as the legacy account id (used only when aidOf agrees)

@@ -1,4 +1,6 @@
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { handleOf } from "@/lib/ws-handle";
+import { acct } from "@/lib/account-id";
 import { randomBytes } from "crypto";
 
 // The real ledger, wrapped so a test can make one call throw (a ledger lock timeout, a transient Redis error).
@@ -48,15 +50,15 @@ async function owner(over: Partial<User> = {}): Promise<User> {
 let taskN = 0;
 async function taskFor(u: User, over: Partial<Task> = {}): Promise<Task> {
   const t: Task = { id: `t${++taskN}${randomBytes(3).toString("hex")}`, type: "social", channel: "instagram", title: "Weekend offer", body: "Two for one this weekend.", status: "pending", createdAt: new Date().toISOString(), lang: "ar", ...over };
-  await saveTask(u.email, t, true);
+  await saveTask(acct(u), t, true);
   return t;
 }
 /** plan "pro" unless a test is about trials: the engine reads the plan from here, not from the account. */
 const input = (u: User, t: Task, model: MediaModelId, over: Partial<StartInput> = {}): StartInput => ({
-  scope: u.email, email: u.email, lang: u.lang, accountSince: u.createdAt, plan: "pro", balance: u.credits, agent: "noor", taskId: t.id, model,
+  scope: acct(u), email: acct(u), lang: u.lang, accountSince: u.createdAt, plan: "pro", balance: u.credits, agent: "noor", taskId: t.id, model,
   aspect: "square", deadline: Date.now() + 100_000, prompt: async () => "a test prompt", ...over,
 });
-const balance = async (u: User) => (await getUser(u.email))!.credits;
+const balance = async (u: User) => (await getUser(acct(u)))!.credits;
 const counter = async (key: string) => Number((await db.get<number>(key)) ?? 0);
 const spend = (model: MediaModelId, part: string) => `${mk.spend(monthKey())}:m:${model}:${part}`;
 const sweep = (deadline = Date.now() + 100_000): AdvanceOpts => ({ force: true, deadline, via: "sweep" });
@@ -74,8 +76,8 @@ function started(r: StartResult): MediaJob {
   return r.job;
 }
 const flightFree = async (u: User, t: Task, kind: "image" | "video" = "image") => {
-  const won = await db.lock(mk.flight(u.email, t.id, kind), 5);
-  if (won) await db.unlock(mk.flight(u.email, t.id, kind));
+  const won = await db.lock(mk.flight(acct(u), t.id, kind), 5);
+  if (won) await db.unlock(mk.flight(acct(u), t.id, kind));
   return won;
 };
 const recent = async () => (await db.lrange(mk.recent(), 0, -1)).map((s) => JSON.parse(s) as Record<string, unknown>);
@@ -94,11 +96,11 @@ describe("starting a render: charge, submit, deliver", () => {
     expect(job.state).toBe("done");
     expect(deps.stored).toHaveLength(1);
     expect(deps.stored[0].source).toBe("https://v3.fal.media/files/test.jpg");
-    const task = (await getTask(u.email, t.id))!;
+    const task = (await getTask(acct(u), t.id))!;
     expect(task).toMatchObject({ imageUrl: deps.stored[0].url, imageProvider: "fal", imageModel: "img-fast", imagePrompt: "a test prompt", mediaCredits: 1 });
     expect(task.mediaJob).toBeUndefined();
     expect(r.ok && r.task?.imageUrl).toBe(deps.stored[0].url);
-    expect((await getJob(u.email, job.id))!).toMatchObject({ state: "done", url: deps.stored[0].url, costUsd: 0.003 });
+    expect((await getJob(acct(u), job.id))!).toMatchObject({ state: "done", url: deps.stored[0].url, costUsd: 0.003 });
     expect(await db.smembers(mk.open("fal"))).toEqual([]);
     expect(await counter(spend("img-fast", "jobs"))).toBe(1);
     expect(await counter(spend("img-fast", "credits"))).toBe(1);
@@ -113,7 +115,7 @@ describe("starting a render: charge, submit, deliver", () => {
     const noBlob = fakeDeps({ fal: fakeAdapter("fal") }, { store: false });
     started(await startMedia(input(u, t, "img-fast"), noBlob));
     expect(noBlob.stored).toEqual([]);
-    expect((await getTask(u.email, t.id))!.imageUrl).toBe("https://v3.fal.media/files/test.jpg");
+    expect((await getTask(acct(u), t.id))!.imageUrl).toBe("https://v3.fal.media/files/test.jpg");
 
     const t2 = await taskFor(u);
     const failing = fakeDeps({ fal: fakeAdapter("fal") }, { storeFails: true });
@@ -130,7 +132,7 @@ describe("starting a render: charge, submit, deliver", () => {
     const r = await startMedia(input(u, t, "img-fast"), deps);
     expect(r).toMatchObject({ ok: false, status: 422, error: "nsfw", credits: 50 });
     expect(await balance(u)).toBe(50);
-    const task = (await getTask(u.email, t.id))!;
+    const task = (await getTask(acct(u), t.id))!;
     expect(task.imageUrl).toBeUndefined();
     expect(task.mediaCredits).toBeUndefined();
     expect(task.mediaJob).toBeUndefined();
@@ -156,7 +158,7 @@ describe("starting a render: charge, submit, deliver", () => {
     let seen: string | undefined;
     const kie = fakeAdapter("kie", {
       submit: async () => {
-        seen = (await getTask(u.email, t.id))?.mediaJob?.image;
+        seen = (await getTask(acct(u), t.id))?.mediaJob?.image;
         return { state: "pending", providerTaskId: id };
       },
       status: () => done(8),
@@ -167,15 +169,15 @@ describe("starting a render: charge, submit, deliver", () => {
     expect(job).toMatchObject({ state: "running", providerTaskId: id });
     expect(publicJob(job).state).toBe("running");
     expect(seen, "task.mediaJob is written with the queued job, before the submit").toBe(job.id);
-    expect(await db.get(mk.ref("kie", id))).toEqual({ scope: u.email, jobId: job.id });
+    expect(await db.get(mk.ref("kie", id))).toEqual({ scope: acct(u), jobId: job.id });
     expect(r.ok && r.task?.mediaJob?.image).toBe(job.id);
 
     const after = await advance(job, deps, poll());
     expect(after.state).toBe("done");
     expect(kie.statusCalls).toBe(1);
     expect(deps.stored[0].source).toBe(RESULT);
-    expect((await getTask(u.email, t.id))!).toMatchObject({ imageUrl: deps.stored[0].url, imageProvider: "kie", imageModel: "img-balanced", mediaCredits: 1 });
-    expect((await getJob(u.email, job.id))!).toMatchObject({ providerCredits: 8, costUsd: 0.04 });
+    expect((await getTask(acct(u), t.id))!).toMatchObject({ imageUrl: deps.stored[0].url, imageProvider: "kie", imageModel: "img-balanced", mediaCredits: 1 });
+    expect((await getJob(acct(u), job.id))!).toMatchObject({ providerCredits: 8, costUsd: 0.04 });
 
     // Done is done: neither the returned job nor a stale running copy of it reaches the provider again.
     expect(await advance(after, deps, sweep())).toEqual(after);
@@ -224,7 +226,7 @@ describe("starting a render: charge, submit, deliver", () => {
     const t = await taskFor(u);
     const deps = fakeDeps({ kie: fakeAdapter("kie") });
     started(await startMedia(input(u, t, "img-balanced"), deps));
-    const hourKey = `rate:media:image:h:${u.email}`;
+    const hourKey = `rate:media:image:h:${acct(u)}`;
     expect(await counter(hourKey)).toBe(1);
     expect(await counter("rate:kie:create")).toBe(1);
     expect(await startMedia(input(u, t, "img-balanced"), deps)).toMatchObject({ status: 409, error: "in_progress" });
@@ -234,7 +236,7 @@ describe("starting a render: charge, submit, deliver", () => {
     const poor = await owner({ credits: 0 });
     const r = await startMedia(input(poor, await taskFor(poor), "img-balanced"), deps);
     expect(r).toEqual({ ok: false, status: 402, error: "no_credits", need: 1, have: 0 });
-    expect(await db.get(`rate:media:image:h:${poor.email}`)).toBeNull();
+    expect(await db.get(`rate:media:image:h:${acct(poor)}`)).toBeNull();
     expect(await counter("rate:kie:create")).toBe(1);
     expect(vi.mocked(charge)).toHaveBeenCalledTimes(1);
   });
@@ -260,16 +262,16 @@ describe("starting a render: charge, submit, deliver", () => {
   it("the account render limit answers 429 too_many before the charge, with the window that refused (rule 680)", async () => {
     const u = await owner();
     const t = await taskFor(u);
-    await db.set(`rate:media:image:h:${u.email}`, 30, 3600);
+    await db.set(`rate:media:image:h:${acct(u)}`, 30, 3600);
     const fal = fakeAdapter("fal");
     expect(await startMedia(input(u, t, "img-fast"), fakeDeps({ fal }))).toMatchObject({ ok: false, status: 429, error: "too_many", retryAfter: 3600 });
     expect(fal.submits).toHaveLength(0);
     expect(await balance(u)).toBe(50);
     expect(await flightFree(u, t)).toBe(true);
     // The day spent too: the longer wait is the one to report.
-    await db.set(`rate:media:image:d:${u.email}`, 150, 86400);
+    await db.set(`rate:media:image:d:${acct(u)}`, 150, 86400);
     expect(await startMedia(input(u, t, "img-fast"), fakeDeps({ fal }))).toMatchObject({ ok: false, status: 429, error: "too_many", retryAfter: 86400 });
-    await db.del(`rate:media:image:h:${u.email}`);
+    await db.del(`rate:media:image:h:${acct(u)}`);
     expect(await startMedia(input(u, t, "img-fast"), fakeDeps({ fal }))).toMatchObject({ ok: false, status: 429, error: "too_many", retryAfter: 86400 });
     expect(fal.submits).toHaveLength(0);
   });
@@ -279,7 +281,7 @@ describe("starting a render: charge, submit, deliver", () => {
     const t = await taskFor(u);
     expect(await startMedia(input(u, t, "vid-quick"), fakeDeps({ kie: fakeAdapter("kie") }))).toEqual({ ok: false, status: 402, error: "no_credits", need: 12, have: 0 });
     expect(await flightFree(u, t, "video")).toBe(true);
-    expect(await db.get(`rate:media:video:h:${u.email}`)).toBeNull();
+    expect(await db.get(`rate:media:video:h:${acct(u)}`)).toBeNull();
   });
 
   it("the agent's monthly cap: a pre-check 402 moves nothing, the ledger decides for a stale session, and a later refund lowers the agent's counter", async () => {
@@ -287,17 +289,17 @@ describe("starting a render: charge, submit, deliver", () => {
     const t = await taskFor(u);
     const kie = fakeAdapter("kie", { submit: () => ({ state: "pending", providerTaskId: kieId() }), status: () => ({ state: "failed", reason: "provider_failed" }) });
     const deps = fakeDeps({ kie });
-    const noorSpent = async () => agentSpendFor((await getUser(u.email))!, u.email);
+    const noorSpent = async () => agentSpendFor((await getUser(acct(u)))!, acct(u));
 
     // The session already shows the cap reached: refused before any limit, throttle, flight or charge.
     expect(await startMedia(input(u, t, "vid-quick", { cap: 12, spent: 1 }), deps)).toEqual({ ok: false, status: 402, error: "agent_cap", agent: "noor", spent: 1, cap: 12 });
-    expect(await db.get(`rate:media:video:h:${u.email}`)).toBeNull();
+    expect(await db.get(`rate:media:video:h:${acct(u)}`)).toBeNull();
     expect(await flightFree(u, t, "video")).toBe(true);
     expect(vi.mocked(charge)).not.toHaveBeenCalled();
 
     // Under the cap: charged to the agent that owns the item, in the job's scope, and the job keeps what its refund needs.
     const job = started(await startMedia(input(u, t, "vid-quick", { cap: 12, spent: 0 }), deps));
-    expect(job.spend).toEqual({ scope: u.email, agent: "noor", month: monthKey() });
+    expect(job.spend).toEqual({ scope: acct(u), agent: "noor", month: monthKey() });
     expect(await noorSpent()).toEqual({ noor: 12 });
 
     // A stale session that still reads 0 passes the pre-check, and the ledger refuses it: nothing charged, the flight free.
@@ -345,7 +347,7 @@ describe("starting a render: charge, submit, deliver", () => {
     expect(await db.get(mk.refundOnce(job.id))).toBeTruthy();
     expect(kie.submits).toHaveLength(0);
     expect(await flightFree(u, t)).toBe(true);
-    expect((await getTask(u.email, t.id))!.mediaJob, "the task no longer points at a job that may not exist").toBeUndefined();
+    expect((await getTask(acct(u), t.id))!.mediaJob, "the task no longer points at a job that may not exist").toBeUndefined();
 
     // The record reached Redis after all: three minutes on it ends submit_lost, and the balance is still 50.
     await realSet(refused.key!, job, 3600);
@@ -363,7 +365,7 @@ describe("starting a render: charge, submit, deliver", () => {
     const r = await startMedia(input(u, t, "img-balanced", { deadline: Date.now() + 4_000 }), fakeDeps({ kie }));
     expect(r).toMatchObject({ ok: false, status: 502, error: "media_failed", credits: 50 });
     expect(kie.submits).toHaveLength(0);
-    expect((await getTask(u.email, t.id))!.mediaLast?.image?.error).toBe("submit_failed");
+    expect((await getTask(acct(u), t.id))!.mediaLast?.image?.error).toBe("submit_failed");
   });
 
   it("a submit that never answers is cut at the deadline and refunded", async () => {
@@ -406,8 +408,8 @@ describe("starting a render: charge, submit, deliver", () => {
     const deps = fakeDeps({ kie }, { now: c.now });
     const starting = startMedia(input(u, t, "img-balanced", { deadline: c.t + 100_000 }), deps);
     await inSubmit;
-    const jobId = (await getTask(u.email, t.id))!.mediaJob!.image!;
-    const queued = (await getJob(u.email, jobId))!;
+    const jobId = (await getTask(acct(u), t.id))!.mediaJob!.image!;
+    const queued = (await getJob(acct(u), jobId))!;
     expect(queued.state).toBe("queued");
     expect(await advance(queued, deps, poll(c.t + 100_000))).toEqual(queued);
     // Past the lost threshold, but the start request still holds the job lock: untouched.
@@ -428,7 +430,7 @@ describe("moving a job forward: refunds exactly once, throttles, copies", () => 
     await Promise.all(Array.from({ length: 6 }, () => advance(job, deps, sweep())));
     expect(await balance(u)).toBe(50);
     expect(await db.get(mk.refundOnce(job.id))).toBeTruthy();
-    expect((await getJob(u.email, job.id))!).toMatchObject({ state: "failed", error: "provider_failed", refunded: true });
+    expect((await getJob(acct(u), job.id))!).toMatchObject({ state: "failed", error: "provider_failed", refunded: true });
     expect(kie.statusCalls).toBe(1);
     expect(vi.mocked(refund)).toHaveBeenCalledTimes(1);
   });
@@ -439,7 +441,7 @@ describe("moving a job forward: refunds exactly once, throttles, copies", () => 
     const deps = fakeDeps({ kie });
     const job = started(await startMedia(input(u, await taskFor(u), "img-balanced"), deps));
     await advance(job, deps, sweep());
-    await db.set(mk.job(u.email, job.id), job, 3600); // as if the failed save never landed
+    await db.set(mk.job(acct(u), job.id), job, 3600); // as if the failed save never landed
     const again = await advance(job, deps, sweep());
     expect(again).toMatchObject({ state: "failed", refunded: true });
     expect(await balance(u)).toBe(50);
@@ -455,7 +457,7 @@ describe("moving a job forward: refunds exactly once, throttles, copies", () => 
     const job = started(await startMedia(input(u, await taskFor(u), "img-balanced"), deps));
     const [a, b] = await Promise.all([advance(job, deps, sweep()), advance(job, deps, sweep())]);
     expect(kie.statusCalls).toBe(1);
-    const final = (await getJob(u.email, job.id))!;
+    const final = (await getJob(acct(u), job.id))!;
     expect(final.state).toBe("done");
     expect([a.state, b.state].sort()).toEqual(["done", "running"]);
     expect(await advance(job, deps, sweep())).toMatchObject({ state: "done" });
@@ -484,10 +486,10 @@ describe("moving a job forward: refunds exactly once, throttles, copies", () => 
     const t = await taskFor(u);
     const deps = fakeDeps({ kie: fakeAdapter("kie") });
     const queued = async (ageMs: number): Promise<MediaJob> => {
-      await charge(u.email, 1);
+      await charge(acct(u), 1);
       const at = new Date(Date.now() - ageMs).toISOString();
-      const job: MediaJob = { id: randomBytes(16).toString("hex"), scope: u.email, email: u.email, accountSince: u.createdAt, lang: "ar", taskId: t.id, kind: "image", model: "img-balanced", provider: "kie", credits: 1, prompt: "", state: "queued", createdAt: at, updatedAt: at };
-      await Promise.all([db.set(mk.job(u.email, job.id), job, 3600), db.sadd(mk.open("kie"), mk.openMember(u.email, job.id))]);
+      const job: MediaJob = { id: randomBytes(16).toString("hex"), scope: acct(u), email: acct(u), accountSince: u.createdAt, lang: "ar", taskId: t.id, kind: "image", model: "img-balanced", provider: "kie", credits: 1, prompt: "", state: "queued", createdAt: at, updatedAt: at };
+      await Promise.all([db.set(mk.job(acct(u), job.id), job, 3600), db.sadd(mk.open("kie"), mk.openMember(acct(u), job.id))]);
       return job;
     };
     const young = await queued(60_000);
@@ -499,7 +501,7 @@ describe("moving a job forward: refunds exactly once, throttles, copies", () => 
     const old = await queued(4 * 60_000);
     expect(await advance(old, deps, poll())).toMatchObject({ state: "failed", error: "submit_lost", refunded: true });
     expect(await balance(u)).toBe(48);
-    expect(await db.smembers(mk.open("kie"))).not.toContain(mk.openMember(u.email, old.id));
+    expect(await db.smembers(mk.open("kie"))).not.toContain(mk.openMember(acct(u), old.id));
   });
 
   it("status calls are throttled per job: polls and webhook hints share one call per 4 s, force skips only that, never the job lock", async () => {
@@ -539,10 +541,10 @@ describe("moving a job forward: refunds exactly once, throttles, copies", () => 
     const kept = await advance(job, deps, sweep(Date.now() + 20_000));
     expect(kept).toMatchObject({ state: "running", resultUrls: [RESULT], providerCredits: 8 });
     expect(deps.stored).toEqual([]);
-    expect((await getJob(u.email, job.id))!.resultUrls).toEqual([RESULT]);
+    expect((await getJob(acct(u), job.id))!.resultUrls).toEqual([RESULT]);
     expect(await advance(kept, deps, sweep())).toMatchObject({ state: "done", providerCredits: 8 });
     expect(kie.statusCalls).toBe(1);
-    expect((await getTask(u.email, t.id))!.imageUrl).toBe(deps.stored[0].url);
+    expect((await getTask(acct(u), t.id))!.imageUrl).toBe(deps.stored[0].url);
   });
 
   it("a failed copy keeps the result and retries without another status call, 30 s apart; three failures end store_failed, refunded, with the cost recorded", async () => {
@@ -594,7 +596,7 @@ describe("moving a job forward: refunds exactly once, throttles, copies", () => 
     const job = started(await startMedia(input(u, await taskFor(u), "img-balanced"), deps));
     vi.mocked(refund).mockRejectedValueOnce(new Error("redis_down"));
     await expect(advance(job, deps, sweep())).rejects.toThrow("redis_down");
-    expect((await getJob(u.email, job.id))!.state).toBe("running");
+    expect((await getJob(acct(u), job.id))!.state).toBe("running");
     expect(await db.get(mk.refundOnce(job.id))).toBeNull();
     expect(await balance(u)).toBe(49);
     expect(await advance(job, deps, sweep())).toMatchObject({ state: "failed", refunded: true });
@@ -607,13 +609,13 @@ describe("moving a job forward: refunds exactly once, throttles, copies", () => 
     const kie = fakeAdapter("kie", { status: () => ({ state: "failed", reason: "provider_failed" }) });
     const deps = fakeDeps({ kie });
     const job = started(await startMedia(input(u, await taskFor(u), "img-balanced"), deps));
-    await wipeAccount(u.email);
+    await wipeAccount(acct(u));
     const failed = await advance(job, deps, sweep());
     expect(failed).toMatchObject({ state: "failed", refunded: false });
-    expect(await db.smembers(mk.open("kie"))).not.toContain(mk.openMember(u.email, job.id));
+    expect(await db.smembers(mk.open("kie"))).not.toContain(mk.openMember(acct(u), job.id));
     expect(await db.get(mk.refundOnce(job.id))).toBeTruthy();
-    expect(await db.get(`notifs:${u.email}`)).toBeNull();
-    const again = await createUser({ email: u.email, name: "Again", phone: "", password: "abc12345", lang: "ar" });
+    expect(await db.get(`notifs:${acct(u)}`)).toBeNull();
+    const again = await createUser({ email: acct(u), name: "Again", phone: "", password: "abc12345", lang: "ar" });
     await advance(job, deps, sweep());
     await advance(failed, deps, sweep());
     expect(await balance(again)).toBe(50);
@@ -624,11 +626,11 @@ describe("moving a job forward: refunds exactly once, throttles, copies", () => 
     const kie = fakeAdapter("kie", { status: () => ({ state: "failed", reason: "provider_failed" }) });
     const deps = fakeDeps({ kie });
     const job = started(await startMedia(input(u, await taskFor(u), "img-balanced"), deps));
-    await wipeAccount(u.email);
-    const again = await createUser({ email: u.email, name: "Again", phone: "", password: "abc12345", lang: "ar" });
+    await wipeAccount(acct(u));
+    const again = await createUser({ email: acct(u), name: "Again", phone: "", password: "abc12345", lang: "ar" });
     expect(await advance(job, deps, sweep())).toMatchObject({ state: "failed", refunded: false });
     expect(await balance(again)).toBe(50);
-    expect(await listNotifs(u.email)).toEqual([]);
+    expect(await listNotifs(acct(u))).toEqual([]);
   });
 
   it("a result arriving after a refund is never delivered", async () => {
@@ -640,7 +642,7 @@ describe("moving a job forward: refunds exactly once, throttles, copies", () => 
     await db.set(mk.refundOnce(job.id), "done", 3600); // a fail refunded, then could not save
     expect(await advance(job, deps, sweep())).toMatchObject({ state: "failed", refunded: true });
     expect(deps.stored).toEqual([]);
-    const task = (await getTask(u.email, t.id))!;
+    const task = (await getTask(acct(u), t.id))!;
     expect(task.imageUrl).toBeUndefined();
     expect(task.mediaCredits).toBeUndefined();
     expect(await balance(u)).toBe(49);
@@ -651,9 +653,9 @@ describe("moving a job forward: refunds exactly once, throttles, copies", () => 
     const t = await taskFor(u);
     const deps = fakeDeps({ kie: fakeAdapter("kie", { status: () => done() }) });
     const job = started(await startMedia(input(u, t, "img-balanced"), deps));
-    await db.del(`task:${u.email}:${t.id}`);
+    await db.del(`task:${acct(u)}:${t.id}`);
     expect((await advance(job, deps, sweep())).state).toBe("done");
-    expect(await getTask(u.email, t.id)).toBeNull();
+    expect(await getTask(acct(u), t.id)).toBeNull();
     expect(await balance(u)).toBe(49);
   });
 
@@ -663,17 +665,17 @@ describe("moving a job forward: refunds exactly once, throttles, copies", () => 
     const deps = fakeDeps({ kie: fakeAdapter("kie", { status: () => done() }) });
     const a = started(await startMedia(input(u, t, "img-balanced"), deps));
     const newer = "b".repeat(32), newerUrl = "https://s1.public.blob.vercel-storage.com/media/newer.jpg";
-    await saveTask(u.email, { ...(await getTask(u.email, t.id))!, mediaJob: { image: newer }, imageUrl: newerUrl, imageProvider: "kie", mediaCredits: 1 });
+    await saveTask(acct(u), { ...(await getTask(acct(u), t.id))!, mediaJob: { image: newer }, imageUrl: newerUrl, imageProvider: "kie", mediaCredits: 1 });
     const finished = await advance(a, deps, sweep());
     expect(finished).toMatchObject({ state: "done", url: deps.stored[0].url });
-    expect((await getTask(u.email, t.id))!).toMatchObject({ imageUrl: newerUrl, mediaJob: { image: newer }, mediaCredits: 2 });
+    expect((await getTask(acct(u), t.id))!).toMatchObject({ imageUrl: newerUrl, mediaJob: { image: newer }, mediaCredits: 2 });
   });
 
   it("a legacy fal image keeps its credit in mediaCredits after a re-render", async () => {
     const u = await owner();
     const t = await taskFor(u, { imageUrl: "https://v3.fal.media/files/old.jpg", imageProvider: "fal" });
     started(await startMedia(input(u, t, "img-fast"), fakeDeps({ fal: fakeAdapter("fal") })));
-    expect((await getTask(u.email, t.id))!.mediaCredits).toBe(2);
+    expect((await getTask(acct(u), t.id))!.mediaCredits).toBe(2);
   });
 
   it("a job older than the flight lock does not release a newer job's hold on the task", async () => {
@@ -683,11 +685,11 @@ describe("moving a job forward: refunds exactly once, throttles, copies", () => 
     const deps = fakeDeps({ kie: fakeAdapter("kie", { status: () => done() }) }, { now: c.now });
     const a = started(await startMedia(input(u, t, "img-balanced", { deadline: c.t + 100_000 }), deps));
     c.add(16 * 60_000);
-    await db.unlock(mk.flight(u.email, t.id, "image")); // A's hold expired
+    await db.unlock(mk.flight(acct(u), t.id, "image")); // A's hold expired
     const b = started(await startMedia(input(u, t, "img-balanced", { deadline: c.t + 100_000 }), deps));
     expect((await advance(a, deps, sweep(c.t + 100_000))).state).toBe("done");
     expect(await flightFree(u, t), "B still holds the task").toBe(false);
-    expect((await getTask(u.email, t.id))!.mediaJob?.image).toBe(b.id);
+    expect((await getTask(acct(u), t.id))!.mediaJob?.image).toBe(b.id);
   });
 });
 
@@ -730,8 +732,8 @@ describe("Higgsfield admission (spec A10)", () => {
     const jb = started(await startMedia(input(b, await taskFor(b), "img-design", { deadline: cl.t + 100_000 }), deps));
     cl.add(31 * 60_000);
     expect((await startMedia(input(c, await taskFor(c), "img-lifestyle", { deadline: cl.t + 100_000 }), deps)).ok).toBe(true);
-    expect(await getJob(a.email, ja.id)).toMatchObject({ state: "failed", error: "timeout", refunded: true });
-    expect(await getJob(b.email, jb.id)).toMatchObject({ state: "failed", error: "timeout", refunded: true });
+    expect(await getJob(acct(a), ja.id)).toMatchObject({ state: "failed", error: "timeout", refunded: true });
+    expect(await getJob(acct(b), jb.id)).toMatchObject({ state: "failed", error: "timeout", refunded: true });
     expect(hf.cancels).toBe(2);
     expect([await balance(a), await balance(b), await balance(c)]).toEqual([50, 50, 49]);
   });
@@ -741,7 +743,7 @@ describe("Higgsfield admission (spec A10)", () => {
     await Promise.all([db.sadd(mk.open("higgsfield"), ghost), db.sadd(mk.open("higgsfield"), "garbage")]);
     const a = await owner();
     const job = started(await startMedia(input(a, await taskFor(a), "img-lifestyle"), fakeDeps({ higgsfield: fakeAdapter("higgsfield") })));
-    expect(await db.smembers(mk.open("higgsfield"))).toEqual([mk.openMember(a.email, job.id)]);
+    expect(await db.smembers(mk.open("higgsfield"))).toEqual([mk.openMember(acct(a), job.id)]);
   });
 });
 
@@ -780,7 +782,7 @@ describe("the breaker (spec A22)", () => {
     const job = started(await startMedia(input(u, t, "vid-sound", { aspect: "portrait" }), deps));
     expect(await advance(job, deps, sweep())).toMatchObject({ state: "done", providerCredits: 250, costUsd: 1.25 });
     expect((await offModels())["vid-sound"]).toMatchObject({ reason: "overbilled" });
-    expect((await getTask(u.email, t.id))!).toMatchObject({ videoUrl: deps.stored[0].url, videoProvider: "kie", videoModel: "vid-sound", mediaCredits: 12 });
+    expect((await getTask(acct(u), t.id))!).toMatchObject({ videoUrl: deps.stored[0].url, videoProvider: "kie", videoModel: "vid-sound", mediaCredits: 12 });
   });
 
   it("an empty provider balance switches every model of that provider off for an hour", async () => {
@@ -812,7 +814,7 @@ describe("webhook lookup, sweeps and the console's counters", () => {
     expect(await jobForHook("constructor" as never, id)).toBeNull();
     // A pointer that disagrees with the job it names is ignored.
     const other = kieId();
-    await db.set(mk.ref("kie", other), { scope: u.email, jobId: job.id }, 3600);
+    await db.set(mk.ref("kie", other), { scope: acct(u), jobId: job.id }, 3600);
     expect(await jobForHook("kie", other)).toBeNull();
   });
 
@@ -830,13 +832,13 @@ describe("webhook lookup, sweeps and the console's counters", () => {
 
     const report = await sweepMedia(deps, { deadline: c.t + 100_000 });
     expect(report).toEqual({ open: 3, advanced: 2, done: 1, failed: 1, dropped: 2, skipped: 0 });
-    expect(await getJob(a.email, pending.id)).toMatchObject({ state: "failed", error: "timeout", refunded: true });
-    expect(await getJob(b.email, ready.id)).toMatchObject({ state: "done" });
-    expect(await getJob(y.email, young.id)).toMatchObject({ state: "running" });
+    expect(await getJob(acct(a), pending.id)).toMatchObject({ state: "failed", error: "timeout", refunded: true });
+    expect(await getJob(acct(b), ready.id)).toMatchObject({ state: "done" });
+    expect(await getJob(acct(y), young.id)).toMatchObject({ state: "running" });
     expect(kie.statusCalls).toBe(1);
     expect([await balance(a), await balance(b)]).toEqual([50, 49]);
     expect(await db.smembers(mk.open("fal"))).toEqual([]);
-    expect(await db.smembers(mk.open("kie"))).toEqual([mk.openMember(y.email, young.id)]);
+    expect(await db.smembers(mk.open("kie"))).toEqual([mk.openMember(acct(y), young.id)]);
 
     // Less than 20 s left: nothing is started.
     c.add(3 * 60_000);
@@ -880,7 +882,7 @@ describe("webhook lookup, sweeps and the console's counters", () => {
     expect(after).toHaveLength(50);
     expect(after[0]).toMatchObject({ state: "failed", error: "nsfw" });
     for (const e of after.slice(0, 2)) for (const k of ["email", "scope", "prompt"]) expect(e).not.toHaveProperty(k);
-    expect(JSON.stringify(after)).not.toContain(u.email);
+    expect(JSON.stringify(after)).not.toContain(acct(u));
   });
 });
 
@@ -891,14 +893,14 @@ describe("what the owner sees", () => {
     const failing = () => fakeDeps({ kie: fakeAdapter("kie", { status: () => ({ state: "failed", reason: "provider_failed" }) }) });
     const d1 = failing();
     await advance(started(await startMedia(input(u, t, "img-balanced"), d1)), d1, sweep());
-    const notes = await listNotifs(u.email);
+    const notes = await listNotifs(acct(u));
     expect(notes).toHaveLength(1);
-    expect(notes[0]).toMatchObject({ kind: "info", title: "لم تكتمل الصورة لـ«Weekend offer»", body: "أُعيدت 1 كريدت.", href: "/ar/app/b/default" });
+    expect(notes[0]).toMatchObject({ kind: "info", title: "لم تكتمل الصورة لـ«Weekend offer»", body: "أُعيدت 1 كريدت.", href: `/ar/app/w/${handleOf(u)}/b/default` });
 
     const v = await owner();
     const d2 = failing();
     await advance(started(await startMedia(input(v, await taskFor(v), "img-balanced"), d2)), d2, poll());
-    expect(await listNotifs(v.email)).toEqual([]);
+    expect(await listNotifs(acct(v))).toEqual([]);
   });
 
   it("a video finished by a webhook hint tells an English-speaking owner it is ready", async () => {
@@ -907,8 +909,8 @@ describe("what the owner sees", () => {
     const deps = fakeDeps({ kie: fakeAdapter("kie", { status: () => ({ state: "done", urls: ["https://tempfile.kie.example/v.mp4"] }) }) });
     const job = started(await startMedia(input(u, t, "vid-quick", { aspect: "portrait" }), deps));
     expect((await advance(job, deps, { deadline: Date.now() + 100_000, via: "hook" })).state).toBe("done");
-    expect(await listNotifs(u.email)).toMatchObject([{ kind: "info", title: "Your video is ready: Ramadan hours", body: "It's in your inbox.", href: "/en/app/b/default" }]);
-    expect((await getTask(u.email, t.id))!).toMatchObject({ videoUrl: deps.stored[0].url, videoPrompt: "a test prompt", videoProvider: "kie", videoModel: "vid-quick", mediaCredits: 12 });
+    expect(await listNotifs(acct(u))).toMatchObject([{ kind: "info", title: "Your video is ready: Ramadan hours", body: "It's in your inbox.", href: `/en/app/w/${handleOf(u)}/b/default` }]);
+    expect((await getTask(acct(u), t.id))!).toMatchObject({ videoUrl: deps.stored[0].url, videoPrompt: "a test prompt", videoProvider: "kie", videoModel: "vid-quick", mediaCredits: 12 });
     expect(deps.stored[0].kind).toBe("video");
   });
 
@@ -917,12 +919,12 @@ describe("what the owner sees", () => {
     const t = await taskFor(u);
     const failing = fakeDeps({ kie: fakeAdapter("kie", { status: () => ({ state: "failed", reason: "provider_failed" }) }) });
     await advance(started(await startMedia(input(u, t, "vid-quick", { aspect: "portrait" }), failing)), failing, poll());
-    expect((await getTask(u.email, t.id))!.mediaLast?.video).toMatchObject({ error: "provider_failed", credits: 12, refunded: true });
+    expect((await getTask(acct(u), t.id))!.mediaLast?.video).toMatchObject({ error: "provider_failed", credits: 12, refunded: true });
     const deps = fakeDeps({ kie: fakeAdapter("kie") });
     started(await startMedia(input(u, t, "img-balanced"), deps));
-    expect((await getTask(u.email, t.id))!.mediaLast?.video?.error).toBe("provider_failed");
+    expect((await getTask(acct(u), t.id))!.mediaLast?.video?.error).toBe("provider_failed");
     const video = started(await startMedia(input(u, t, "vid-quick", { aspect: "portrait" }), deps));
-    const task = (await getTask(u.email, t.id))!;
+    const task = (await getTask(acct(u), t.id))!;
     expect(task.mediaLast?.video).toBeUndefined();
     expect(task.mediaJob?.video).toBe(video.id);
   });
@@ -934,25 +936,25 @@ describe("what the owner sees", () => {
     const deps = fakeDeps({ kie });
     const first = started(await startMedia(trial(await taskFor(u)), deps));
     expect(first.trialVideo).toBe(true);
-    expect(await db.get(mk.trialVideo(u.email))).toBeTruthy();
+    expect(await db.get(mk.trialVideo(acct(u)))).toBeTruthy();
     const t2 = await taskFor(u);
     expect(await startMedia(trial(t2), deps)).toMatchObject({ ok: false, status: 402, error: "trial_video_used" });
     expect(await balance(u)).toBe(38);
     expect(await flightFree(u, t2, "video")).toBe(true);
     await advance(first, deps, sweep());
     expect(await balance(u)).toBe(50);
-    expect(await db.get(mk.trialVideo(u.email))).toBeNull();
+    expect(await db.get(mk.trialVideo(acct(u)))).toBeNull();
     expect((await startMedia(trial(t2), deps)).ok).toBe(true);
 
     const paid = await owner({ plan: "pro" });
     started(await startMedia(input(paid, await taskFor(paid), "vid-quick", { aspect: "portrait" }), fakeDeps({ kie: fakeAdapter("kie") })));
-    expect(await db.get(mk.trialVideo(paid.email))).toBeNull();
+    expect(await db.get(mk.trialVideo(acct(paid)))).toBeNull();
   });
 
   it("what the browser sees of a job carries no account, workspace or prompt, and a queued job reads as running", async () => {
     const u = await owner();
     const at = new Date().toISOString();
-    const job: MediaJob = { id: "e".repeat(32), scope: `${u.email}#b1`, email: u.email, accountSince: u.createdAt, lang: "ar", taskId: "t1", kind: "image", model: "img-balanced", provider: "kie", credits: 1, prompt: "secret prompt", state: "queued", createdAt: at, updatedAt: at };
+    const job: MediaJob = { id: "e".repeat(32), scope: `${acct(u)}#b1`, email: acct(u), accountSince: u.createdAt, lang: "ar", taskId: "t1", kind: "image", model: "img-balanced", provider: "kie", credits: 1, prompt: "secret prompt", state: "queued", createdAt: at, updatedAt: at };
     expect(publicJob(job)).toEqual({ id: job.id, kind: "image", model: "img-balanced", credits: 1, createdAt: at, state: "running" });
     expect(publicJob({ ...job, state: "failed", error: "timeout" })).toMatchObject({ state: "failed", error: "timeout" });
   });
@@ -987,19 +989,19 @@ describe("no charge, result or refund is lost to a failed write (review fixes)",
     expect(r).toEqual({ ok: false, status: 502, error: "media_failed" });
     expect(await balance(u)).toBe(49);
     expect(kie.submits).toHaveLength(0);
-    const jobId = (await getTask(u.email, t.id))!.mediaJob?.image;
+    const jobId = (await getTask(acct(u), t.id))!.mediaJob?.image;
     expect(jobId, "the task still points at the charged job").toBeTruthy();
-    expect(await getJob(u.email, jobId!), "the record the failed save lost is written again").toMatchObject({ state: "queued", credits: 1 });
-    expect(await db.smembers(mk.open("kie"))).toContain(mk.openMember(u.email, jobId!));
+    expect(await getJob(acct(u), jobId!), "the record the failed save lost is written again").toMatchObject({ state: "queued", credits: 1 });
+    expect(await db.smembers(mk.open("kie"))).toContain(mk.openMember(acct(u), jobId!));
     expect(await db.get(mk.refundOnce(jobId!)), "the claim is released for the next pass").toBeNull();
     expect(await flightFree(u, t), "the charged job still holds the task").toBe(false);
 
     c.add(4 * 60_000);
     expect(await sweepMedia(deps, { deadline: c.t + 100_000 })).toMatchObject({ advanced: 1, failed: 1 });
-    expect(await getJob(u.email, jobId!)).toMatchObject({ state: "failed", error: "submit_lost", refunded: true });
+    expect(await getJob(acct(u), jobId!)).toMatchObject({ state: "failed", error: "submit_lost", refunded: true });
     expect(await balance(u)).toBe(50);
     expect(await flightFree(u, t)).toBe(true);
-    expect((await getTask(u.email, t.id))!.mediaJob).toBeUndefined();
+    expect((await getTask(acct(u), t.id))!.mediaJob).toBeUndefined();
     expect(vi.mocked(refund)).toHaveBeenCalledTimes(2);
   });
 
@@ -1012,7 +1014,7 @@ describe("no charge, result or refund is lost to a failed write (review fixes)",
     const realSet = db.set;
     let fail = true;
     vi.spyOn(db, "set").mockImplementation(async (key: string, value: unknown, ttl?: number) => {
-      if (fail && key === `task:${u.email}:${t.id}`) {
+      if (fail && key === `task:${acct(u)}:${t.id}`) {
         fail = false;
         throw new Error("redis_down");
       }
@@ -1020,12 +1022,12 @@ describe("no charge, result or refund is lost to a failed write (review fixes)",
     });
     await expect(advance(job, deps, sweep())).rejects.toThrow("redis_down");
     vi.mocked(db.set).mockRestore();
-    expect(await getJob(u.email, job.id), "not done: nothing would ever advance it again").toMatchObject({ state: "running", resultUrls: [RESULT], providerCredits: 8 });
-    expect((await getTask(u.email, t.id))!.imageUrl).toBeUndefined();
+    expect(await getJob(acct(u), job.id), "not done: nothing would ever advance it again").toMatchObject({ state: "running", resultUrls: [RESULT], providerCredits: 8 });
+    expect((await getTask(acct(u), t.id))!.imageUrl).toBeUndefined();
 
     expect((await advance(job, deps, sweep())).state).toBe("done");
     expect(kie.statusCalls).toBe(1);
-    const task = (await getTask(u.email, t.id))!;
+    const task = (await getTask(acct(u), t.id))!;
     expect(task).toMatchObject({ imageUrl: deps.stored[1].url, imageProvider: "kie", mediaCredits: 1 });
     expect(task.mediaJob).toBeUndefined();
     expect(await balance(u)).toBe(49);
@@ -1039,7 +1041,7 @@ describe("no charge, result or refund is lost to a failed write (review fixes)",
     const realHset = db.hset;
     let fail = true;
     vi.spyOn(db, "hset").mockImplementation(async (key: string, field: string, value: unknown) => {
-      if (fail && key.startsWith(`tidx:${u.email}:`) && field === t.id) {
+      if (fail && key.startsWith(`tidx:${acct(u)}:`) && field === t.id) {
         fail = false;
         throw new Error("redis_down");
       }
@@ -1047,24 +1049,24 @@ describe("no charge, result or refund is lost to a failed write (review fixes)",
     });
     await expect(advance(job, deps, sweep())).rejects.toThrow("redis_down");
     vi.mocked(db.hset).mockRestore();
-    expect((await getTask(u.email, t.id))!).toMatchObject({ imageUrl: deps.stored[0].url, mediaCredits: 1, mediaApplied: [job.id] });
+    expect((await getTask(acct(u), t.id))!).toMatchObject({ imageUrl: deps.stored[0].url, mediaCredits: 1, mediaApplied: [job.id] });
     expect((await advance(job, deps, sweep())).state).toBe("done");
-    expect((await getTask(u.email, t.id))!).toMatchObject({ imageUrl: deps.stored[0].url, mediaCredits: 1, mediaApplied: [job.id] });
+    expect((await getTask(acct(u), t.id))!).toMatchObject({ imageUrl: deps.stored[0].url, mediaCredits: 1, mediaApplied: [job.id] });
   });
 
   it("a render finished after its account was deleted writes no analytics for the address; a live account's still counts", async () => {
     const u = await owner();
     const deps = fakeDeps({ kie: fakeAdapter("kie", { status: () => done() }) });
     const job = started(await startMedia(input(u, await taskFor(u), "img-balanced"), deps));
-    await wipeAccount(u.email);
+    await wipeAccount(acct(u));
     expect((await advance(job, deps, sweep())).state).toBe("done");
-    for (const key of [`ulast:${u.email}`, `uev:${u.email}:image`, `ufirst0:${u.email}:image`]) expect(await db.get(key), key).toBeNull();
-    expect(await listNotifs(u.email)).toEqual([]);
+    for (const key of [`ulast:${acct(u)}`, `uev:${acct(u)}:image`, `ufirst0:${acct(u)}:image`]) expect(await db.get(key), key).toBeNull();
+    expect(await listNotifs(acct(u))).toEqual([]);
 
     const v = await owner();
     const jv = started(await startMedia(input(v, await taskFor(v), "img-balanced"), deps));
     expect((await advance(jv, deps, sweep())).state).toBe("done");
-    expect(await db.get(`uev:${v.email}:image`)).toBe(1);
+    expect(await db.get(`uev:${acct(v)}:image`)).toBe(1);
   });
 
   it("a sweep waits the 30 s copy gap too: a failed copy is never retried sooner, whoever asks", async () => {
@@ -1090,15 +1092,15 @@ describe("no charge, result or refund is lost to a failed write (review fixes)",
     const job = started(await startMedia(input(u, await taskFor(u), "img-balanced"), deps));
     await db.lock(mk.refundOnce(job.id), 60); // claimed, then the function was killed before the ledger call
     await expect(advance(job, deps, sweep())).rejects.toThrow("refund_pending");
-    expect(await getJob(u.email, job.id)).toMatchObject({ state: "running" });
+    expect(await getJob(acct(u), job.id)).toMatchObject({ state: "running" });
     expect(await balance(u)).toBe(49);
-    expect(await listNotifs(u.email), "nobody is told credits came back").toEqual([]);
+    expect(await listNotifs(acct(u)), "nobody is told credits came back").toEqual([]);
 
     await db.unlock(mk.refundOnce(job.id)); // the claim expired
     expect(await advance(job, deps, sweep())).toMatchObject({ state: "failed", refunded: true });
     expect(await balance(u)).toBe(50);
     expect(await db.get(mk.refundOnce(job.id))).toBe("done");
-    await db.set(mk.job(u.email, job.id), job, 3600); // as if the failed save never landed
+    await db.set(mk.job(acct(u), job.id), job, 3600); // as if the failed save never landed
     expect(await advance(job, deps, sweep())).toMatchObject({ state: "failed", refunded: true });
     expect(await balance(u)).toBe(50);
     expect(vi.mocked(refund)).toHaveBeenCalledTimes(1);
@@ -1113,7 +1115,7 @@ describe("new media after approval needs a person again (rule 576)", () => {
     const pending = await taskFor(u);
     const deps = fakeDeps({ fal: fakeAdapter("fal") });
     for (const t of [approved, published, pending]) started(await startMedia(input(u, t, "img-fast"), deps));
-    const [a, p, q] = await Promise.all([getTask(u.email, approved.id), getTask(u.email, published.id), getTask(u.email, pending.id)]);
+    const [a, p, q] = await Promise.all([getTask(acct(u), approved.id), getTask(acct(u), published.id), getTask(acct(u), pending.id)]);
     expect(a!.imageUrl).toBeTruthy();
     expect(a!.status).toBe("approved");
     expect(a!.decidedAt, "chat publish_item needs decidedAt: a re-rendered image was never approved").toBeUndefined();

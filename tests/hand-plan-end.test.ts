@@ -1,4 +1,5 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { acct } from "@/lib/account-id";
 import { readFileSync } from "node:fs";
 import { adminSignIn, jar, json, newUser, params } from "./helpers/session";
 import { getUser, saveUser, trialOver, type Plan, type User } from "@/lib/auth";
@@ -32,8 +33,8 @@ const rows = async (email: string, action: string) =>
 const hand = (paidThrough: string) => ({ paidThrough, by: "key", at: new Date().toISOString() });
 async function account(p: Plan, extra: Partial<User> = {}): Promise<User> {
   const u = await newUser("handend");
-  await saveUser({ ...(await getUser(u.email))!, plan: p, ...extra });
-  return (await getUser(u.email))!;
+  await saveUser({ ...(await getUser(acct(u)))!, plan: p, ...extra });
+  return (await getUser(acct(u)))!;
 }
 const paymob = (b: Partial<Billing> = {}): Billing => ({ provider: "paymob", plan: "starter", status: "active", paidThrough: today(), anchor: 1, autoRenew: false, failures: 0, txns: [], ...b });
 
@@ -68,17 +69,17 @@ describe("the daily job moves it to the trial (rule 2274)", () => {
   it("plan trial, an ended trial, everything else kept; once; one log row", async () => {
     const day = addDays(today(), -2);
     const u = await account("pro", { handPlan: hand(day), credits: 37, deal: undefined, renewedAt: "2000-01" });
-    expect(await endHandPlanIfDue(u.email)).toBe(true);
-    const after = (await getUser(u.email))!;
+    expect(await endHandPlanIfDue(acct(u))).toBe(true);
+    const after = (await getUser(acct(u)))!;
     expect(after.plan).toBe("trial");
     expect(new Date(after.trialEnds).getTime()).toBeLessThan(Date.now());
     expect(trialOver(after)).toBe(true);
     // No data deleted: the balance and the paid-through day stay, so the console still shows when it ended.
     expect(after.credits).toBe(37);
     expect(after.handPlan).toMatchObject({ paidThrough: day });
-    expect(await renewIfDue(u.email), "a trial gets no refill").toBe(false);
-    expect(await endHandPlanIfDue(u.email), "a second run changes nothing").toBe(false);
-    const log = await rows(u.email, "hand_plan_ended");
+    expect(await renewIfDue(acct(u)), "a trial gets no refill").toBe(false);
+    expect(await endHandPlanIfDue(acct(u)), "a second run changes nothing").toBe(false);
+    const log = await rows(acct(u), "hand_plan_ended");
     expect(log).toHaveLength(1);
     expect(log[0]).toMatchObject({ actor: "system", before: { plan: "pro", paidThrough: day, credits: 37 }, after: { plan: "trial", paidThrough: day, credits: 37 } });
   });
@@ -86,19 +87,19 @@ describe("the daily job moves it to the trial (rule 2274)", () => {
     const none = await account("pro");
     const paid = await account("business", { handPlan: hand(today()) });
     const sub = await account("starter", { billing: paymob({ paidThrough: addDays(today(), -3) }), handPlan: hand(addDays(today(), -3)) });
-    expect(await Promise.all([none, paid, sub].map((u) => endHandPlanIfDue(u.email)))).toEqual([false, false, false]);
-    const after = await Promise.all([none, paid, sub].map(async (u) => (await getUser(u.email))!.plan));
+    expect(await Promise.all([none, paid, sub].map((u) => endHandPlanIfDue(acct(u))))).toEqual([false, false, false]);
+    const after = await Promise.all([none, paid, sub].map(async (u) => (await getUser(acct(u)))!.plan));
     expect(after).toEqual(["pro", "business", "starter"]);
   });
   it("the founder can extend the trial afterwards or set a plan again, which restores it", async () => {
     const u = await account("pro", { handPlan: hand(addDays(today(), -1)) });
-    await endHandPlanIfDue(u.email);
+    await endHandPlanIfDue(acct(u));
     const ext = await users.POST(json(`/api/admin/users/${encodeURIComponent(u.email)}`, "POST", { action: "extendTrial", days: 3 }), params({ email: encodeURIComponent(u.email) }));
     expect(ext.status).toBe(200);
-    expect(trialOver((await getUser(u.email))!), "a trial extended by hand is a live trial").toBe(false);
+    expect(trialOver((await getUser(acct(u)))!), "a trial extended by hand is a live trial").toBe(false);
     const set = await plan.POST(json("/api/admin/plan", "POST", { email: u.email, plan: "pro", paidThrough: addDays(today(), 30) }));
     expect(set.status).toBe(200);
-    const back = (await getUser(u.email))!;
+    const back = (await getUser(acct(u)))!;
     expect(back.plan).toBe("pro");
     expect(trialOver(back)).toBe(false);
   });
@@ -108,9 +109,9 @@ describe("the daily job moves it to the trial (rule 2274)", () => {
     const u = await account("pro", { handPlan: hand(addDays(today(), -1)), renewedAt: "2000-01", credits: 5 });
     const { GET } = await import("@/app/api/cron/daily/route");
     const report = (await (await GET(new Request("https://nashr.test/api/cron/daily", { headers: { authorization: "Bearer cron-secret-hand-plan" } }))).json()) as { results: Record<string, string> };
-    expect(report.results[u.email]).toMatch(/hand_plan_ended/);
-    expect(report.results[u.email]).not.toMatch(/renewed/);
-    const after = (await getUser(u.email))!;
+    expect(report.results[acct(u)]).toMatch(/hand_plan_ended/);
+    expect(report.results[acct(u)]).not.toMatch(/renewed/);
+    const after = (await getUser(acct(u)))!;
     expect([after.plan, after.credits]).toEqual(["trial", 5]);
     const src = readFileSync("src/app/api/cron/daily/route.ts", "utf8");
     expect(src.indexOf("endHandPlanIfDue(acct(u))")).toBeGreaterThan(0);
@@ -128,10 +129,10 @@ describe("the daily job moves it to the trial (rule 2274)", () => {
       const res = await GET(new Request("https://nashr.test/api/cron/daily", { headers: { authorization: "Bearer cron-secret-hand-plan" } }));
       expect(res.status).toBe(200);
       const report = (await res.json()) as { results: Record<string, string> };
-      expect(report.results[u.email]).toMatch(/hand_plan_failed/);
-      expect(report.results[u.email]).not.toMatch(/redis down/);
-      expect((await getUser(u.email))!.plan, "left as it was; the gates already refuse it (rule 2273)").toBe("pro");
-      expect(report.results[other.email], "the next account's day still runs").toMatch(/renewed/);
+      expect(report.results[acct(u)]).toMatch(/hand_plan_failed/);
+      expect(report.results[acct(u)]).not.toMatch(/redis down/);
+      expect((await getUser(acct(u)))!.plan, "left as it was; the gates already refuse it (rule 2273)").toBe("pro");
+      expect(report.results[acct(other)], "the next account's day still runs").toMatch(/renewed/);
     } finally {
       vi.doUnmock("@/lib/hand-plan-end");
       vi.resetModules();
@@ -142,9 +143,9 @@ describe("the daily job moves it to the trial (rule 2274)", () => {
 describe("no new stored field (rule 2275, the expand step of rule 679)", () => {
   it("the change writes only plan and trialEnds; every other field of the record is as it was", async () => {
     const u = await account("pro", { handPlan: hand(addDays(today(), -1)), credits: 9 });
-    const before = (await getUser(u.email))!;
-    await endHandPlanIfDue(u.email);
-    const after = (await getUser(u.email))!;
+    const before = (await getUser(acct(u)))!;
+    await endHandPlanIfDue(acct(u));
+    const after = (await getUser(acct(u)))!;
     expect(Object.keys(after).sort()).toEqual(Object.keys(before).sort());
     const strip = ({ plan: _p, trialEnds: _t, ...rest }: User) => { void _p; void _t; return rest; };
     expect(strip(after)).toEqual(strip(before));

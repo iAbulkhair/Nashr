@@ -78,7 +78,7 @@ export default defineConfig({
     // per run (`E2E_ADMIN_KEY`): the passkey spec flips the passkey off switch with it (rule 2426) and the held-routine spec
     // opens the Usage page with it. `E2E_SEED_KV` starts the memory store with a held routine and a cron report (rule 2590).
     // `CONNECT_SECRET` is random per run as well (rule 3008): two-step sign-in seals the authenticator secret with it.
-    env: { APP_ENV: "test", WAITLIST_ADMIN_KEY: E2E_ADMIN_KEY, CONNECT_SECRET: E2E_CONNECT_SECRET, E2E_SEED_KV: e2eSeed(OWNER.email) },
+    env: { APP_ENV: "test", WAITLIST_ADMIN_KEY: E2E_ADMIN_KEY, CONNECT_SECRET: E2E_CONNECT_SECRET, E2E_SEED_KV: e2eSeed(OWNER) },
     url: baseURL,
     // Never reuse. The rate limiters (signup five per IP per hour, forgot three per address per fifteen minutes, login
     // eight per account) live in the same process-local store as the data, so a server left running from an earlier run

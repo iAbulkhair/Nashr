@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { renderToReadableStream } from "react-dom/server.edge";
 import { json, newMember, newUser, signIn } from "./helpers/session";
+import { sc } from "@/lib/auth";
 import { saveBrand, saveTask, updateTask, type Brand } from "@/lib/brand";
 import { appDict } from "@/lib/app-i18n";
 import { DEFAULT_GOV } from "@/lib/governance";
@@ -27,9 +28,9 @@ const patch = (id: string, body: unknown) => itemRoute.PATCH(json(`/api/secretar
 describe("the My to-dos page renders complete on the server (rule 204)", () => {
   it("shows every bucket with Riyadh dates, the row actions, the approvals line and the add form", async () => {
     const u = await newUser("todopage");
-    await saveBrand(u.email, BRAND);
+    await saveBrand(sc(u), BRAND);
     await signIn(u.email);
-    await saveTask(u.email, { id: "dddddddddddd0001", type: "social", channel: "instagram", title: "Post", body: "b", status: "pending", createdAt: new Date().toISOString(), lang: "ar" }, true);
+    await saveTask(sc(u), { id: "dddddddddddd0001", type: "social", channel: "instagram", title: "Post", body: "b", status: "pending", createdAt: new Date().toISOString(), lang: "ar" }, true);
     const day = riyadhDay(Date.now() + 3 * 864e5);
     const soon = await add({ title: "أرسل عرض السعر", dueAt: `${day}T10:00`, owedTo: "مؤسسة النخبة" });
     await add({ title: "فاتورة من أحمد", direction: "they_owe", owedBy: "أحمد", dueAt: `${day}T12:00` });
@@ -76,16 +77,16 @@ describe("the My to-dos page renders complete on the server (rule 204)", () => {
 
   it("shows an agent's 'done' as a claim and, next to it, the fact code read from the linked inbox item (rule 211)", async () => {
     const u = await newUser("todofact");
-    await saveBrand(u.email, BRAND);
+    await saveBrand(sc(u), BRAND);
     await signIn(u.email);
     const post = (id: string, title: string) => ({ id, type: "social" as const, channel: "instagram", title, body: "b", status: "pending" as const, createdAt: new Date().toISOString(), lang: "ar" as const });
-    await saveTask(u.email, post("dddddddddddd0101", "منشور اليوم الوطني"), true);
-    await saveTask(u.email, post("dddddddddddd0102", "منشور العرض"), true);
+    await saveTask(sc(u), post("dddddddddddd0101", "منشور اليوم الوطني"), true);
+    await saveTask(sc(u), post("dddddddddddd0102", "منشور العرض"), true);
     const waits = await add({ title: "انتظر منشور اليوم الوطني", taskId: "dddddddddddd0101" });
     // Sami claims the linked post was approved and published; the stored task says it is still pending.
     await runTool(u, "todo_propose_done", { id: waits.id, evidence: "The post was approved and published on Instagram" }, [], [], undefined, { lang: "en", agent: "sami" });
     const closes = await add({ title: "انتظر منشور العرض", taskId: "dddddddddddd0102" });
-    await updateTask(u.email, "dddddddddddd0102", (t) => ({ ...t, status: "approved", decidedAt: "2026-10-01T07:00:00.000Z", published: [{ provider: "x", url: "https://x.example/1", status: "published", at: "2026-10-01T08:00:00.000Z" }] }));
+    await updateTask(sc(u), "dddddddddddd0102", (t) => ({ ...t, status: "approved", decidedAt: "2026-10-01T07:00:00.000Z", published: [{ provider: "x", url: "https://x.example/1", status: "published", at: "2026-10-01T08:00:00.000Z" }] }));
     const html = await render("ar");
     expect(html).toContain("سامي يقول: «The post was approved and published on Instagram»");
     expect(html).toContain("العنصر المرتبط «منشور اليوم الوطني» ما زال بانتظار موافقتك.");
@@ -106,7 +107,7 @@ describe("the My to-dos page renders complete on the server (rule 204)", () => {
 
   it("writes dates and the zone name in the brand's own time zone (rule 210)", async () => {
     const u = await newUser("todozone");
-    await saveBrand(u.email, { ...BRAND, city: "دبي", timeZone: "Asia/Dubai" });
+    await saveBrand(sc(u), { ...BRAND, city: "دبي", timeZone: "Asia/Dubai" });
     await signIn(u.email);
     const day = riyadhDay(Date.now() + 3 * 864e5);
     const it = await add({ title: "اجتماع دبي", dueAt: `${day}T10:00` });
@@ -120,7 +121,7 @@ describe("the My to-dos page renders complete on the server (rule 204)", () => {
 
   it("hides the closing controls from a plain member (rule 212)", async () => {
     const o = await newUser("todoroles");
-    await saveBrand(o.email, BRAND);
+    await saveBrand(sc(o), BRAND);
     await signIn(o.email);
     const it = await add({ title: "Shared item" });
     await runTool(o, "todo_propose_done", { id: it.id, evidence: "Done in the shop" }, []);

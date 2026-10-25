@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { isSuspended } from "./suspension";
 import { db, mgetChunked } from "./db";
-import { adminEmails, getUser, type User } from "./auth";
+import { accountByLogin, adminEmails, getUser, type User } from "./auth";
 import { SAR_PER_USD, netPriceSar, priceOf } from "./pricing";
 import { monthKey } from "./credits";
 import { mediaCostKey } from "./usage";
@@ -133,14 +133,15 @@ export async function runMarginAlert(now = new Date()): Promise<MarginRun | { er
     const won = await Promise.all(under.map((r) => db.setNx(marginAlertedKey(d, r.email), 1, ALERTED_TTL_S)));
     const fresh = under.filter((_, i) => won[i]);
     const run: MarginRun = { day: d, at: now.toISOString(), month, checked: rows.length, under: under.length, alerted: fresh.length };
-    const founders = fresh.length ? (await Promise.all(adminEmails().map((e) => getUser(e)))).filter((u): u is User => !!u) : [];
+    // Founders through their login (rule 3816): an `a_` account is never at user:{address}.
+    const founders = fresh.length ? (await Promise.all(adminEmails().map((e) => accountByLogin(e)))).filter((u): u is User => !!u) : [];
     const fp = `margin:${d}:${tag(fresh.map((r) => r.email).sort().join(","))}`;
     await Promise.all([
       db.set(MARGIN_LAST_KEY, run),
       under.length ? db.set(marginDayKey(d), { ...run, rows: under }, MARGIN_DAY_TTL_S) : null,
       ...founders.map((f) => {
         const lang = f.lang === "en" ? "en" : "ar";
-        return notifyItem(f.email, lang, { kind: "credits", ...alertText(fresh, lang), href: `/${lang}/admin/usage#margin` }, fp, 2);
+        return notifyItem(acct(f), lang, { kind: "credits", ...alertText(fresh, lang), href: `/${lang}/admin/usage#margin` }, fp, 2);
       }),
     ]);
     return run;

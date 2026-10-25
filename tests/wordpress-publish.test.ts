@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { newUser, signIn } from "./helpers/session";
 import { vjson } from "./helpers/version";
-import { currentUser, sc } from "@/lib/auth";
+import { currentUser, sc, acct } from "@/lib/auth";
 import { getTask, saveTask, type Task } from "@/lib/brand";
 import { saveConnection } from "@/lib/connectors/store";
 import * as publishRoute from "@/app/api/publish/[id]/route";
@@ -56,10 +56,12 @@ const posts = () => calls.filter((c) => /\/wp\/v2\/posts(\/\d+)?$/.test(c.url) &
 const sentStatus = (i = 0) => (posts()[i].body as { status?: string }).status;
 
 let email = "";
+let account = "";
 beforeEach(async () => {
   const u = await newUser("wp");
   email = u.email;
-  await saveConnection(email, { provider: "wordpress", connectedAt: new Date().toISOString(), data: { site: SITE, username: "owner", appPassword: "abcd efgh ijkl" } });
+  account = acct(u);
+  await saveConnection(account, { provider: "wordpress", connectedAt: new Date().toISOString(), data: { site: SITE, username: "owner", appPassword: "abcd efgh ijkl" } });
   await signIn(email);
 });
 const scopeOf = async () => sc((await currentUser())!);
@@ -99,7 +101,7 @@ describe("going live is a separate confirmation (rule 619)", () => {
   it("refuses live for any other platform before anything is sent", async () => {
     fakeSite();
     const t = await seed(article());
-    await saveConnection(email, { provider: "shopify", connectedAt: new Date().toISOString(), data: { access_token: "shpat" }, meta: { shop: "a.myshopify.com" } });
+    await saveConnection(account, { provider: "shopify", connectedAt: new Date().toISOString(), data: { access_token: "shpat" }, meta: { shop: "a.myshopify.com" } });
     const res = await publish(t.id, { provider: "shopify", live: true });
     expect(res.status).toBe(400);
     expect((await res.json()).error).toBe("live_unsupported");
@@ -260,7 +262,7 @@ describe("publish again updates the same post (rule 621)", () => {
 describe("the record keeps the post id for WordPress only (rule 622)", () => {
   it("a Shopify publish writes no id into the item's record", async () => {
     const t = await seed(article());
-    await saveConnection(email, { provider: "shopify", connectedAt: new Date().toISOString(), data: { access_token: "shpat" }, meta: { shop: "a.myshopify.com" } });
+    await saveConnection(account, { provider: "shopify", connectedAt: new Date().toISOString(), data: { access_token: "shpat" }, meta: { shop: "a.myshopify.com" } });
     globalThis.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       if (new URL(String(input)).host !== "a.myshopify.com") return new Response("not mocked", { status: 500 });
       const q = JSON.parse(String(init?.body)).query as string;

@@ -32,7 +32,9 @@ const noSvg = (s: string) => s.replace(/<svg[\s\S]*?<\/svg>/g, "");
 const cards = (html: string): Record<string, string> =>
   Object.fromEntries(noSvg(html).split('<li data-tier="').slice(1).map((c) => [c.slice(0, c.indexOf('"')), c]));
 const homeHtml = (lang: Lang) => renderToStaticMarkup(h(Plans, { t: dict[lang], lang }));
-const pricingHtml = (lang: Lang, headingLevel?: 1 | 2) => renderToStaticMarkup(h(Pricing, { t: dict[lang], lang, headingLevel }));
+/** The markup without the hidden yearly panel: since yearly billing (rule 4035) it draws the plan cards a second time; tests/yearly-pricing-on.test.ts covers it. */
+const monthlyOnly = (h: string) => h.replace(/<div id="[^"]*" hidden="" data-interval-panel="year">[\s\S]*?<\/ul><\/div><\/div>/, "");
+const pricingHtml = (lang: Lang, headingLevel?: 1 | 2) => monthlyOnly(renderToStaticMarkup(h(Pricing, { t: dict[lang], lang, headingLevel })));
 const plan = (lang: Lang, id: string) => dict[lang].pricing.plans.find((p) => p.id === id)!;
 /** The text a file shows: its string and template literals, minus import paths, class lists, seeds and drawing kinds. */
 const copyOf = (f: string): string[] =>
@@ -205,7 +207,7 @@ describe("rule 1853: the pricing section's headings, table and drawings", () => 
     expect(code("src/components/PlanCard.tsx")).toMatch(/<ScribbleStatic kind="tick"/);
     expect(code("src/components/Pricing.tsx")).toMatch(/<ScribbleStatic kind="underline"/);
     // Arabic draws the tick mirrored, so the direction really reaches the markup.
-    const tick = (lang: Lang) => cards(renderToStaticMarkup(h(Pricing, { t: dict[lang], lang })).replace(/<i class="_mk_[^"]*" aria-hidden="true">/g, "§")).starter;
+    const tick = (lang: Lang) => cards(monthlyOnly(renderToStaticMarkup(h(Pricing, { t: dict[lang], lang }))).replace(/<i class="_mk_[^"]*" aria-hidden="true">/g, "§")).starter;
     expect(renderToStaticMarkup(h(Pricing, { t: dict.ar, lang: "ar" }))).toContain('class="_mk_');
     expect(tick("ar")).toContain("§");
   });

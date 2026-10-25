@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { newUser } from "./helpers/session";
-import { sc, type User } from "@/lib/auth";
+import { acct, sc, type User } from "@/lib/auth";
 import { scopeFor } from "@/lib/brands";
 import { accountKey, globalKey, scopeParam, storedAccountId, storedPersonId, storedScope, workspaceScope, wsKey, type Scope } from "@/lib/keys";
 
@@ -133,11 +133,18 @@ describe("rule 2030: each builder returns the bytes of its old template", () => 
     [accountKey.logoSetBucket(storedAccountId(E)), `wslogoset:${E}`],
     [accountKey.logoPlanBucket(storedAccountId(E)), `wslogoplan:${E}`],
     [accountKey.logoUploadOwner(storedAccountId(E)), `w:${E}`],
+    [accountKey.payCard(E), `pay:card:${E}`],
+    [accountKey.payLast(E), `pay:last:${E}`],
+    [accountKey.payAttempt(E, "2026-10-24"), `pay:attempt:${E}:2026-10-24`],
+    // A yearly seat charged now (rules 4044-4045): new families, no old template.
+    [accountKey.paySeatLock(E), `pay:seatlock:${E}`],
+    [accountKey.paySeatWait(E), `pay:seatwait:${E}`],
   ];
   const global: [string, string][] = [
     [globalKey.usersAll(), "users:all"],
     [globalKey.runReceipt("routine:a@b.example:dana_weekly_report:2026-10-18"), "runrec:routine:a@b.example:dana_weekly_report:2026-10-18"],
     [globalKey.cronReport("weekly"), "cronreport:weekly"],
+    [globalKey.workspaceAgg(), "admin:wsagg"],
     [globalKey.digests(), "notifydigests"],
     [globalKey.eventDay("2026-10-20", "signup"), "ev:2026-10-20:signup"],
     [globalKey.opsProposal("abc"), "ops:proposal:abc"],
@@ -153,6 +160,15 @@ describe("rule 2030: each builder returns the bytes of its old template", () => 
     [globalKey.rate("files:x"), "rate:files:x"],
     [globalKey.usageAll("2026-10"), "usage:_all:2026-10"],
     [globalKey.paymobRefundEnded(123456), "paymob:refund_ended:123456"],
+    // Geidea (rules 3900-3917): new families, no old template.
+    [globalKey.payIntent("r1"), "pay:intent:r1"],
+    [globalKey.payOpen(), "pay:open"],
+    [globalKey.payTxn("geidea", "o1"), "pay:txn:geidea:o1"],
+    [globalKey.payDone("geidea", "o1"), "pay:done:geidea:o1"],
+    [globalKey.payTxLock("geidea", "o1"), "pay:txlock:geidea:o1"],
+    [globalKey.payRefunded("geidea", "o1"), "pay:refunded:geidea:o1"],
+    [globalKey.payRefundLock("geidea", "o1"), "pay:refundlock:geidea:o1"],
+    [globalKey.payRefundEnded("geidea", "o1"), "pay:refund_ended:geidea:o1"],
     [globalKey.shopifyCompliance(), "shopify:compliance"],
     [globalKey.shopifyRedact(), "shopify:redact"],
     [globalKey.connectionHealth(), "connections:health"],
@@ -160,9 +176,15 @@ describe("rule 2030: each builder returns the bytes of its old template", () => 
     [globalKey.passkeyCred("h1"), "pkcred:h1"],
     [globalKey.passkeyAuth("h1"), "pkauth:h1"],
     [globalKey.passkeysOff(), "passkeys:off"],
+    [globalKey.conversionLock(), "lock:conversion"],
+    [globalKey.conversionClean("account-ids"), "conversion:clean:account-ids"],
+    [globalKey.conversionBucket("key"), "adminconv:key"],
     [globalKey.passkeyIpBucket("1.2.3.4"), "pk:ip:1.2.3.4"],
     [globalKey.passkeyVerifyIpBucket("1.2.3.4"), "pkv:ip:1.2.3.4"],
     [globalKey.passkeyCredBucket("h1"), "pkv:cred:h1"],
+    [globalKey.staffBootPasskey("h1"), "staffbootpk:h1"],
+    [globalKey.staffInviteBucket("h1"), "staffinvite:h1"],
+    [globalKey.staffInviteIpBucket("1.2.3.4"), "staffinvite:ip:1.2.3.4"],
     // Account-id R2 (rule 2744): the revert link and its IP bucket are new families; the reset token keeps its old bytes.
     [globalKey.emailRevert("h1"), "emailrevert:h1"],
     [globalKey.emailRevertIpBucket("1.2.3.4"), "emailrevert:ip:1.2.3.4"],
@@ -192,11 +214,11 @@ describe("rule 2030: each builder returns the bytes of its old template", () => 
 });
 
 describe("rule 2031: sc(u) is the only way a request reaches a workspace builder", () => {
-  it("sc(u) is the account email for the default brand and email#brand for an added one", async () => {
+  it("sc(u) is the account id for the default brand and id#brand for an added one", async () => {
     const u = await newUser("keys");
-    expect(sc(u)).toBe(u.email);
-    expect(sc({ ...u, scope: `${u.email}#b9` } as User)).toBe(`${u.email}#b9`);
-    expect(wsKey.brand(sc(u))).toBe(`brand:${u.email}`);
+    expect(sc(u)).toBe(acct(u));
+    expect(sc({ ...u, scope: `${acct(u)}#b9` } as User)).toBe(`${acct(u)}#b9`);
+    expect(wsKey.brand(sc(u))).toBe(`brand:${acct(u)}`);
   });
 
   it("a plain string from a request does not type-check as a scope", () => {

@@ -14,6 +14,7 @@ import { consoleWriteRefusal } from "@/lib/console-origin";
  * console's authenticator (which also opens a step-up for the new session), or the recovery code, which, as before,
  * removes the enrolment. A wrong or missing code is the same 401 as a wrong key, so the form never tells a right key
  * apart. Every sign-in here writes a `key.login` row. The `x-admin-key` header is for scripts and never opens a session.
+ * The typed key and the stored one are compared with surrounding spaces trimmed (rule 3705).
  */
 export async function POST(req: Request) {
   const foreign = consoleWriteRefusal(req);
@@ -21,7 +22,8 @@ export async function POST(req: Request) {
   // Five attempts per 15 minutes per IP: the key must not be guessable by brute force.
   if (!(await allow(`adminkey:${clientIp(req)}`, 5, 900))) return retryLater({ ok: false, error: "slow_down" }, 900);
   const { key, code } = (await req.json().catch(() => ({}))) as { key?: unknown; code?: unknown };
-  if (typeof key !== "string" || !sameSecret(key, process.env.WAITLIST_ADMIN_KEY)) {
+  // Rule 3705: spaces around a pasted key (and around the stored value) never make a right key wrong.
+  if (typeof key !== "string" || !sameSecret(key.trim(), process.env.WAITLIST_ADMIN_KEY?.trim())) {
     return NextResponse.json({ ok: false }, { status: 401 });
   }
   let factor: "none" | "totp" | "recovery" = "none";

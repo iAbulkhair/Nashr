@@ -22,11 +22,14 @@ import { teamPerms } from "@/components/app/teamPerms";
 import { db } from "@/lib/db";
 import { accountKey } from "@/lib/keys";
 
+vi.mock("@/lib/multi-org", async (orig) => ({ ...(await orig<typeof import("@/lib/multi-org")>()), MULTI_ORG: false }));
+vi.mock("@/lib/account-id", async (orig) => ({ ...(await orig<typeof import("@/lib/account-id")>()), OPAQUE_IDS: false }));
+
 /**
- * Multi-workspace M2 with the switch OFF, as production runs it (docs/superpowers/plans/2026-10-20-multi-org-m2.md,
- * Global Constraints "Switch"; rule 2132: production behaviour is identical). The M2 test files turn `MULTI_ORG` on per
- * file; this one proves every M2 path gives M1's answer while it is off: the proxy rewrites nothing and answers no 409,
- * `currentUser()` ignores any handle, and the new routes answer 404 (added with them).
+ * Multi-workspace M2 with the switch OFF, the rollback floor (docs/superpowers/plans/2026-10-20-multi-org-m2.md,
+ * Global Constraints "Switch"; rule 2132; rule 3814: since the enable release the switches are on, and this file turns
+ * `MULTI_ORG` and `OPAQUE_IDS` off to prove that a build with them off again gives M1's answers): the proxy rewrites
+ * nothing and answers no 409, `currentUser()` ignores any handle, and the new routes answer 404 (added with them).
  */
 
 const h = wsHandle("a_bbbbbbbbbbbbbbbbbbbbbbbb");

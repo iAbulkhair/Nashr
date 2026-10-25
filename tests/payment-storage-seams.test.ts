@@ -3,7 +3,7 @@ import { readFileSync, readdirSync, statSync, existsSync } from "node:fs";
 import path from "node:path";
 import { json, newUser, signIn, jar } from "./helpers/session";
 import { mediaEnv, noNetwork, resetMediaCounters } from "./helpers/media";
-import { getUser, saveUser, type User } from "@/lib/auth";
+import { acct, getUser, saveUser, type User } from "@/lib/auth";
 import { db } from "@/lib/db";
 import type { Payment } from "@/lib/partners";
 import { PaymentError, paymentProvider, paymentsEnabled, type PaymentProvider } from "@/lib/payments";
@@ -77,13 +77,13 @@ const sign = (obj: Record<string, unknown>, fields: readonly string[] = TXN_HMAC
 let ip = 0;
 const hook = (obj: Record<string, unknown>, hmac = sign(obj)) =>
   webhook.POST(json(`/api/billing/paymob/webhook?hmac=${hmac}`, "POST", { type: "TRANSACTION", obj }, { "x-forwarded-for": `10.20.${++ip % 250}.${ip % 250}` }));
-const payments = async (email: string) => Object.values(await db.hgetall<Payment>(`payments:${email}`));
+const payments = async (id: string) => Object.values(await db.hgetall<Payment>(`payments:${id}`));
 
 async function owner(): Promise<User> {
   const u = await newUser("seam");
-  await saveUser({ ...(await getUser(u.email))!, phone: "+966500000123" });
+  await saveUser({ ...(await getUser(acct(u)))!, phone: "+966500000123" });
   await signIn(u.email);
-  return (await getUser(u.email))!;
+  return (await getUser(acct(u)))!;
 }
 /** A checkout through the route, and the intention Paymob saw for it. */
 async function started() {
@@ -133,7 +133,8 @@ describe("payments", () => {
         .filter((f) => /from "(?:@\/lib\/|\.\.?\/)(?:\.\.\/)*paymob"|paymobConfig\(/.test(read(f)));
       expect(offenders).toEqual([]);
       expect(read("src/lib/billing.ts")).toMatch(/from "\.\/payments";/);
-      expect(read("src/lib/payments/index.ts")).toMatch(/export function paymentProvider\(\): PaymentProvider \| null \{\n {2}return paymobProvider\(\);\n\}/);
+      // Rule 3900: Geidea when its gate is open, else Paymob exactly as before.
+      expect(read("src/lib/payments/index.ts")).toMatch(/export function paymentProvider\(\): PaymentProvider \| null \{\n {2}const geidea = geideaProvider\(\);\n {2}if \(!geidea\) return paymobProvider\(\);/);
     });
     it("the provider object carries no key: nothing that logs or returns it can leak a secret", () => {
       const p = provider();
@@ -147,15 +148,15 @@ describe("payments", () => {
       const { u, it } = await started();
       const r = await hook(txnObj({ amount: it.amount - 1, orderId: it.orderId, ref: it.ref }));
       expect(await r.json()).toMatchObject({ result: "mismatch" });
-      expect((await getUser(u.email))!.plan).toBe("trial");
-      expect(await payments(u.email)).toHaveLength(0);
+      expect((await getUser(acct(u)))!.plan).toBe("trial");
+      expect(await payments(acct(u))).toHaveLength(0);
       const p = provider();
       for (const variant of [{ currency: "EGP" }, { live: true }]) {
         const s = await started();
         const t = p.parseTransaction(txnObj({ amount: s.it.amount, orderId: s.it.orderId, ref: s.it.ref, ...variant }))!;
         expect(await applyTransaction(p, t), JSON.stringify(variant)).toEqual({ status: 200, result: "mismatch" });
-        expect((await getUser(s.u.email))!.plan).toBe("trial");
-        expect(await payments(s.u.email)).toHaveLength(0);
+        expect((await getUser(acct(s.u)))!.plan).toBe("trial");
+        expect(await payments(acct(s.u))).toHaveLength(0);
       }
     });
     it("through the interface directly: a transaction parsed by the provider with the right reference but a lower amount is refused", async () => {
@@ -164,7 +165,7 @@ describe("payments", () => {
       const low = p.parseTransaction(txnObj({ amount: 1, orderId: it.orderId, ref: it.ref }))!;
       expect(await applyTransaction(p, low)).toEqual({ status: 200, result: "mismatch" });
       expect(await db.get<{ status: string }>(`paymob:intent:${it.ref}`)).toMatchObject({ status: "mismatch" });
-      expect((await getUser(u.email))!.plan).toBe("trial");
+      expect((await getUser(acct(u)))!.plan).toBe("trial");
       expect(read("src/lib/billing.ts")).toMatch(/const expected = priceFor\(intent\.kind, intent, intent\.offer, intent\.lockedBaseHalalas\);/);
     });
   });
@@ -177,8 +178,8 @@ describe("payments", () => {
       expect(await (await hook(obj)).json()).toMatchObject({ result: "already" });
       const p = provider();
       expect((await applyTransaction(p, p.parseTransaction(obj)!)).result).toBe("already");
-      expect(await payments(u.email)).toHaveLength(1);
-      expect((await getUser(u.email))!.billing).toMatchObject({ provider: "paymob", plan: "starter", txns: [String(obj.id)] });
+      expect(await payments(acct(u))).toHaveLength(1);
+      expect((await getUser(acct(u)))!.billing).toMatchObject({ provider: "paymob", plan: "starter", txns: [String(obj.id)] });
     });
   });
 
@@ -279,7 +280,8 @@ describe("payments", () => {
       expect(e.message).toBe("paymob_intention_failed:502");
       expect(new PaymentError("paymob", "renewal_off").message).toBe("paymob_renewal_off");
       const billing = read("src/lib/billing.ts");
-      expect(billing.match(/e(?:rr)? instanceof PaymentError \? e(?:rr)?\.message : "error"/g)).toHaveLength(3);
+      // Checkout, renewal, the founder's refund, and the yearly seat charge's two (rule 4045).
+      expect(billing.match(/(?:e|err|cause) instanceof PaymentError \? (?:e|err|cause)\.message : "error"/g)).toHaveLength(5);
       expect(billing).not.toMatch(/PaymobError|paymobConfig|createIntention|payWithToken|refundTxn|verifyHmac/);
     });
   });
@@ -406,6 +408,8 @@ describe("rule 2063: stored keys and shapes are unchanged by both seams", () => 
     expect([MEDIA_KEYS.entry("s", "n"), MEDIA_KEYS.names("s"), MEDIA_KEYS.bytes(), MEDIA_KEYS.count()]).toEqual(["mfile:s:n", "mfiles:s", "mfiles:bytes", "mfiles:count"]);
     const billing = read("src/lib/billing.ts");
     for (const k of ["paymob:intent:${ref}", "paymob:order:${orderId}", "paymob:txn:${txnId}", "paymob:done:${txnId}", "paymob:txlock:${txnId}", "paymob:refunded:${txnId}", "paymob:refundlock:${txnId}", "paymob:attempt:${email}:${day}", "paymob:card:${email}", "paymob:last:${email}"]) expect(billing, k).toContain("`" + k + "`");
-    expect(billing).toMatch(/provider: "paymob", plan, status: "active"/);
+    expect(billing).toMatch(/provider, plan, status: "active"/);
+    // Rule 3915: the provider written is the one that was paid, Paymob unless a Geidea transaction says otherwise.
+    expect(billing).toMatch(/async function applyPaid\(intent: PayIntent, txnId: TxnId, paymentId: string, provider: ProviderName = "paymob"\)/);
   });
 });

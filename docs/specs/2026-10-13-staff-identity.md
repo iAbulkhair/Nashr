@@ -196,7 +196,7 @@ Phase 1 adds none. It uses `CONNECT_SECRET` and `CONNECT_SECRET_PREVIOUS` (seali
 | 1636 | Staff writes need a step-up tied to the staff session; staff management, the customer-path switch and own credential changes need a fresh code. |
 | 1637 | A role on every staff record; any role other than `owner` cannot write (403 `read_only`), unknown roles fail closed; phase 1 creates `owner` only. |
 | 1638 | Audit rows name the staff email and carry `via`; the listed events are written; no secret in any row. |
-| 1639 | Bootstrap only from a key session (plus the console code when enrolled), only while no owner exists; the setup code is shown once, single use, 30 minutes. |
+| 1639 | Bootstrap only from a key session (plus the console code when enrolled), only while no owner exists; the setup code is shown once, single use, 30 minutes. Amended 2026-10-23 by rule 3700 (founder approval): the founder's own customer session may bootstrap too, with a proof made for that request, and its code is handed to the setup form in a cookie (rule 3701); see `docs/system/tests/3700-staff-one-door.md`. |
 | 1640 | New staff only by an owner with a fresh code, through a single-use setup code typed into a form, never in a URL. |
 | 1641 | Staff password 12 characters to 72 UTF-8 bytes (bcrypt reads no further; a longer password is refused with `password_long`, and a typed value over 72 bytes never matches), not on the common list, not equal to the customer password of the same address; bcrypt cost 12. |
 | 1642 | 8 single-use recovery codes stored hashed; spending one needs the password and forces a new authenticator. |

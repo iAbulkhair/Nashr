@@ -5,7 +5,7 @@ import { getBrand, getTask, saveBrand, saveTask, type Brand, type Task } from "@
 import { readFile, writeFile } from "@/lib/files";
 import { createConversation, listConversations } from "@/lib/conversations";
 import { history, push } from "@/lib/chat";
-import type { User } from "@/lib/auth";
+import { acct, type User } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { mk } from "@/lib/media/keys";
 import type { MediaJob } from "@/lib/media/types";
@@ -24,22 +24,24 @@ import * as brandRoute from "@/app/api/brand/route";
 const brand = (name: string): Brand => ({ name, website: "https://x.example", industry: "متجر إلكتروني", dialect: "saudi", languages: ["ar"], tone: "t", products: "p", audience: "a", offers: "", competitors: "", banned: "", preferred: "", channels: ["instagram"], city: "الرياض", updatedAt: new Date().toISOString() });
 const task = (id: string): Task => ({ id, type: "social", channel: "instagram", title: "A's post", body: "secret body of A", status: "pending", createdAt: new Date().toISOString(), lang: "ar" });
 
-let A: User, B: User, convId: string;
+let A: User, B: User, aid: string, bid: string, convId: string;
 /** A's running render: B must not read it, and a poll by B must not move it. */
 const JOB = "0123456789abcdef0123456789abcdef";
 
 beforeAll(async () => {
   A = await newUser("owner");
   B = await newUser("intruder");
-  await saveBrand(A.email, brand("Brand of A"));
-  await saveBrand(B.email, brand("Brand of B"));
-  await saveTask(A.email, task("a1b2c3d4e5f60718"), true);
-  await writeFile(A.email, "strategy.md", "A's private strategy");
-  convId = (await createConversation(A.email, "A's thread")).id;
-  await push(A.email, { role: "user", content: "A's private message", at: new Date().toISOString() }, convId);
+  aid = acct(A);
+  bid = acct(B);
+  await saveBrand(aid, brand("Brand of A"));
+  await saveBrand(bid, brand("Brand of B"));
+  await saveTask(aid, task("a1b2c3d4e5f60718"), true);
+  await writeFile(aid, "strategy.md", "A's private strategy");
+  convId = (await createConversation(aid, "A's thread")).id;
+  await push(aid, { role: "user", content: "A's private message", at: new Date().toISOString() }, convId);
   const at = new Date().toISOString();
-  const job: MediaJob = { id: JOB, scope: A.email, email: A.email, accountSince: A.createdAt, lang: "ar", taskId: "a1b2c3d4e5f60718", kind: "video", model: "vid-quick", provider: "kie", credits: 12, prompt: "A's prompt", providerTaskId: "kietaskAbc123", state: "running", createdAt: at, updatedAt: at };
-  await db.set(mk.job(A.email, JOB), job);
+  const job: MediaJob = { id: JOB, scope: aid, email: aid, accountSince: A.createdAt, lang: "ar", taskId: "a1b2c3d4e5f60718", kind: "video", model: "vid-quick", provider: "kie", credits: 12, prompt: "A's prompt", providerTaskId: "kietaskAbc123", state: "running", createdAt: at, updatedAt: at };
+  await db.set(mk.job(aid, JOB), job);
 });
 
 describe("tenant isolation at the route level (rule 1)", () => {
@@ -56,10 +58,10 @@ describe("tenant isolation at the route level (rule 1)", () => {
     ];
     for (const res of await Promise.all(calls)) expect(res.status).toBe(404);
     await settle();
-    const t = await getTask(A.email, id);
+    const t = await getTask(aid, id);
     expect(t).toMatchObject({ status: "pending", body: "secret body of A" });
     expect(t!.editedBody).toBeUndefined();
-    expect(await db.get<MediaJob>(mk.job(A.email, JOB)), "A's render is untouched").toMatchObject({ state: "running", prompt: "A's prompt" });
+    expect(await db.get<MediaJob>(mk.job(aid, JOB)), "A's render is untouched").toMatchObject({ state: "running", prompt: "A's prompt" });
   });
 
   it("lists only show the caller's own records", async () => {
@@ -86,12 +88,12 @@ describe("tenant isolation at the route level (rule 1)", () => {
     await convRoute.DELETE(json(`/api/conversations?id=${convId}`, "DELETE"));
     await filesRoute.DELETE(json("/api/files?name=strategy.md", "DELETE"));
     // A scope or email in the body is ignored: the record is written under the caller.
-    await filesRoute.PUT(json("/api/files", "PUT", { name: "strategy.md", content: "B's text", scope: A.email, email: A.email }));
-    expect((await listConversations(A.email))[0].title).toBe("A's thread");
-    expect(await history(A.email, convId)).toHaveLength(1);
-    expect((await readFile(A.email, "strategy.md"))!.content).toBe("A's private strategy");
-    expect((await readFile(B.email, "strategy.md"))!.content).toBe("B's text");
-    expect((await getBrand(A.email))!.name).toBe("Brand of A");
+    await filesRoute.PUT(json("/api/files", "PUT", { name: "strategy.md", content: "B's text", scope: aid, email: aid }));
+    expect((await listConversations(aid))[0].title).toBe("A's thread");
+    expect(await history(aid, convId)).toHaveLength(1);
+    expect((await readFile(aid, "strategy.md"))!.content).toBe("A's private strategy");
+    expect((await readFile(bid, "strategy.md"))!.content).toBe("B's text");
+    expect((await getBrand(aid))!.name).toBe("Brand of A");
   });
 
   it("every workspace route answers 401 without a session", async () => {
@@ -121,6 +123,6 @@ describe("tenant isolation at the route level (rule 1)", () => {
     const res = await taskRoute.PATCH(await vjson(`/api/tasks/${id}`, "PATCH", { status: "approved" }), params({ id }));
     expect(res.status).toBe(200);
     await settle();
-    expect((await getTask(A.email, id))!.status).toBe("approved");
+    expect((await getTask(aid, id))!.status).toBe("approved");
   });
 });

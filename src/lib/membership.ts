@@ -253,6 +253,12 @@ export function memberExtras(m: Pick<Membership, "brands" | "approves" | "credit
 }
 
 /**
+ * Whether the session's actor may see brand `id` (rules 3757, 3773): an owner, a founder and an unscoped member see every
+ * brand; a member narrowed to some brands sees only those. For lists and totals built over the account's brands.
+ */
+export const brandAllowed = (u: { actor?: { brands?: readonly string[] } }, id: string): boolean => !u.actor?.brands || u.actor.brands.includes(id);
+
+/**
  * The brand a scoped person acts in (rule 3757): `bid` when the scope allows it; otherwise, when the brand came from the
  * stored choice (not the link), the first brand of `active` (the account's active ids, "default" first) the scope allows;
  * null when there is none or when a link named a brand outside the scope. No scope: `bid` unchanged.

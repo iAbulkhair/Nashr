@@ -18,6 +18,11 @@ import { wipeAccount } from "@/lib/account";
 import { dailyRoster } from "@/lib/schedule";
 import { convertAccountIds } from "../scripts/account-ids";
 
+// R1's own shape, the R2 rollback floor (rule 3814): both switches are on since the enable release (rule 3810), and this
+// file turns them off to keep proving what an R1/M1 build does with the records it finds.
+vi.mock("@/lib/multi-org", async (orig) => ({ ...(await orig<typeof import("@/lib/multi-org")>()), MULTI_ORG: false }));
+vi.mock("@/lib/account-id", async (orig) => ({ ...(await orig<typeof import("@/lib/account-id")>()), OPAQUE_IDS: false }));
+
 // Pins the legacy shape (multi-org M1): this file reads and writes R1's records by address (`user:`/`member:`, address-shaped
 // person ids and actors), so its persons are legacy ones; each still holds a shadow membership unless it says `shadow: false`.
 const newUser = (prefix?: string, o: Parameters<typeof helperNewUser>[1] = {}) => helperNewUser(prefix, { legacy: true, ...o });
@@ -29,6 +34,7 @@ const newOpaqueUser = (prefix?: string, o: Parameters<typeof helperNewOpaqueUser
  * "Changes forced on the account-id spec"): rules 1980-1999, listed in docs/system/tests/1980-account-id-r1.md. In R1
  * every new account's id is its address (`OPAQUE_IDS` off), so nothing on production changes bytes; the tests here build
  * accounts with an opaque id on purpose (`newOpaqueUser`) to prove that no path still reaches an account by its address.
+ * Since the enable release `OPAQUE_IDS` and `MULTI_ORG` are on; this file mocks both off (the rollback floor's shape).
  */
 
 afterEach(() => { vi.restoreAllMocks(); signOut(); });
@@ -325,7 +331,7 @@ describe("rule 1994: the conversion script is idempotent, dry by default, never 
     expect(await index(a.owner)).toEqual({ kind: "person", pid: "a_hhhhhhhhhhhhhhhhhhhhhhhh" });
   });
   it("the script awaits no db call inside a loop and prints counts only", () => {
-    const src = read("scripts/account-ids.ts");
+    const src = read("scripts/account-ids.ts") + read("src/lib/conversions/account-ids.ts"); // rule 4100: the work moved
     for (const m of src.matchAll(/\bfor \([^)]*\) \{([^}]*)\}/g)) expect(m[1]).not.toContain("await");
     expect(src).not.toMatch(/\bwhile \(/);
     const logs = [...src.matchAll(/console\.(?:log|error)\((.*)\);/g)].map((m) => m[1]);
@@ -350,12 +356,14 @@ describe("rule 1995: R1 writes only shapes older builds ignore", () => {
   });
 });
 
-describe("rule 1996: OPAQUE_IDS is off in R1", () => {
-  it("is a code constant, false; a new account's id is its address, an opaque id only when asked", () => {
+describe("rule 1996: OPAQUE_IDS is off in R1 (on since R2 enable, rule 3810; off here by this file's mock)", () => {
+  it("is a code constant; off, a new account's id is its address, an opaque id only when asked", () => {
     expect(OPAQUE_IDS).toBe(false);
-    expect(idForNewAccount("a@test.example")).toBe("a@test.example");
+    // The default argument binds the module's own constant (a mock cannot reach it), so the off answer is asked by name.
+    expect(idForNewAccount("a@test.example", false)).toBe("a@test.example");
     expect(idForNewAccount("a@test.example", true)).toMatch(OPAQUE_ACCOUNT_ID);
-    expect(read("src/lib/account-id.ts")).toContain("export const OPAQUE_IDS = false;");
+    expect(read("src/lib/account-id.ts")).toContain("opaque: boolean = OPAQUE_IDS");
+    expect(read("src/lib/account-id.ts")).toContain("export const OPAQUE_IDS = true;");
     expect(read("docs/system/variables.md")).not.toContain("OPAQUE_IDS");
   });
   it("an owner move with data stays refused while it is off (the copy carries nothing)", () => {

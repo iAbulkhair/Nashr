@@ -185,7 +185,7 @@ describe("rule 2133: S1 is idempotent, dry by default, reports conflicts without
   });
 
   it("the script awaits no db call inside a loop, builds every key through keys.ts and prints counts only", () => {
-    const src = readFileSync("scripts/multi-org-index.ts", "utf8");
+    const src = readFileSync("scripts/multi-org-index.ts", "utf8") + readFileSync("src/lib/conversions/multi-org-index.ts", "utf8"); // rule 4100: the work moved
     for (const m of src.matchAll(/\bfor \([^)]*\) \{([^}]*)\}/g)) expect(m[1]).not.toContain("await");
     expect(src).not.toMatch(/\bwhile \(/);
     expect(src).not.toMatch(/\bfor \(/);

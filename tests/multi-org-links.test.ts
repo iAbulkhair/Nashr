@@ -51,9 +51,14 @@ const routeFeed = async (email: string, account: User) => {
 };
 const live = async (token: string) => (await callFeed(token)).status;
 
-/** A person who is a legacy member of H (home) and a member of O. */
-async function twoAccounts() {
-  const [H, O] = [await newUser("lh"), await newUser("lo")];
+/**
+ * A person who is a legacy member of H (home) and a member of O. `preR2`: both accounts made before R2 enable, their ids
+ * their addresses (rule 3815), as every account that holds a link made before M1 (no pid) is: since M1 every route makes
+ * links with a `LinkOwner`, and R2 gives opaque ids only to accounts made after it. R1's check of such a link compares the
+ * scope with the owner's address, which is that account's id.
+ */
+async function twoAccounts({ preR2 = false }: { preR2?: boolean } = {}) {
+  const [H, O] = [await newUser("lh", { addressId: preR2 }), await newUser("lo", { addressId: preR2 })];
   const p = await newMember(H, "member", "lp");
   const pid = storedPersonId(p.email);
   await writeMembership(aidOf(O), pid, { aid: aidOf(O), pid, role: "member", acceptedAt: new Date().toISOString(), invitedBy: storedPersonId(O.email) }, { home: false, teamLocked: true });
@@ -156,7 +161,7 @@ describe("rule 2119: a link lives in one account", () => {
 
 describe("rule 2132: R1 still reads the home link; links made before M1 keep working", () => {
   it("a home link is readable by an R1-shaped resolver: legacy pointer, record, and R1's check on the fields it knows", async () => {
-    const t = await twoAccounts();
+    const t = await twoAccounts({ preR2: true });
     const h = await routeFeed(t.email, t.H);
     // R1: `sec:feedof:{login}` names the hash, the record is there, and R1's check (no pid read) holds.
     const hash = await db.get<string>(FEED_KEYS.of(t.email));
@@ -185,7 +190,7 @@ describe("rule 2132: R1 still reads the home link; links made before M1 keep wor
   });
 
   it("a link made before M1 (no pid) still resolves, shows in the home status, is replaced by a new home link, and deleteMembership(home) revokes it", async () => {
-    const t = await twoAccounts();
+    const t = await twoAccounts({ preR2: true });
     const old = (await createFeed(t.email, sc(t.uH), "ar")) as string;
     const oldBook = (await createBook(t.email, sc(t.uH), "calcom", "ar")) as string;
     expect((await resolveFeed(old))!.rec.pid).toBeUndefined();
@@ -219,7 +224,7 @@ describe("rule 2132: R1 still reads the home link; links made before M1 keep wor
 
 describe("rule 2132: rollback and status", () => {
   it("R1 re-creates while an M1 home record exists: the M1 record is dead, the R1 link live, status shows the R1 link; a later M1 create cleans up", async () => {
-    const t = await twoAccounts();
+    const t = await twoAccounts({ preR2: true });
     const m1 = (await createFeed(t.whoH, sc(t.uH), "ar")) as string;
     const m1Rec = (await resolveFeed(m1))!.rec;
     // R1's create: the per-login lock, a pid-less record, the legacy pointer, then the old record deleted.
@@ -295,7 +300,7 @@ describe("rule 2131: suspensions", () => {
   });
 
   it("a person suspension ends a feed link and a booking link made before M1 (no pid) too", async () => {
-    const t = await twoAccounts();
+    const t = await twoAccounts({ preR2: true });
     const f = (await createFeed(t.email, sc(t.uH), "ar")) as string;
     const b = (await createBook(t.email, sc(t.uH), "calcom", "ar")) as string;
     expect(await live(f)).toBe(200);
@@ -379,7 +384,7 @@ describe("rule 2756: the links script carries links made before M1 into M4", () 
     !!rec && typeof rec.pid === "string" && !!rec.pid && typeof rec.aid === "string" && !!rec.aid && (await db.get(pointer)) === hash;
 
   it("dry by default; --apply stamps the ids and home, writes the M1-era pointer, keeps the legacy one and carries the home brand; the links keep working in M3 and pass M4's check; a second run writes nothing", async () => {
-    const t = await twoAccounts();
+    const t = await twoAccounts({ preR2: true });
     const uOwner = await as(t.H.email, t.H);
     signOut();
     const ownerPid = storedPersonId(acct(t.H));
@@ -428,7 +433,7 @@ describe("rule 2756: the links script carries links made before M1 into M4", () 
   });
 
   it("--apply never overwrites: a pointer naming another link, a record of another login, a half-stamped record and an answer that would change are counted and left; a differing M1-era brand choice takes the legacy one (round 2, S-3)", async () => {
-    const [a, b, c, d] = [await twoAccounts(), await twoAccounts(), await twoAccounts(), await twoAccounts()];
+    const [a, b, c, d] = [await twoAccounts({ preR2: true }), await twoAccounts({ preR2: true }), await twoAccounts({ preR2: true }), await twoAccounts({ preR2: true })];
     // a: its M1-era pointer already names another link.
     const fa = (await createFeed(a.email, sc(a.uH), "ar")) as string;
     await db.set(personKey.feedOf(a.pid, aidOf(a.H)), "f".repeat(64));
@@ -476,7 +481,7 @@ describe("rule 2756: the links script carries links made before M1 into M4", () 
   });
 
   it("--retire revokes what --apply leaves (an answer that would change, a malformed record) through the app's own revoke; the dry run splits them into live and dead; conflicts stay (round 2, S-1)", async () => {
-    const [a, b, c, d] = [await twoAccounts(), await twoAccounts(), await twoAccounts(), await twoAccounts()];
+    const [a, b, c, d] = [await twoAccounts({ preR2: true }), await twoAccounts({ preR2: true }), await twoAccounts({ preR2: true }), await twoAccounts({ preR2: true })];
     // a: pointer conflict with a record that is not this person's home record (another person's link), b: login
     // conflict. Both stay as they are under --retire.
     const fa = (await createFeed(a.email, sc(a.uH), "ar")) as string;
@@ -526,7 +531,7 @@ describe("rule 2756: the links script carries links made before M1 into M4", () 
   });
 
   it("--apply writes the stamped record with SET XX: a record revoked between the read and the write stays gone (round 2, S-2)", async () => {
-    const t = await twoAccounts();
+    const t = await twoAccounts({ preR2: true });
     const f = (await createFeed(t.email, sc(t.uH), "ar")) as string;
     const fKey = FEED_KEYS.rec(hashFeedToken(f));
     const mine = personKey.feedOf(t.pid, aidOf(t.H));
@@ -548,7 +553,7 @@ describe("rule 2756: the links script carries links made before M1 into M4", () 
   });
 
   it("--retire deletes under the locks it holds (round 3, R2-1/R2-2): a create of the same link meanwhile answers busy, the revoke takes no lock of its own, and a create after the run works", async () => {
-    const g = await twoAccounts();
+    const g = await twoAccounts({ preR2: true });
     const fg = (await createFeed(g.email, sc(g.uH), "ar")) as string;
     const gKey = FEED_KEYS.rec(hashFeedToken(fg));
     await db.set(gKey, { ...(await db.get<Record<string, unknown>>(gKey))!, pid: g.pid });
@@ -574,7 +579,7 @@ describe("rule 2756: the links script carries links made before M1 into M4", () 
   });
 
   it("--retire resolves R1's re-create after a rollback (round 3, R2-3): the stale M1-era home pointer and its record go, the live legacy link stays and the next --apply stamps it; any other pointer conflict stays", async () => {
-    const [e, f] = [await twoAccounts(), await twoAccounts()];
+    const [e, f] = [await twoAccounts({ preR2: true }), await twoAccounts({ preR2: true })];
     // e: an M1 home link, then R1's create, which deletes the M1 record: the M1-era pointer names nothing.
     const m1e = (await createFeed(e.whoH, sc(e.uH), "ar")) as string;
     const r1e = (await createFeed(e.email, sc(e.uH), "en")) as string;
@@ -613,7 +618,7 @@ describe("rule 2756: the links script carries links made before M1 into M4", () 
   });
 
   it("--apply reads the legacy brand again right before an overwrite and skips it (busy) when it changed (round 3, R2-4)", async () => {
-    const t = await twoAccounts();
+    const t = await twoAccounts({ preR2: true });
     const legacyKey = accountKey.activeBrand(t.email);
     const freshKey = personKey.activeBrand(t.pid, aidOf(t.H));
     await db.set(legacyKey, "default");
@@ -644,7 +649,7 @@ describe("rule 2756: the links script carries links made before M1 into M4", () 
   });
 
   it("a held link lock (new or legacy) is busy and writes nothing; the next run finishes", async () => {
-    const t = await twoAccounts();
+    const t = await twoAccounts({ preR2: true });
     const f = (await createFeed(t.email, sc(t.uH), "ar")) as string;
     const b = (await createBook(t.email, sc(t.uH), "calcom", "ar")) as string;
     const fKey = FEED_KEYS.rec(hashFeedToken(f));

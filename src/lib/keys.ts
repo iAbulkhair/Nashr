@@ -360,6 +360,16 @@ export const accountKey = {
    * account only, a space of its own beside a person's `p:{pid}`, so a ticket of one kind or owner never redeems as another.
    */
   logoUploadOwner: (a: AccountId) => `w:${a}`,
+  /** json `SavedCard`: the account's Geidea card token and card-on-file agreement (rules 3906, 3910). Never shown or logged. */
+  payCard: (email: string) => `pay:card:${email}`,
+  /** string: the reference of the account's last Geidea checkout, read by the billing page's status (rule 3909). 7 days. */
+  payLast: (email: string) => `pay:last:${email}`,
+  /** marker: one Geidea renewal attempt for this account on this KSA day (rule 3910). */
+  payAttempt: (email: string, day: string) => `pay:attempt:${email}:${day}`,
+  /** lock: one mid-year seat charge of this account in flight, both providers (rule 4044). 120 s, longer than the two provider calls. */
+  paySeatLock: (email: string) => `pay:seatlock:${email}`,
+  /** string: the reference of a mid-year seat charge sent and not yet answered (rule 4045); no new seat is charged until it settles. 2 days. */
+  paySeatWait: (email: string) => `pay:seatwait:${email}`,
 } as const;
 
 export const globalKey = {
@@ -367,6 +377,11 @@ export const globalKey = {
   digests: () => "notifydigests",
   /** set: every account id (`acct(u)`: in R1 the owner's first address). */
   usersAll: () => "users:all",
+  /**
+   * json `{ at, rows }`: the founder console's customers list, one aggregate per account id (numbers and the display name
+   * only), rebuilt when older than five minutes or on demand (src/lib/admin-workspaces.ts, rule 3724). Expires in an hour.
+   */
+  workspaceAgg: () => "admin:wsagg",
   /**
    * json `RunReceipt`: one paid scheduled run's receipt (src/lib/run-receipt.ts, rules 2476-2479), keyed by its claim
    * (`weekly:{scope}:{week}`, `routine:{scope}:{id}:{period}`), which code builds from the caller's own scope.
@@ -396,6 +411,23 @@ export const globalKey = {
   usageAll: (month: string) => `usage:_all:${month}`,
   /** string: the payment id whose Paymob refund ended the plan, or `none` when it found no plan to end (`endPlanOnRefund`, src/lib/billing.ts). */
   paymobRefundEnded: (txnId: number) => `paymob:refund_ended:${txnId}`,
+  // Geidea (rules 3900-3917): new families under `pay:`, keyed by our checkout reference or the provider's own id.
+  /** json `PayIntent`: one checkout under our UUID reference; the account comes from here, never from the callback. 30 days. */
+  payIntent: (ref: string) => `pay:intent:${ref}`,
+  /** sorted set: references of Geidea checkouts not yet settled, scored by start time, read by the reconciliation cron (rule 3909). */
+  payOpen: () => "pay:open",
+  /** json `TxnRecord`: one settled provider order. */
+  payTxn: (provider: string, id: string) => `pay:txn:${provider}:${id}`,
+  /** marker: the provider order was applied (exactly once, rule 3906). */
+  payDone: (provider: string, id: string) => `pay:done:${provider}:${id}`,
+  /** lock: one provider order's application. */
+  payTxLock: (provider: string, id: string) => `pay:txlock:${provider}:${id}`,
+  /** marker: we refunded the provider order. */
+  payRefunded: (provider: string, id: string) => `pay:refunded:${provider}:${id}`,
+  /** lock: one provider order's refund. */
+  payRefundLock: (provider: string, id: string) => `pay:refundlock:${provider}:${id}`,
+  /** string: like `paymobRefundEnded`, for a Geidea order. */
+  payRefundEnded: (provider: string, id: string) => `pay:refund_ended:${provider}:${id}`,
   /** list: Shopify compliance webhook receipts, topic + store + time only (rule 2169). */
   shopifyCompliance: () => "shopify:compliance",
   /** hash: store domain → time of a pending `shop/redact`, applied by the stores cron (rules 2170-2171). */
@@ -411,12 +443,30 @@ export const globalKey = {
   passkeyAuth: (nonceHash: string) => `pkauth:${nonceHash}`,
   /** string: the passkey off switch, `"1"` = off, absent = on; no TTL; written only by the console owner (rule 2426). */
   passkeysOff: () => "passkeys:off",
+  /** owned lock: one console data conversion at a time, any of them (POST /api/admin/conversions/{name}, rule 4103); 300 s. */
+  conversionLock: () => "lock:conversion",
+  /**
+   * json `{ at, by }`: a dry run of one conversion that found nothing to leave alone, 15 minutes; the apply needs it and
+   * deletes it (rule 4104). `name` is one of the fixed names in src/lib/conversions/console.ts, never the request's text.
+   */
+  conversionClean: (name: string) => `conversion:clean:${name}`,
+  /** bucket name for `allow` (stored as `rate:adminconv:{who}`): console conversion runs of one console actor, 20 an hour (rule 4102). */
+  conversionBucket: (who: string) => `adminconv:${who}`,
   /** bucket name for `allow` (stored as `rate:pk:ip:{ip}`): passkey sign-in options per IP, 60 per 15 min (rule 2417). */
   passkeyIpBucket: (ip: string) => `pk:ip:${ip}`,
   /** bucket name for `allow` (stored as `rate:pkv:ip:{ip}`): passkey sign-in verifies per IP, 20 per 15 min (rule 2418). */
   passkeyVerifyIpBucket: (ip: string) => `pkv:ip:${ip}`,
   /** bucket name for `allow` (stored as `rate:pkv:cred:{hash}`): passkey sign-in verifies per credential hash, 10 per 15 min (rule 2418). */
   passkeyCredBucket: (credHash: string) => `pkv:cred:${credHash}`,
+  /**
+   * json `{ challenge, at }`: the founder's passkey step-up before creating the first staff login, under the SHA-256 hex
+   * of the customer session; taken with `getdel`; 300 s (rule 3700).
+   */
+  staffBootPasskey: (sessionHash: string) => `staffbootpk:${sessionHash}`,
+  /** bucket name for `allow` (stored as `rate:staffinvite:{sha256(email)}`): staff invites of one owner, 10 per hour (rule 3707). */
+  staffInviteBucket: (ownerHash: string) => `staffinvite:${ownerHash}`,
+  /** bucket name for `allow` (stored as `rate:staffinvite:ip:{ip}`): staff invites per IP, 20 per hour (rule 3707). */
+  staffInviteIpBucket: (ip: string) => `staffinvite:ip:${ip}`,
   /** counter: how many times `event` was tracked on UTC day `day` (src/lib/track.ts `track`); read by the ops summary (rule 2380). */
   eventDay: (day: string, event: string) => `ev:${day}:${event}`,
   /** json `OpsProposal`: one action the ops agent proposed, waiting for the founder's press on Telegram (rules 2386-2389). */

@@ -3,7 +3,7 @@ import { readFileSync, readdirSync, statSync } from "fs";
 import { join } from "path";
 import { adminSignIn, jar, json, newUser, signIn, signOut, TEST_REASON } from "./helpers/session";
 import { adminConsoleSrc } from "./helpers/admin-console";
-import { createUser, currentUser, getUser, IMPERSONATION_LEGACY_MS } from "@/lib/auth";
+import { createUser, currentUser, getUser, IMPERSONATION_LEGACY_MS, acct } from "@/lib/auth";
 import { CAPS, db } from "@/lib/db";
 import { AUDIT_CAP, adminAudit, auditRow, auditView, pageAudit, parseAuditFilter, redact, type AuditRow } from "@/lib/admin-audit";
 import { ADMIN_INPUT_ERRORS, IMPERSONATE_DEFAULT, inputError, parseImpersonateMinutes, parseReason, REASON_MAX } from "@/lib/admin-input";
@@ -508,7 +508,7 @@ describe("security review fixes (rules 1184-1190)", () => {
     signOut();
     const viaKey = await users.POST(json("/api/admin/users/x", "POST", { action: "suspend", reason: "" }, { "x-admin-key": KEY }), userParams(c.email));
     expect(viaKey.status).toBe(400);
-    expect((await getUser(c.email))!.suspended).toBeFalsy();
+    expect((await getUser(acct(c)))!.suspended).toBeFalsy();
     expect(await rows()).toHaveLength(0);
     // With a reason the change goes through and the row carries it.
     expect((await users.POST(json("/api/admin/users/x", "POST", { action: "suspend", reason: "chargeback" }, { "x-admin-key": KEY }), userParams(c.email))).status).toBe(200);
@@ -581,13 +581,13 @@ describe("security review fixes (rules 1184-1190)", () => {
     const { pushNotifs } = await import("@/lib/notifications");
     const { readPrefsMany } = await import("@/lib/notify-prefs");
     const u = await newUser("p4n");
-    const known = await readPrefsMany([u.email], u.email);
+    const known = await readPrefsMany([acct(u)], acct(u));
     const mget = vi.spyOn(db, "mget");
-    const [pushed] = await pushNotifs(u.email, [{ n: { kind: "todo", title: "A to-do", body: "b", href: "/x" }, scope: u.email }], known);
+    const [pushed] = await pushNotifs(acct(u), [{ n: { kind: "todo", title: "A to-do", body: "b", href: "/x" }, scope: acct(u) }], known);
     expect(pushed).toBeTruthy();
     expect(mget).not.toHaveBeenCalled();
     // A scope the map does not hold reads them all, as before.
-    await pushNotifs(u.email, [{ n: { kind: "todo", title: "B", body: "b", href: "/x" }, scope: "other-scope" }], known);
+    await pushNotifs(acct(u), [{ n: { kind: "todo", title: "B", body: "b", href: "/x" }, scope: "other-scope" }], known);
     expect(mget).toHaveBeenCalledTimes(1);
     expect(read("src/lib/secretary-remind.ts")).toContain("await pushNotifs(ctx.email, [{ ...push, scope }], await ctx.prefs())");
   });

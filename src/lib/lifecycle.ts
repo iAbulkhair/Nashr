@@ -127,11 +127,11 @@ export async function runLifecycle(u: User): Promise<string[]> {
   // hops at roughly 2,232 brands, leaving everyone past that point with no lifecycle mail at all.
   const plan = lifecyclePlan(u);
   if (!plan.some(([, due]) => due)) return [];
-  const brand = await getBrand(u.scope ?? u.email);
+  const brand = await getBrand(u.scope ?? acct(u));
   if (!brand) return []; // signup nudge handles no-brand users
   // 90 days, not all of history. Every message here goes to an account in its first ten days, so the window cannot
   // change what any of them say; it only stops the read growing with the age of the workspace.
-  const tasks = await listLiteDays(u.scope ?? u.email, 90);
+  const tasks = await listLiteDays(u.scope ?? acct(u), 90);
   const ctx = { firstTitle: tasks.at(-1)?.title, pending: tasks.filter(isWaiting).length, approved: tasks.filter((x) => x.status === "approved").length, trialEnds: u.trialEnds.slice(0, 10) };
   // Marked as sent only when Resend accepted it (src/lib/notify.ts `sendOnce`): a refused note is tried again tomorrow,
   // while its window lasts. The due notes go out side by side; rarely more than one is due.

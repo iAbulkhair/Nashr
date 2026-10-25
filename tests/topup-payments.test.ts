@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { adminSignIn, jar, json, newMember, newUser, params } from "./helpers/session";
-import { getUser, saveUser, type Plan, type User } from "@/lib/auth";
+import { acct, getUser, saveUser, type Plan, type User } from "@/lib/auth";
 import { chargeOnce, monthKey, refundOnce, resolveOnceHolds, voidTopup, type AgentCharge } from "@/lib/credits";
 import { db } from "@/lib/db";
 import { commissionSar, ksaDay, type LedgerRow } from "@/lib/partner-rules";
@@ -42,12 +42,14 @@ const day = (offsetDays = 0) => ksaDay(Date.now() + offsetDays * DAY);
 const payId = () => `pay_${randomBytes(9).toString("hex")}`;
 const ok = (r: AgentCharge) => { if (!r.ok) throw new Error(r.reason); return r; };
 
-/** An owner on a paid plan whose month's plan credits are `monthly` (renewed this month, so no renewal is due). */
+/** An owner on a paid plan whose month's plan credits are `monthly` (renewed this month, so no renewal is due). Returns its account id. */
 async function paid(monthly = 300, plan: Plan = "starter"): Promise<string> {
   const u = await newUser("tpay");
-  await saveUser({ ...(await getUser(u.email))!, plan, credits: monthly, renewedAt: monthKey() });
-  return u.email;
+  await saveUser({ ...(await getUser(acct(u)))!, plan, credits: monthly, renewedAt: monthKey() });
+  return acct(u);
 }
+/** The address an account signs in with: what the console routes take in their body or path. */
+const loginOf = async (aid: string) => (await getUser(aid))!.email;
 /** An approved partner, and a paying customer attributed to it `daysAgo` days ago (by code). */
 async function referred(daysAgo = 1): Promise<{ customer: string; partner: string }> {
   const p = await newUser("tpartner");
@@ -59,12 +61,15 @@ async function referred(daysAgo = 1): Promise<{ customer: string; partner: strin
   await saveUser({ ...u, referredBy: { partner: p.email, code, at: new Date(Date.now() - daysAgo * DAY).toISOString(), via: "code", ref: randomBytes(6).toString("hex") } });
   return { customer, partner: p.email };
 }
-const payments = async (email: string) => db.hgetall<Payment>(`payments:${email}`);
-const ledger = async (email: string) => Object.values(await db.hgetall<LedgerRow>(`partner:ledger:${email}`));
+const payments = async (aid: string) => db.hgetall<Payment>(`payments:${aid}`);
+const ledger = async (aid: string) => Object.values(await db.hgetall<LedgerRow>(`partner:ledger:${aid}`));
 const post = (body: Record<string, unknown>) => topupsRoute.POST(json("/api/admin/topups", "POST", body));
-const add = (email: string, extra: Record<string, unknown> = {}) => post({ email, action: "add", credits: 300, paidSar: 300, paidOn: day(), ref: "TRX-T", ...extra });
-const payRoute = (email: string, b: Record<string, unknown>) =>
-  adminPayments.POST(json(`/api/admin/payments/${encodeURIComponent(email)}`, "POST", b), params({ email: encodeURIComponent(email) }));
+const addTo = (email: string, extra: Record<string, unknown> = {}) => post({ email, action: "add", credits: 300, paidSar: 300, paidOn: day(), ref: "TRX-T", ...extra });
+const add = async (aid: string, extra: Record<string, unknown> = {}) => addTo(await loginOf(aid), extra);
+const payRoute = async (aid: string, b: Record<string, unknown>) => {
+  const email = await loginOf(aid);
+  return adminPayments.POST(json(`/api/admin/payments/${encodeURIComponent(email)}`, "POST", b), params({ email: encodeURIComponent(email) }));
+};
 type AddBody = { ok: boolean; error?: string; already?: boolean; credits: number; lot: { id: string; paymentId?: string }; payment: Payment | null };
 
 describe("a pack is a customer payment: 'Add top-up' records it with the partner's commission, once (rule 454)", () => {
@@ -131,45 +136,45 @@ describe("a pack is a customer payment: 'Add top-up' records it with the partner
   });
 
   it("a top-up never takes the first-month offer, and an id already used by a plan payment is refused before anything is written", async () => {
-    const email = await paid(0);
-    const u = (await getUser(email))!;
+    const aid = await paid(0);
+    const u = (await getUser(aid))!;
     await saveUser({ ...u, firstMonthOffer: { kind: "partner", pct: 15, at: new Date(Date.now() - DAY).toISOString() } });
-    const t = (await (await add(email, { paymentId: payId() })).json()) as AddBody;
+    const t = (await (await add(aid, { paymentId: payId() })).json()) as AddBody;
     expect(t.payment!.offer).toBeUndefined();
-    expect((await getUser(email))!.firstMonthOffer!.usedAt).toBeUndefined();
+    expect((await getUser(aid))!.firstMonthOffer!.usedAt).toBeUndefined();
 
-    const plan = await recordPayment(email, { amountSar: 299, plan: "starter", date: day() }, "key");
+    const plan = await recordPayment(aid, { amountSar: 299, plan: "starter", date: day() }, "key");
     if (!plan.ok) throw new Error(plan.error);
-    const before = (await getUser(email))!.credits;
-    const clash = await add(email, { paymentId: plan.payment.id });
+    const before = (await getUser(aid))!.credits;
+    const clash = await add(aid, { paymentId: plan.payment.id });
     expect(clash.status).toBe(400);
     expect(await clash.json()).toEqual({ ok: false, error: "bad_id" });
-    expect((await getUser(email))!.credits).toBe(before);
+    expect((await getUser(aid))!.credits).toBe(before);
   });
 
   it("a pack recorded before the plan's first payment leaves the offer open: the plan payment after it, backdated or not, takes it", async () => {
     for (const planDay of [-2, 0]) {
-      const email = await paid(0);
-      const u = (await getUser(email))!;
+      const aid = await paid(0);
+      const u = (await getUser(aid))!;
       await saveUser({ ...u, firstMonthOffer: { kind: "partner", pct: 15, at: new Date(Date.now() - 5 * DAY).toISOString() } });
-      const t = (await (await add(email, { paymentId: payId() })).json()) as AddBody;
+      const t = (await (await add(aid, { paymentId: payId() })).json()) as AddBody;
       expect(t.payment!.offer).toBeUndefined();
-      let now = (await getUser(email))!;
+      let now = (await getUser(aid))!;
       expect(now.firstPaidOn, "a pack's payment is not the plan's first payment").toBeUndefined();
       expect(now.firstMonthOffer!.usedAt).toBeUndefined();
-      expect((await paymentsView(email))!.open, "the console still shows the offer open").toBe(true);
+      expect((await paymentsView(aid))!.open, "the console still shows the offer open").toBe(true);
 
-      const plan = await recordPayment(email, { amountSar: firstMonthPriceSar("starter"), plan: "starter", date: day(planDay) }, "key");
+      const plan = await recordPayment(aid, { amountSar: firstMonthPriceSar("starter"), plan: "starter", date: day(planDay) }, "key");
       if (!plan.ok) throw new Error(plan.error);
       expect(plan.payment, `plan payment dated ${planDay}`).toMatchObject({ offer: "partner", expectedSar: firstMonthPriceSar("starter") });
-      now = (await getUser(email))!;
+      now = (await getUser(aid))!;
       expect(now.firstMonthOffer).toMatchObject({ paymentId: plan.payment.id });
       expect(now.firstMonthOffer!.usedAt).toBeTruthy();
       expect(now.firstPaidOn, "the first payment day is the plan payment's").toBe(day(planDay));
 
       // Voiding the plan payment reopens the offer although the pack's payment still stands.
-      expect((await voidPayment(email, plan.payment.id, "key", "entered by mistake")).ok).toBe(true);
-      now = (await getUser(email))!;
+      expect((await voidPayment(aid, plan.payment.id, "key", "entered by mistake")).ok).toBe(true);
+      now = (await getUser(aid))!;
       expect(now.firstPaidOn).toBeUndefined();
       expect(now.firstMonthOffer!.usedAt).toBeUndefined();
     }
@@ -193,12 +198,12 @@ describe("a pack is a customer payment: 'Add top-up' records it with the partner
   });
 
   it("the Payments route never records a top-up: its body's fields are passed one by one", async () => {
-    const email = await paid(0);
-    const res = await payRoute(email, { action: "record", amountSar: 100, plan: "starter", date: day(), topup: { lot: "0123456789abcdef", credits: 1000 } });
+    const aid = await paid(0);
+    const res = await payRoute(aid, { action: "record", amountSar: 100, plan: "starter", date: day(), topup: { lot: "0123456789abcdef", credits: 1000 } });
     expect(res.status).toBe(200);
     const p = ((await res.json()) as { payment: Payment }).payment;
     expect(p.topup).toBeUndefined();
-    expect(lotsOf((await getUser(email))!)).toEqual([]);
+    expect(lotsOf((await getUser(aid))!)).toEqual([]);
   });
 });
 
@@ -215,7 +220,7 @@ describe("voiding a pack voids its payment and the commission; a live pack's pay
     expect((await payments(customer))[id].voidedAt).toBeUndefined();
     expect((await paymentsView(customer))!.livePacks).toEqual([a.lot.id]);
 
-    const res = await post({ email: customer, action: "void", id: a.lot.id, reason: "transfer bounced" });
+    const res = await post({ email: await loginOf(customer), action: "void", id: a.lot.id, reason: "transfer bounced" });
     expect(res.status).toBe(200);
     expect(await res.json()).toMatchObject({ ok: true, removed: 300, credits: 300, payment: { id, voidReason: "transfer bounced" } });
     expect((await payments(customer))[id].voidedAt).toBeTruthy();
@@ -232,23 +237,23 @@ describe("voiding a pack voids its payment and the commission; a live pack's pay
   });
 
   it("a void that stopped halfway is completed by its retry; once a pack has expired its payment is voided from Payments", async () => {
-    const email = await paid(0);
+    const aid = await paid(0);
     const id = payId();
-    const a = (await (await add(email, { paymentId: id })).json()) as AddBody;
+    const a = (await (await add(aid, { paymentId: id })).json()) as AddBody;
     // The payment was voided, the pack not yet (the request died in between).
-    expect((await voidPayment(email, id, "key", "x", { withPack: true })).ok).toBe(true);
-    const res = await post({ email, action: "void", id: a.lot.id });
+    expect((await voidPayment(aid, id, "key", "x", { withPack: true })).ok).toBe(true);
+    const res = await post({ email: await loginOf(aid), action: "void", id: a.lot.id });
     expect(res.status).toBe(200);
-    expect(lotsOf((await getUser(email))!)).toEqual([]);
+    expect(lotsOf((await getUser(aid))!)).toEqual([]);
 
     const other = payId();
-    const b = (await (await add(email, { paymentId: other })).json()) as AddBody;
-    const u = (await getUser(email))!;
+    const b = (await (await add(aid, { paymentId: other })).json()) as AddBody;
+    const u = (await getUser(aid))!;
     await saveUser({ ...u, topups: u.topups!.map((l) => (l.id === b.lot.id ? { ...l, expiresAt: new Date(Date.now() - DAY).toISOString() } : l)) });
-    expect((await paymentsView(email))!.livePacks).toEqual([]);
-    const v = await payRoute(email, { action: "void", id: other, reason: "refund after expiry" });
+    expect((await paymentsView(aid))!.livePacks).toEqual([]);
+    const v = await payRoute(aid, { action: "void", id: other, reason: "refund after expiry" });
     expect(v.status).toBe(200);
-    expect((await payments(email))[other].voidedAt).toBeTruthy();
+    expect((await payments(aid))[other].voidedAt).toBeTruthy();
   });
 
   it("the console sends one payment id per pack through adminFetch and keeps it until a definite answer; Payments points to the pack", () => {
@@ -384,29 +389,29 @@ describe("out of credits, the line fits the plan and the role (rule 457)", () =>
 
 describe("a Sunday plan's paid-once hold keeps its top-up receipt (rule 458)", () => {
   it("chargeOnce records where the credits came from; refundOnce and the weekly sweep put them back in the pack", async () => {
-    const email = await paid(1);
-    const r = await addPaidTopup(email, { credits: 100, paidSar: 100, paidOn: day(), ref: "" }, "key");
+    const aid = await paid(1);
+    const r = await addPaidTopup(aid, { credits: 100, paidSar: 100, paidOn: day(), ref: "" }, "key");
     if (!r.ok) throw new Error(r.error);
-    const meta = { scope: email, agent: "noor" as const };
-    const c = await chargeOnce(email, 3, meta, `weekly:${email}:W1`);
+    const meta = { scope: aid, agent: "noor" as const };
+    const c = await chargeOnce(aid, 3, meta, `weekly:${aid}:W1`);
     const held = ok(c as AgentCharge);
     expect(held).toMatchObject({ from: { monthly: 1, lots: [{ id: r.lot.id, n: 2 }] } });
-    expect((await getUser(email))!.paidOnce![`weekly:${email}:W1`].from).toEqual({ monthly: 1, lots: [{ id: r.lot.id, n: 2 }] });
-    expect(await refundOnce(email, `weekly:${email}:W1`)).toEqual({ credits: 101, refunded: 3 });
-    let u = (await getUser(email))!;
+    expect((await getUser(aid))!.paidOnce![`weekly:${aid}:W1`].from).toEqual({ monthly: 1, lots: [{ id: r.lot.id, n: 2 }] });
+    expect(await refundOnce(aid, `weekly:${aid}:W1`)).toEqual({ credits: 101, refunded: 3 });
+    let u = (await getUser(aid))!;
     expect([monthlyCredits(u), lotsOf(u)[0].left]).toEqual([1, 100]);
 
-    await chargeOnce(email, 3, meta, `weekly:${email}:W2`);
-    const swept = await resolveOnceHolds(email, { [`weekly:${email}:W2`]: false });
+    await chargeOnce(aid, 3, meta, `weekly:${aid}:W2`);
+    const swept = await resolveOnceHolds(aid, { [`weekly:${aid}:W2`]: false });
     // Each refund names its claim since rule 2475 (src/lib/hold-sweep.ts writes one activity row per refund).
-    expect(swept.refunded).toEqual([{ claim: `weekly:${email}:W2`, scope: email, agent: "noor", credits: 3 }]);
-    u = (await getUser(email))!;
+    expect(swept.refunded).toEqual([{ claim: `weekly:${aid}:W2`, scope: aid, agent: "noor", credits: 3 }]);
+    u = (await getUser(aid))!;
     expect([monthlyCredits(u), lotsOf(u)[0].left]).toEqual([1, 100]);
     // A pack voided since: its share comes back as plan credits (founder decision of 2026-10-02, rule 461).
-    await chargeOnce(email, 3, meta, `weekly:${email}:W3`);
-    await voidTopup(email, r.lot.id);
-    expect(await refundOnce(email, `weekly:${email}:W3`)).toEqual({ credits: 3, refunded: 3 });
-    u = (await getUser(email))!;
+    await chargeOnce(aid, 3, meta, `weekly:${aid}:W3`);
+    await voidTopup(aid, r.lot.id);
+    expect(await refundOnce(aid, `weekly:${aid}:W3`)).toEqual({ credits: 3, refunded: 3 });
+    u = (await getUser(aid))!;
     expect([monthlyCredits(u), lotsOf(u)]).toEqual([3, []]);
   });
 });
@@ -429,11 +434,11 @@ describe("a pack's payment date is the Riyadh day, as for every recorded payment
 
   it("a member account is never sold a pack, and the payment carries the account's plan", async () => {
     jar().clear(); await adminSignIn();
-    const email = await paid(0, "business");
-    const m = await newMember((await getUser(email))! as User, "admin");
-    const asMember = await add(m.email, { paymentId: payId() });
+    const aid = await paid(0, "business");
+    const m = await newMember((await getUser(aid))! as User, "admin");
+    const asMember = await addTo(m.email, { paymentId: payId() });
     expect(asMember.status, "a member login is not an account").toBe(404);
-    const b = (await (await add(email, { paymentId: payId() })).json()) as AddBody;
+    const b = (await (await add(aid, { paymentId: payId() })).json()) as AddBody;
     expect(b.payment).toMatchObject({ plan: "business" });
   });
 });

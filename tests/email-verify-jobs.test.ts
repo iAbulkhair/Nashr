@@ -4,7 +4,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { newMember, newUser } from "./helpers/session";
 import { db } from "@/lib/db";
-import { getUser, saveUser, type User } from "@/lib/auth";
+import { acct, getUser, saveUser, type User } from "@/lib/auth";
+import { ownerOf } from "@/lib/membership";
 import { createMcpToken, userFromBearer } from "@/lib/mcp";
 import { dailyRoster } from "@/lib/schedule";
 import { SEC_KEYS } from "@/lib/secretary";
@@ -19,8 +20,8 @@ vi.mock("@/lib/notify", async (orig) => ({ ...(await orig<typeof import("@/lib/n
 beforeEach(() => { sent.length = 0; });
 
 const bearer = (t: string) => new Request("https://nashr.test/api/mcp", { headers: { authorization: `Bearer ${t}` } });
-/** Stamp the address as proved, the way the verify route does. */
-const verify = async (email: string) => { const u = (await getUser(email))!; await saveUser({ ...u, emailVerifiedAt: new Date().toISOString() }); };
+/** Stamp the account's address as proved, the way the verify route does. */
+const verify = async (aid: string) => { const u = (await getUser(aid))!; await saveUser({ ...u, emailVerifiedAt: new Date().toISOString() }); };
 /** A reminder that fell due a minute ago, written the way the sweep reads it (as in tests/secretary-phase2.test.ts). */
 async function seedDue(scope: string, title: string): Promise<SecItem> {
   const at = new Date().toISOString();
@@ -34,9 +35,9 @@ const later = () => new Date(Date.now() + 5_000).toISOString();
 describe("email verification: tokens, links and jobs (rules 753, 755, 756)", () => {
   it("bearer refuses an unverified owner", async () => {
     const u = await newUser("b", { verified: false });
-    const t = await createMcpToken(u.email);
+    const t = await createMcpToken(acct(u));
     expect(await userFromBearer(bearer(t))).toBeNull();
-    await verify(u.email);
+    await verify(acct(u));
     expect((await userFromBearer(bearer(t)))?.email).toBe(u.email);
   });
 
@@ -47,37 +48,37 @@ describe("email verification: tokens, links and jobs (rules 753, 755, 756)", () 
     const emails = users.map((x: User) => x.email);
     expect(emails).toContain(ok.email);
     expect(emails).not.toContain(un.email);
-    expect(idle).toContain(un.email);
-    expect(idle).not.toContain(ok.email);
+    expect(idle).toContain(acct(un));
+    expect(idle).not.toContain(acct(ok));
   });
 
   it("reminders wait for an unverified owner", async () => {
     vi.stubEnv("RESEND_API_KEY", "test-key");
     const un = await newUser("remun", { verified: false });
-    const it = await seedDue(un.email, "Wait for me");
+    const it = await seedDue(acct(un), "Wait for me");
     await sweepReminders(Date.now());
     expect(sent.filter((m) => m.to === un.email)).toEqual([]);
-    expect((await getItem(un.email, it.id))?.remindAt).toBe(it.remindAt);
+    expect((await getItem(acct(un), it.id))?.remindAt).toBe(it.remindAt);
     // Once verified, the next sweep (past the hold) delivers it.
-    await verify(un.email);
+    await verify(acct(un));
     await sweepReminders(Date.now() + SUSPENDED_HOLD_MS + 1000);
-    expect((await getItem(un.email, it.id))?.remindAt).toBeNull();
+    expect((await getItem(acct(un), it.id))?.remindAt).toBeNull();
   });
 
   it("feed and booking links refuse while the owner is unverified", async () => {
     const un = await newUser("lnk", { verified: false });
-    const rec = { login: un.email, scope: un.email, createdAt: later() };
+    // A link made from M1 names its person and account (`pid`, `aid`); the scope is the account's default brand.
+    const rec = { login: un.email, scope: acct(un), pid: ownerOf(un), aid: acct(un), createdAt: later() };
     expect(await loginHolds(rec)).toBe(false);
-    await verify(un.email);
+    await verify(acct(un));
     expect(await loginHolds(rec)).toBe(true);
 
     // A member's link is refused while the owner behind it is unverified.
     const owner = await newUser("lnkown");
-    // Pins the legacy shape (multi-org M1): a link record without `pid`/`aid` was made before M1, by a legacy member.
-    const m = await newMember(owner, "member", "m", { legacy: true });
-    const mrec = { login: m.email, scope: owner.email, createdAt: later() };
+    const m = await newMember(owner, "member", "m");
+    const mrec = { login: m.email, scope: acct(owner), pid: m.pid, aid: acct(owner), createdAt: later() };
     expect(await loginHolds(mrec)).toBe(true);
-    await saveUser({ ...(await getUser(owner.email))!, emailVerifiedAt: undefined });
+    await saveUser({ ...(await getUser(acct(owner)))!, emailVerifiedAt: undefined });
     expect(await loginHolds(mrec)).toBe(false);
   });
 });

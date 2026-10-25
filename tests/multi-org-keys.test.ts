@@ -173,9 +173,9 @@ describe("rule 2137: a plain string from a request does not type-check in any bu
   });
 });
 
-describe("rule 2132: the switch is off and a new person id has the pinned shape", () => {
-  it("MULTI_ORG is false", () => {
-    expect(MULTI_ORG).toBe(false);
+describe("rule 2132 / 3810: the switch is on since the enable release and a new person id has the pinned shape", () => {
+  it("MULTI_ORG is true (rule 3810; it was false through M1-M3, rule 2132)", () => {
+    expect(MULTI_ORG).toBe(true);
   });
   it("PERSON_ID accepts p_ and 24 base32 characters and nothing else", () => {
     expect(PERSON_ID.test("p_aaaaaaaaaaaaaaaaaaaaaaaa")).toBe(true);

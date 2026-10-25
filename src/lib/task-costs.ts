@@ -19,6 +19,7 @@
 import { costUsd } from "./usage";
 import { TASK_COST, TASK_COUNT, type TaskType } from "./tasks";
 import { modelById } from "./models/catalog";
+import { creditsFor } from "./models/credits";
 import { DEFAULTS, automaticFor } from "./models/route";
 
 /**
@@ -135,9 +136,26 @@ export function estimateFor(type: TaskType, model: string): number {
  */
 export const draftCredits = (type: TaskType, count: number): number => Math.max(1, Math.ceil((TASK_COST[type] / (TASK_COUNT[type] || 1)) * count));
 
+/**
+ * The fewest credits a chat draft of a type is charged, on any model (founder decision 2026-10-24, rules 4030-4034). With
+ * yearly billing at 2 months free the cheapest credit is Business yearly's $0.148 and the ceiling $0.0592 ($0.0515 with
+ * VAT): a one-item social or ads draft on Opus 5.5 costs $0.0605 and broke it at 1 credit, so did a one- or two-item draft
+ * of those types on Sonnet 5.5 at x0.5. Two credits keep them all under it. Other types keep the pro rata price.
+ */
+export const DRAFT_MIN_CREDITS: Readonly<Partial<Record<TaskType, number>>> = Object.freeze({ social: 2, ads: 2 });
+
+/**
+ * What a chat draft of `count` items is charged on `model`: `draftCredits` at the model's tier (`creditsFor`, rule 902),
+ * never less than the type's `DRAFT_MIN_CREDITS`. Without a model, the type's own writer (x1). The chat's `draft_items`
+ * (src/lib/generate-batch.ts), a revision (src/lib/revise.ts) and an instructions test (src/lib/instructions-test.ts)
+ * all charge this.
+ */
+export const draftCharge = (type: TaskType, count: number, model?: string): number =>
+  Math.max(DRAFT_MIN_CREDITS[type] ?? 1, model ? creditsFor(draftCredits(type, count), model, "generate", type) : draftCredits(type, count));
+
 /** A chat draft of 1-3 items (`draft_items`): the owner is in the app, so the cache is warm. */
 export function estimateDraft(type: TaskType, count: 1 | 2 | 3): BatchEstimate {
-  return estimateBatch(type, { items: count, credits: draftCredits(type, count), cache: "hit" });
+  return estimateBatch(type, { items: count, credits: draftCharge(type, count), cache: "hit" });
 }
 
 /** One onboarding run in USD (≈ $0.57): what ONBOARD_EXTRA_BRAND_COST (src/lib/pricing.ts) must cover at the floor. */

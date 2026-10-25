@@ -3,7 +3,7 @@ import { randomBytes } from "crypto";
 import { newUser, signIn } from "./helpers/session";
 import { claudeOn } from "./helpers/model";
 import { fakeAdapter, fakeDeps, mediaEnv, noNetwork, resetMediaCounters } from "./helpers/media";
-import { currentUser, getUser, type User } from "@/lib/auth";
+import { acct, currentUser, getUser, type User } from "@/lib/auth";
 import { getTask, saveTask, type Task } from "@/lib/brand";
 import { saveConnection, type Connection } from "@/lib/connectors/store";
 import { escapeTitle, plainTitle, splitTitle } from "@/lib/connectors/publish";
@@ -96,11 +96,11 @@ describe("rule 3012: chat publishes only media a person saw", () => {
       const u = await newUser("er-media");
       const decided = iso(Date.now() - 7_200_000);
       const t = item({ decidedAt: decided, published: [{ provider: "facebook", url: "https://facebook.com/p/1", status: "published", at: iso(Date.now() - 3_600_000) }] });
-      await saveTask(u.email, t, true);
-      const input: StartInput = { scope: u.email, email: u.email, lang: u.lang, accountSince: u.createdAt, plan: "pro", balance: u.credits, agent: "noor", taskId: t.id, model: "img-fast", aspect: "square", deadline: Date.now() + 100_000, prompt: async () => "a test prompt" };
+      await saveTask(acct(u), t, true);
+      const input: StartInput = { scope: acct(u), email: acct(u), lang: u.lang, accountSince: u.createdAt, plan: "pro", balance: u.credits, agent: "noor", taskId: t.id, model: "img-fast", aspect: "square", deadline: Date.now() + 100_000, prompt: async () => "a test prompt" };
       const r = await startMedia(input, fakeDeps({ fal: fakeAdapter("fal") }));
       expect(r.ok).toBe(true);
-      const after = (await getTask(u.email, t.id)) as Task & MediaStamped;
+      const after = (await getTask(acct(u), t.id)) as Task & MediaStamped;
       expect(after.imageUrl).toBeTruthy();
       expect(after.decidedAt, "rule 576 keeps a published item's record").toBe(decided);
       expect(typeof after.mediaAt).toBe("string");
@@ -113,22 +113,22 @@ describe("rule 3012: chat publishes only media a person saw", () => {
 
   it("publish_item refuses an item whose image arrived after its approval and publish, publishes it after a new approval, and an unstamped item as before", async () => {
     const u0 = await newUser("er-chat");
-    await saveConnection(u0.email, { provider: "telegram", data: { token: "t", chat: "c" }, connectedAt: new Date().toISOString() });
+    await saveConnection(acct(u0), { provider: "telegram", data: { token: "t", chat: "c" }, connectedAt: new Date().toISOString() });
     await signIn(u0.email);
     const u = (await currentUser())!;
     const media = Date.now() - 60_000;
     const stale = item({ id: "stale", channel: "telegram", decidedAt: iso(media - 3_600_000), published: [{ provider: "facebook", url: "https://facebook.com/p/1", status: "published", at: iso(media - 1_800_000) }], mediaAt: iso(media) });
     const legacy = item({ id: "legacy", channel: "telegram", published: [{ provider: "facebook", url: "https://facebook.com/p/2", status: "published", at: iso(media) }] });
-    await Promise.all([saveTask(u.email, stale, true), saveTask(u.email, legacy, true)]);
+    await Promise.all([saveTask(acct(u), stale, true), saveTask(acct(u), legacy, true)]);
     sentOut.length = 0;
     const out = await runTool(u, "publish_item", { task_id: "stale", provider: "telegram" }, []);
     expect(out).toMatch(/new image or video arrived on this item after the owner last approved or published it/);
     expect(sentOut).toEqual([]);
-    expect((await getTask(u.email, "stale"))!.published).toHaveLength(1);
+    expect((await getTask(acct(u), "stale"))!.published).toHaveLength(1);
     // Before rule 3012 there was no stamp: an item a person published once still goes out from chat, as before.
     expect(await runTool(u, "publish_item", { task_id: "legacy", provider: "telegram" }, [])).toMatch(/Published/);
     // The owner reopens and approves it in the inbox: a decision after the media.
-    await saveTask(u.email, { ...(await getTask(u.email, "stale"))!, decidedAt: new Date().toISOString() });
+    await saveTask(acct(u), { ...(await getTask(acct(u), "stale"))!, decidedAt: new Date().toISOString() });
     expect(await runTool(u, "publish_item", { task_id: "stale", provider: "telegram" }, [])).toMatch(/Published/);
     expect(sentOut).toEqual(["legacy", "stale"]);
   });
@@ -145,17 +145,18 @@ const CONV = "abc123def456";
 
 async function proposal(prefix: string): Promise<{ u: User; id: string }> {
   const u = await newUser(prefix);
-  await db.set(`conv:${u.email}:${CONV}`, { id: CONV, title: "t", createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), count: 2, agent: "majed" });
-  await saveGov(u.email, { majedAutoHandoff: true, agentCaps: { [PRD]: 20 } });
-  const h = await createHandoff(u.email, { proposal: { items: [{ type: "prd", brief: "مواصفة لصفحة الاشتراك" }] }, requestedBy: { kind: "owner", email: u.email }, origin: "web_chat", conv: CONV, ownerMsg: "m" });
-  expect(await markShown(u.email, h.id)).toBe(true);
-  return { u: (await getUser(u.email))!, id: h.id };
+  await db.set(`conv:${acct(u)}:${CONV}`, { id: CONV, title: "t", createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), count: 2, agent: "majed" });
+  await saveGov(acct(u), { majedAutoHandoff: true, agentCaps: { [PRD]: 20 } });
+  const h = await createHandoff(acct(u), { proposal: { items: [{ type: "prd", brief: "مواصفة لصفحة الاشتراك" }] }, requestedBy: { kind: "owner", email: u.email }, origin: "web_chat", conv: CONV, ownerMsg: "m" });
+  expect(await markShown(acct(u), h.id)).toBe(true);
+  // The cron runs it as `resumeJob` hands the user over: the account's record with the scope it works in.
+  return { u: { ...(await getUser(acct(u)))!, scope: acct(u) }, id: h.id };
 }
 
 describe("rule 3014: Majed's auto-run honours the item's agent's produce authority", () => {
   it("autoBlock: off and ask-first are `authority`; on, a missing policy and another agent's switch are not", async () => {
     const { u, id } = await proposal("er-auto-pure");
-    const h = (await getHandoff(u.email, id))!;
+    const h = (await getHandoff(acct(u), id))!;
     expect(autoBlock(h, 0, G())).toBeNull();
     expect(autoBlock(h, 0, G({ [PRD]: { produce: "off" } }))).toBe("authority");
     expect(autoBlock(h, 0, G({ [PRD]: { produce: "ask" } }))).toBe("authority");
@@ -168,8 +169,8 @@ describe("rule 3014: Majed's auto-run honours the item's agent's produce authori
   it("the cron's run reads the setting again under the lock: skipped, nothing charged, the item left for the owner", async () => {
     const { u, id } = await proposal("er-auto-run");
     for (const mode of ["off", "ask"] as const) {
-      await saveGov(u.email, { toolPolicy: { [PRD]: { produce: mode } } });
-      expect((await getGov(u.email)).toolPolicy).toEqual({ [PRD]: { produce: mode } });
+      await saveGov(acct(u), { toolPolicy: { [PRD]: { produce: mode } } });
+      expect((await getGov(acct(u))).toolPolicy).toEqual({ [PRD]: { produce: mode } });
       vi.resetModules();
       vi.stubEnv("ANTHROPIC_API_KEY", "test");
       claudeOn();
@@ -177,9 +178,9 @@ describe("rule 3014: Majed's auto-run honours the item's agent's produce authori
       vi.doMock("@anthropic-ai/sdk", () => ({ default: class { constructor() { throw new Error("no model call expected"); } } }));
       const { autoRunHandoff, autoQueue } = await import("@/lib/handoff-auto");
       expect(await autoRunHandoff(u, id, 0, Date.now() + 300_000)).toBe("skip:authority");
-      expect(await autoQueue(u.email, await getGov(u.email))).toEqual([]);
-      expect((await getUser(u.email))!.credits).toBe(u.credits);
-      expect((await getHandoff(u.email, id))!.items[0].status).toBe("proposed");
+      expect(await autoQueue(acct(u), await getGov(acct(u)))).toEqual([]);
+      expect((await getUser(acct(u)))!.credits).toBe(u.credits);
+      expect((await getHandoff(acct(u), id))!.items[0].status).toBe("proposed");
       vi.doUnmock("@anthropic-ai/sdk");
       vi.doUnmock("@/lib/model");
     }

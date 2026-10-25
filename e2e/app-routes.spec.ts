@@ -1,4 +1,4 @@
-import { test, expect, open, dirFor, LANGS } from "./fixtures/app";
+import { test, expect, open, appPath, dirFor, LANGS } from "./fixtures/app";
 import { APP_ROUTES } from "./fixtures/routes";
 
 /**
@@ -18,10 +18,10 @@ for (const lang of LANGS) {
         const res = await open(page, path);
         expect(res.status(), `${path} must answer 200`).toBe(200);
         if (route.ownerGoesTo) {
-          expect(new URL(page.url()).pathname, `${path} sends an owner with a brand on`).toBe(`/${lang}${route.ownerGoesTo}`);
+          expect(appPath(page.url()), `${path} sends an owner with a brand on`).toBe(`/${lang}${route.ownerGoesTo}`);
           return;
         }
-        expect(new URL(page.url()).pathname, `${path} must not redirect a signed-in owner`).toBe(path);
+        expect(appPath(page.url()), `${path} must not redirect a signed-in owner`).toBe(path);
 
         const html = page.locator("html");
         await expect(html).toHaveAttribute("lang", lang);

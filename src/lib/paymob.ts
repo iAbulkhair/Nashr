@@ -2,6 +2,7 @@ import { createHmac } from "node:crypto";
 import { sameSecret } from "./rate";
 import { log } from "./log";
 import { PaymentError, type CardTokenEvent, type PaymentProvider, type PaymentTxn, type WebhookEvent } from "./payments/provider";
+import type { BillingInterval } from "./pricing";
 
 /**
  * Paymob KSA adapter (spec docs/superpowers/specs/2026-10-08-paymob-billing-design.md section 2): the configuration gate,
@@ -84,6 +85,12 @@ const posInt = (v: unknown): number | null => {
 
 export type IntentionInput = {
   amountCents: number;
+  /**
+   * The period a plan charge pays for (rule 3539), passed through from `CheckoutInput`. Paymob's intention has no billing
+   * period: it charges one amount once, and renewals are our own saved-card charges. So nothing extra is sent: the amount
+   * is already the period's price and the item text billing wrote names the period ("1 month" / "1 year"). Absent for a pack.
+   */
+  interval?: BillingInterval;
   integration: number;
   item: { name: string; description: string };
   billing: { firstName: string; lastName: string; email: string; phone: string };
@@ -248,6 +255,6 @@ export function paymobProvider(): PaymentProvider | null {
     verifyWebhook: (e, signature) => verifyHmac(e.obj, e.kind === "card_token" ? TOKEN_HMAC_FIELDS : TXN_HMAC_FIELDS, signature, cfg.hmacSecret),
     parseTransaction: parseTxn,
     parseCardToken,
-    refund: (txnId, amountCents) => refundTxn(cfg, txnId, amountCents),
+    refund: (txnId, amountCents) => refundTxn(cfg, Number(txnId), amountCents),
   };
 }

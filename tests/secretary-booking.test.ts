@@ -4,13 +4,14 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { json, markVerified, newMember as helperNewMember, newUser as helperNewUser, params, signIn, signOut } from "./helpers/session";
-import { createUser, currentUser, getUser, saveUser } from "@/lib/auth";
+import { acct, createUser, currentUser, getUser, saveUser } from "@/lib/auth";
+import { aidOf, ownerOf } from "@/lib/membership";
+import { personKey } from "@/lib/keys";
 import { forceRemoveMember, getMember, leaveTeam, removeMember, wipeMemberships } from "@/lib/team";
 import * as resetRoute from "@/app/api/auth/reset/route";
 import * as adminUserRoute from "@/app/api/admin/users/[email]/route";
 import * as accountRoute from "@/app/api/account/route";
 import { db } from "@/lib/db";
-import { storedAccountId } from "@/lib/keys";
 import * as rate from "@/lib/rate";
 import * as bookingRoute from "@/app/api/secretary/booking/[token]/route";
 import * as manageRoute from "@/app/api/secretary/booking/route";
@@ -342,12 +343,12 @@ describe("applying a booking (rules 590-593)", () => {
   /** A whole minute this far from now: the item keeps minutes, so a round instant reads back the same. */
   const minuteFrom = (ms: number) => Math.ceil((Date.now() + ms) / MIN) * MIN;
   const newHash = () => randomBytes(32).toString("hex");
-  const recOf = (u: User, o: Partial<BookRecord> = {}): BookRecord => ({ login: u.email, scope: u.email, provider: "calcom", lang: "en", createdAt: new Date().toISOString(), ...o });
+  const recOf = (u: User, o: Partial<BookRecord> = {}): BookRecord => ({ login: u.email, scope: acct(u), provider: "calcom", lang: "en", createdAt: new Date().toISOString(), ...o });
   const booking = (o: Partial<Parsed> = {}, startMs = minuteFrom(2 * DAY)): Parsed => ({ kind: "create", externalId: `bk_${randomBytes(6).toString("hex")}`, name: "Omar Example", eventName: "Intro call", start: iso(startMs), end: iso(startMs + 30 * MIN), ...o });
   /** An owner whose brand keeps its list in Dubai (UTC+4), not the default Riyadh (UTC+3). */
   const dubaiOwner = async () => {
     const u = await newUser("bkapply");
-    await db.set(`brand:${u.email}`, { timeZone: "Asia/Dubai" });
+    await db.set(`brand:${acct(u)}`, { timeZone: "Asia/Dubai" });
     return u;
   };
   const auditOf = async (scope: string) => (await db.lrange(SEC_KEYS.audit(scope), 0, -1)).map((x) => JSON.parse(x) as { action: string; actor: string; via: string; id: string });
@@ -365,7 +366,7 @@ describe("applying a booking (rules 590-593)", () => {
     const startMs = minuteFrom(2 * DAY);
     const p = booking({}, startMs);
     expect(await applyBooking(rec, p, hash)).toBe("created");
-    const [it] = await listOpenItems(u.email);
+    const [it] = await listOpenItems(acct(u));
     expect(it).toMatchObject({
       kind: "task", direction: "i_owe", owedBy: "owner", owedTo: "Omar Example", source: "booking", title: "Meeting with Omar Example",
       allDay: false, dueAt: iso(startMs), remindAt: iso(startMs + 30 * MIN),
@@ -373,19 +374,19 @@ describe("applying a booking (rules 590-593)", () => {
     expect(it.description).toContain("Intro call");
     expect(it.description).toContain("Cal.com");
     // the claim names the item, lives 400 days, and the account's key list (the wipe) finds it
-    expect(await claimOf(u.email, "calcom", p.externalId)).toBe(it.id);
-    expect(await db.ttl(`sec:book:ext:${u.email}:calcom:${p.externalId}`)).toBeGreaterThan(399 * 86400);
-    expect(await auditOf(u.email)).toContainEqual(expect.objectContaining({ action: "create", actor: "rule", via: "cron", id: it.id }));
+    expect(await claimOf(acct(u), "calcom", p.externalId)).toBe(it.id);
+    expect(await db.ttl(`sec:book:ext:${acct(u)}:calcom:${p.externalId}`)).toBeGreaterThan(399 * 86400);
+    expect(await auditOf(acct(u))).toContainEqual(expect.objectContaining({ action: "create", actor: "rule", via: "cron", id: it.id }));
 
     // a replay is a no-op: one item
     expect(await applyBooking(rec, p, hash)).toBe("noop");
-    expect(await listOpenItems(u.email)).toHaveLength(1);
+    expect(await listOpenItems(acct(u))).toHaveLength(1);
     // five deliveries of a new booking at once: one item
     const q = booking();
     const five = await Promise.all(Array.from({ length: 5 }, () => applyBooking(rec, q, hash)));
     expect(five.filter((r) => r === "created")).toHaveLength(1);
     expect(five.filter((r) => r === "noop")).toHaveLength(4);
-    expect(await listOpenItems(u.email)).toHaveLength(2);
+    expect(await listOpenItems(acct(u))).toHaveLength(2);
 
     // A run that died after taking the claim and before writing its item (here: the store failed at the item's lock).
     // The claim already names the id the item will get, so a quick retry finishes it there: never dropped, never twice.
@@ -396,11 +397,11 @@ describe("applying a booking (rules 590-593)", () => {
     } finally {
       lockSpy.mockRestore();
     }
-    const id1 = (await claimOf(u.email, "calcom", r1.externalId))!;
+    const id1 = (await claimOf(acct(u), "calcom", r1.externalId))!;
     expect(id1).toMatch(/^s[a-f0-9]{16}$/);
-    expect(await getItem(u.email, id1)).toBeNull();
+    expect(await getItem(acct(u), id1)).toBeNull();
     expect(await applyBooking(rec, r1, hash)).toBe("created");
-    expect(await getItem(u.email, id1)).toMatchObject({ source: "booking", title: "Meeting with Omar Example" });
+    expect(await getItem(acct(u), id1)).toMatchObject({ source: "booking", title: "Meeting with Omar Example" });
     expect(await applyBooking(rec, r1, hash)).toBe("noop");
     // A run that died after writing the item and before its indexes: the retry finds the item at the claimed id, lists it
     // again, and makes no second one.
@@ -411,28 +412,28 @@ describe("applying a booking (rules 590-593)", () => {
     } finally {
       zaddSpy.mockRestore();
     }
-    const id2 = (await claimOf(u.email, "calcom", r2.externalId))!;
-    expect(await getItem(u.email, id2)).not.toBeNull();
-    expect((await listOpenItems(u.email)).map((x) => x.id)).not.toContain(id2);
+    const id2 = (await claimOf(acct(u), "calcom", r2.externalId))!;
+    expect(await getItem(acct(u), id2)).not.toBeNull();
+    expect((await listOpenItems(acct(u))).map((x) => x.id)).not.toContain(id2);
     expect(await applyBooking(rec, r2, hash)).toBe("noop");
-    expect((await listOpenItems(u.email)).filter((x) => x.id === id2)).toHaveLength(1);
-    expect(await listOpenItems(u.email)).toHaveLength(4);
-    expect(await db.smembers(SEC_KEYS.all(u.email))).toHaveLength(4);
+    expect((await listOpenItems(acct(u))).filter((x) => x.id === id2)).toHaveLength(1);
+    expect(await listOpenItems(acct(u))).toHaveLength(4);
+    expect(await db.smembers(SEC_KEYS.all(acct(u)))).toHaveLength(4);
 
     // Arabic link: Arabic title; a meeting that already ended (less than a day ago) has no reminder
     const pastStart = minuteFrom(-3 * HOUR);
     expect(await applyBooking(recOf(u, { lang: "ar" }), booking({ name: "عمر" }, pastStart), hash)).toBe("created");
-    const ar = (await listOpenItems(u.email)).find((x) => x.title.startsWith("اجتماع"))!;
+    const ar = (await listOpenItems(acct(u))).find((x) => x.title.startsWith("اجتماع"))!;
     expect(ar).toMatchObject({ title: "اجتماع مع عمر", dueAt: iso(pastStart), remindAt: null, source: "booking" });
 
     // A Calendly link's claims are its own provider's; account deletion removes every claim and the claim index
     const cy = booking({ externalId: "https://api.calendly.com/scheduled_events/E1/invitees/I1" });
     expect(await applyBooking(recOf(u, { provider: "calendly" }), cy, hash)).toBe("created");
-    const keys = await secretaryKeys(u.email);
-    for (const id of [p.externalId, q.externalId]) expect(keys).toContain(`sec:book:ext:${u.email}:calcom:${id}`);
-    expect(keys).toContain(`sec:book:ext:${u.email}:calendly:${cy.externalId}`);
-    await wipeAccount(u.email);
-    const left = [...mem().kv.keys(), ...mem().sets.keys()].filter((k) => k.includes(u.email) && (k.startsWith("sec:book:ext:") || k.startsWith("sec:bookext:")));
+    const keys = await secretaryKeys(acct(u));
+    for (const id of [p.externalId, q.externalId]) expect(keys).toContain(`sec:book:ext:${acct(u)}:calcom:${id}`);
+    expect(keys).toContain(`sec:book:ext:${acct(u)}:calendly:${cy.externalId}`);
+    await wipeAccount(acct(u));
+    const left = [...mem().kv.keys(), ...mem().sets.keys()].filter((k) => k.includes(acct(u)) && (k.startsWith("sec:book:ext:") || k.startsWith("sec:bookext:")));
     expect(left).toEqual([]);
   });
 
@@ -444,7 +445,7 @@ describe("applying a booking (rules 590-593)", () => {
     const cy = parseCalendly(shifted(`booking-calendly-created`, startMs + DAY, (o, s, e) => { o.payload.scheduled_event.start_time = s; o.payload.scheduled_event.end_time = e; }));
     expect(await applyBooking(recOf(u), cc, hash)).toBe("created");
     expect(await applyBooking(recOf(u, { provider: "calendly" }), cy, hash)).toBe("created");
-    const items = await listOpenItems(u.email);
+    const items = await listOpenItems(acct(u));
     expect(items).toHaveLength(2);
     const PII = /@|\+1000|Private|video|zoom|http|Sara|cancellations|example\.com/i;
     for (const it of items) {
@@ -452,13 +453,13 @@ describe("applying a booking (rules 590-593)", () => {
       expect(it.notes).toEqual([]);
       expect(it.phone ?? null).toBeNull();
     }
-    expect(JSON.stringify(await db.lrange(SEC_KEYS.audit(u.email), 0, -1))).not.toMatch(PII);
+    expect(JSON.stringify(await db.lrange(SEC_KEYS.audit(acct(u)), 0, -1))).not.toMatch(PII);
 
     // hostile names: one clean line, at most 200 characters; an empty name is "a guest" and names no one
     const titleOf = async (name: string, lang: "ar" | "en" = "en") => {
       const p = booking({ name });
       expect(await applyBooking(recOf(u, { lang }), p, hash)).toBe("created");
-      return (await getItem(u.email, (await claimOf(u.email, "calcom", p.externalId))!))!;
+      return (await getItem(acct(u), (await claimOf(acct(u), "calcom", p.externalId))!))!;
     };
     for (const name of [`\r\nInjected\r\n${"x".repeat(10_000)}`, "‮Omar‬\u0000\tExample", "  \r\n  "]) {
       const it = await titleOf(name);
@@ -474,11 +475,11 @@ describe("applying a booking (rules 590-593)", () => {
     expect(await titleOf("me")).toMatchObject({ title: "Meeting with me", owedTo: null });
 
     // the window: a day back to 366 days ahead
-    const before = (await listOpenItems(u.email)).length;
+    const before = (await listOpenItems(acct(u))).length;
     expect(await applyBooking(recOf(u), booking({}, Date.now() - DAY - 5 * MIN), hash)).toBe("noop");
     expect(await applyBooking(recOf(u), booking({}, Date.now() + 367 * DAY), hash)).toBe("noop");
     expect(await applyBooking(recOf(u), booking({ kind: "move", oldExternalId: "bk_none" }, Date.now() + 400 * DAY), hash)).toBe("noop");
-    expect((await listOpenItems(u.email)).length).toBe(before);
+    expect((await listOpenItems(acct(u))).length).toBe(before);
     expect(await applyBooking(recOf(u), booking({}, minuteFrom(-DAY + 10 * MIN)), hash)).toBe("created");
     expect(await applyBooking(recOf(u), booking({}, minuteFrom(365 * DAY)), hash)).toBe("created");
     // an ignore is a no-op
@@ -499,49 +500,49 @@ describe("applying a booking (rules 590-593)", () => {
     const hash = newHash();
     const a = booking();
     expect(await applyBooking(rec, a, hash)).toBe("created");
-    const id = (await claimOf(u.email, "calcom", a.externalId))!;
+    const id = (await claimOf(acct(u), "calcom", a.externalId))!;
     // Cal.com reschedule: a new uid naming the old one
     const newStart = minuteFrom(5 * DAY);
     const mv = booking({ kind: "move", externalId: "bk_new_uid", oldExternalId: a.externalId }, newStart);
     expect(await applyBooking(rec, mv, hash)).toBe("moved");
-    const open = await listOpenItems(u.email);
+    const open = await listOpenItems(acct(u));
     expect(open).toHaveLength(1);
     expect(open[0]).toMatchObject({ id, dueAt: iso(newStart), remindAt: iso(newStart + 30 * MIN), allDay: false, rev: 2 });
-    expect(await claimOf(u.email, "calcom", "bk_new_uid")).toBe(id);
+    expect(await claimOf(acct(u), "calcom", "bk_new_uid")).toBe(id);
     // the same move delivered again still names the one item
     expect(await applyBooking(rec, mv, hash)).toBe("moved");
-    expect(await listOpenItems(u.email)).toHaveLength(1);
+    expect(await listOpenItems(acct(u))).toHaveLength(1);
     // a move into the past leaves no reminder
     const past = minuteFrom(-2 * HOUR);
     expect(await applyBooking(rec, booking({ kind: "move", externalId: "bk_new_uid" }, past), hash)).toBe("moved");
-    expect(await getItem(u.email, id)).toMatchObject({ dueAt: iso(past), remindAt: null });
+    expect(await getItem(acct(u), id)).toMatchObject({ dueAt: iso(past), remindAt: null });
 
     // a cancel under the new id removes the same item; a second cancel, and one under the old id, are no-ops
     const cancel = (externalId: string): Parsed => ({ kind: "cancel", externalId, name: "", eventName: "", start: "", end: "" });
     expect(await applyBooking(rec, cancel("bk_new_uid"), hash)).toBe("removed");
-    const gone = (await getItem(u.email, id))!;
+    const gone = (await getItem(acct(u), id))!;
     expect(gone.deletedAt).toBeTruthy();
     expect(Date.parse(gone.expiresAt!) - Date.parse(gone.deletedAt!)).toBe(SEC_RESTORE_DAYS * DAY);
-    expect(await auditOf(u.email)).toContainEqual(expect.objectContaining({ action: "booking_cancel", actor: "rule", via: "cron", id }));
+    expect(await auditOf(acct(u))).toContainEqual(expect.objectContaining({ action: "booking_cancel", actor: "rule", via: "cron", id }));
     expect(await applyBooking(rec, cancel("bk_new_uid"), hash)).toBe("noop");
     expect(await applyBooking(rec, cancel(a.externalId), hash)).toBe("noop");
     // a cancel of a booking never seen is a no-op; a move of one never seen creates it, and its cancel finds it
     expect(await applyBooking(rec, cancel("bk_never"), hash)).toBe("noop");
     const fresh = booking({ kind: "move", externalId: "bk_fresh", oldExternalId: "bk_unknown_old" });
     expect(await applyBooking(rec, fresh, hash)).toBe("created");
-    expect(await listOpenItems(u.email)).toHaveLength(1);
+    expect(await listOpenItems(acct(u))).toHaveLength(1);
     // both of its ids name the one item, so a cancel under either finds it
-    expect(await claimOf(u.email, "calcom", "bk_unknown_old")).toBe(await claimOf(u.email, "calcom", "bk_fresh"));
+    expect(await claimOf(acct(u), "calcom", "bk_unknown_old")).toBe(await claimOf(acct(u), "calcom", "bk_fresh"));
     expect(await applyBooking(rec, cancel("bk_fresh"), hash)).toBe("removed");
-    expect(await listOpenItems(u.email)).toHaveLength(0);
+    expect(await listOpenItems(acct(u))).toHaveLength(0);
     // a moved or cancelled booking whose item the owner closed is left as the owner left it
     const done = booking();
     expect(await applyBooking(rec, done, hash)).toBe("created");
-    const doneId = (await claimOf(u.email, "calcom", done.externalId))!;
-    expect((await changeItem(u.email, doneId, { action: "complete", result: "met" }, { actor: "owner", via: "web" })).ok).toBe(true);
+    const doneId = (await claimOf(acct(u), "calcom", done.externalId))!;
+    expect((await changeItem(acct(u), doneId, { action: "complete", result: "met" }, { actor: "owner", via: "web" })).ok).toBe(true);
     expect(await applyBooking(rec, booking({ kind: "move", externalId: "bk_done2", oldExternalId: done.externalId }), hash)).toBe("noop");
     expect(await applyBooking(rec, cancel(done.externalId), hash)).toBe("noop");
-    expect(await getItem(u.email, doneId)).toMatchObject({ deletedAt: null, result: "met" });
+    expect(await getItem(acct(u), doneId)).toMatchObject({ deletedAt: null, result: "met" });
 
     // Calendly: the create of the new invitee (naming the old) and the cancel of the old (flagged as a reschedule), in both orders
     const cyStart = minuteFrom(4 * DAY), cyNew = minuteFrom(6 * DAY);
@@ -554,27 +555,27 @@ describe("applying a booking (rules 590-593)", () => {
       const v = await dubaiOwner();
       const r = recOf(v, { provider: "calendly" });
       expect(await applyBooking(r, created, hash)).toBe("created");
-      const before = (await listOpenItems(v.email))[0];
+      const before = (await listOpenItems(acct(v)))[0];
       for (const p of order) await applyBooking(r, p, hash);
-      const after = await listOpenItems(v.email);
+      const after = await listOpenItems(acct(v));
       expect(after).toHaveLength(1);
       expect(after[0]).toMatchObject({ id: before.id, dueAt: iso(cyNew), remindAt: iso(cyNew + 30 * MIN) });
-      expect((await db.smembers(SEC_KEYS.all(v.email)))).toHaveLength(1);
+      expect((await db.smembers(SEC_KEYS.all(acct(v))))).toHaveLength(1);
       // a later cancel of the new invitee removes that same item
       expect(await applyBooking(r, { kind: "cancel", externalId: moved.externalId, name: "", eventName: "", start: "", end: "" }, hash)).toBe("removed");
-      expect(await listOpenItems(v.email)).toHaveLength(0);
+      expect(await listOpenItems(acct(v))).toHaveLength(0);
     }
 
     // a claim whose value names no item creates and removes nothing
-    await db.set(`sec:book:ext:${u.email}:calcom:bk_odd`, "pending", 60);
+    await db.set(`sec:book:ext:${acct(u)}:calcom:bk_odd`, "pending", 60);
     expect(await applyBooking(rec, cancel("bk_odd"), hash)).toBe("noop");
     expect(await applyBooking(rec, booking({ kind: "move", externalId: "bk_odd" }), hash)).toBe("noop");
-    expect(await claimOf(u.email, "calcom", "bk_odd")).toBe("pending");
+    expect(await claimOf(acct(u), "calcom", "bk_odd")).toBe("pending");
 
     // A booking claimed but not yet written (its creation died, or is still running):
     const claimRaw = (externalId: string) => {
       const sid = `s${randomBytes(8).toString("hex")}`;
-      return db.set(`sec:book:ext:${u.email}:calcom:${externalId}`, sid, 3600).then(() => sid);
+      return db.set(`sec:book:ext:${acct(u)}:calcom:${externalId}`, sid, 3600).then(() => sid);
     };
     // a cancel marks the claim under the item's lock, so the creation never happens; a later move naming it as the
     // previous id is a new booking (Cal.com's "request reschedule": cancel, then the guest books again) and gets its own
@@ -584,29 +585,29 @@ describe("applying a booking (rules 590-593)", () => {
     expect(await applyBooking(rec, cancel(late.externalId), hash)).toBe("noop");
     expect(await applyBooking(rec, late, hash)).toBe("noop");
     expect(await applyBooking(rec, booking({ kind: "move", externalId: "bk_late_new", oldExternalId: late.externalId }), hash)).toBe("created");
-    expect(await getItem(u.email, lateId)).toBeNull();
-    expect(await claimOf(u.email, "calcom", late.externalId)).toBe("cancelled");
-    expect(await claimOf(u.email, "calcom", "bk_late_new")).toMatch(/^s[a-f0-9]{16}$/);
+    expect(await getItem(acct(u), lateId)).toBeNull();
+    expect(await claimOf(acct(u), "calcom", late.externalId)).toBe("cancelled");
+    expect(await claimOf(acct(u), "calcom", "bk_late_new")).toMatch(/^s[a-f0-9]{16}$/);
     // a move writes it at the claimed id with the new times and claims its new id; the original create, delivered late, is a no-op
     const early = booking();
     const earlyId = await claimRaw(early.externalId);
     const earlyAt = minuteFrom(7 * DAY);
     expect(await applyBooking(rec, booking({ kind: "move", externalId: "bk_early_new", oldExternalId: early.externalId }, earlyAt), hash)).toBe("created");
-    expect(await getItem(u.email, earlyId)).toMatchObject({ dueAt: iso(earlyAt), source: "booking" });
-    expect(await claimOf(u.email, "calcom", "bk_early_new")).toBe(earlyId);
+    expect(await getItem(acct(u), earlyId)).toMatchObject({ dueAt: iso(earlyAt), source: "booking" });
+    expect(await claimOf(acct(u), "calcom", "bk_early_new")).toBe(earlyId);
     expect(await applyBooking(rec, early, hash)).toBe("noop");
-    expect((await listOpenItems(u.email)).filter((x) => x.id === earlyId)).toHaveLength(1);
+    expect((await listOpenItems(acct(u))).filter((x) => x.id === earlyId)).toHaveLength(1);
 
     // a move never overwrites a claim that names another item: it moves the item its previous id names
     const x = booking(), y = booking();
     expect(await applyBooking(rec, x, hash)).toBe("created");
     expect(await applyBooking(rec, y, hash)).toBe("created");
-    const [xId, yId] = await Promise.all([claimOf(u.email, "calcom", x.externalId), claimOf(u.email, "calcom", y.externalId)]);
+    const [xId, yId] = await Promise.all([claimOf(acct(u), "calcom", x.externalId), claimOf(acct(u), "calcom", y.externalId)]);
     const xAt = minuteFrom(9 * DAY);
     expect(await applyBooking(rec, booking({ kind: "move", externalId: y.externalId, oldExternalId: x.externalId }, xAt), hash)).toBe("moved");
-    expect(await claimOf(u.email, "calcom", y.externalId)).toBe(yId);
-    expect(await getItem(u.email, xId!)).toMatchObject({ dueAt: iso(xAt) });
-    expect((await getItem(u.email, yId!))!.rev).toBe(1);
+    expect(await claimOf(acct(u), "calcom", y.externalId)).toBe(yId);
+    expect(await getItem(acct(u), xId!)).toMatchObject({ dueAt: iso(xAt) });
+    expect((await getItem(acct(u), yId!))!.rev).toBe(1);
 
     // Cal.com's "request reschedule": the old booking's cancel comes first and removes its item, then the guest books again
     // and BOOKING_RESCHEDULED names the old uid. The new booking gets one fresh item; a replay makes no second one.
@@ -615,24 +616,24 @@ describe("applying a booking (rules 590-593)", () => {
       const r = recOf(v);
       const u1 = booking();
       expect(await applyBooking(r, u1, hash)).toBe("created");
-      const oldId = (await claimOf(v.email, "calcom", u1.externalId))!;
+      const oldId = (await claimOf(acct(v), "calcom", u1.externalId))!;
       expect(await applyBooking(r, cancel(u1.externalId), hash)).toBe("removed");
       const reAt = minuteFrom(8 * DAY);
       const rebook = booking({ kind: "move", externalId: "bk_rebook_u2", oldExternalId: u1.externalId }, reAt);
       expect(await applyBooking(r, rebook, hash)).toBe("created");
-      const open = await listOpenItems(v.email);
+      const open = await listOpenItems(acct(v));
       expect(open).toHaveLength(1);
       expect(open[0].id).not.toBe(oldId);
       expect(open[0]).toMatchObject({ dueAt: iso(reAt), remindAt: iso(reAt + 30 * MIN), source: "booking", title: "Meeting with Omar Example" });
-      expect(await claimOf(v.email, "calcom", "bk_rebook_u2")).toBe(open[0].id);
-      expect(await claimOf(v.email, "calcom", u1.externalId)).toBe(oldId);
-      expect((await getItem(v.email, oldId))!.deletedAt).toBeTruthy();
+      expect(await claimOf(acct(v), "calcom", "bk_rebook_u2")).toBe(open[0].id);
+      expect(await claimOf(acct(v), "calcom", u1.externalId)).toBe(oldId);
+      expect((await getItem(acct(v), oldId))!.deletedAt).toBeTruthy();
       expect(await applyBooking(r, rebook, hash)).toBe("noop");
       expect(await applyBooking(r, rebook, hash)).toBe("noop");
-      expect((await listOpenItems(v.email)).map((x) => x.id)).toEqual([open[0].id]);
+      expect((await listOpenItems(acct(v))).map((x) => x.id)).toEqual([open[0].id]);
       // the new booking's own cancel removes the new item
       expect(await applyBooking(r, cancel("bk_rebook_u2"), hash)).toBe("removed");
-      expect(await listOpenItems(v.email)).toHaveLength(0);
+      expect(await listOpenItems(acct(v))).toHaveLength(0);
     }
 
     // A cancel that arrives before its booking's create (a retried or late create): the cancel leaves the claim marked
@@ -643,24 +644,24 @@ describe("applying a booking (rules 590-593)", () => {
       const r = recOf(v);
       const t = booking();
       expect(await applyBooking(r, cancel(t.externalId), hash)).toBe("noop");
-      expect(await claimOf(v.email, "calcom", t.externalId)).toBe("cancelled");
-      expect(await db.ttl(`sec:book:ext:${v.email}:calcom:${t.externalId}`)).toBeGreaterThan(399 * 86400);
-      expect(await db.sismember(SEC_KEYS.bookIds(v.email), `calcom:${t.externalId}`)).toBe(true);
+      expect(await claimOf(acct(v), "calcom", t.externalId)).toBe("cancelled");
+      expect(await db.ttl(`sec:book:ext:${acct(v)}:calcom:${t.externalId}`)).toBeGreaterThan(399 * 86400);
+      expect(await db.sismember(SEC_KEYS.bookIds(acct(v)), `calcom:${t.externalId}`)).toBe(true);
       expect(await applyBooking(r, t, hash)).toBe("noop");
       expect(await applyBooking(r, cancel(t.externalId), hash)).toBe("noop");
       expect(await applyBooking(r, t, hash)).toBe("noop");
-      expect(await claimOf(v.email, "calcom", t.externalId)).toBe("cancelled");
+      expect(await claimOf(acct(v), "calcom", t.externalId)).toBe("cancelled");
       expect(await applyBooking(r, booking({ kind: "move", externalId: t.externalId, oldExternalId: "bk_tomb_other" }), hash)).toBe("noop");
-      expect(await listOpenItems(v.email)).toHaveLength(0);
-      expect(await db.smembers(SEC_KEYS.all(v.email))).toHaveLength(0);
+      expect(await listOpenItems(acct(v))).toHaveLength(0);
+      expect(await db.smembers(SEC_KEYS.all(acct(v)))).toHaveLength(0);
       // the old booking was never seen (the link was made after it): its cancel leaves only the marker, and the rebooked
       // meeting naming it still gets its item, once
       expect(await applyBooking(r, cancel("bk_before_link"), hash)).toBe("noop");
       const rb = booking({ kind: "move", externalId: "bk_before_link_u2", oldExternalId: "bk_before_link" });
       expect(await applyBooking(r, rb, hash)).toBe("created");
       expect(await applyBooking(r, rb, hash)).toBe("moved");
-      expect(await listOpenItems(v.email)).toHaveLength(1);
-      expect(await claimOf(v.email, "calcom", "bk_before_link")).toBe("cancelled");
+      expect(await listOpenItems(acct(v))).toHaveLength(1);
+      expect(await claimOf(acct(v), "calcom", "bk_before_link")).toBe("cancelled");
     }
   });
 
@@ -673,44 +674,44 @@ describe("applying a booking (rules 590-593)", () => {
     };
     const SYS = { actor: "rule", via: "cron" } as const;
     const it = await make({ title: "Call", dueAt: iso(minuteFrom(DAY)), remindAt: iso(minuteFrom(DAY / 2)) });
-    expect(await db.zscore(SEC_KEYS.due(u.email), it.id)).not.toBeNull();
-    expect(await removeBySystem(u.email, it.id, SYS, "booking_cancel")).toBe("deleted");
-    const del = (await getItem(u.email, it.id))!;
+    expect(await db.zscore(SEC_KEYS.due(acct(u)), it.id)).not.toBeNull();
+    expect(await removeBySystem(acct(u), it.id, SYS, "booking_cancel")).toBe("deleted");
+    const del = (await getItem(acct(u), it.id))!;
     expect(del).toMatchObject({ rev: 2, deletedAt: expect.any(String) });
     expect(Date.parse(del.expiresAt!) - Date.parse(del.deletedAt!)).toBe(SEC_RESTORE_DAYS * DAY);
-    expect(await db.zscore(SEC_KEYS.open(u.email), it.id)).toBeNull();
-    expect(await db.zscore(SEC_KEYS.due(u.email), it.id)).toBeNull();
-    expect(await db.zscore(SEC_KEYS.deleted(u.email), it.id)).toBe(Date.parse(del.expiresAt!));
-    expect((await auditOf(u.email)).filter((l) => l.action === "booking_cancel")).toEqual([expect.objectContaining({ actor: "rule", via: "cron", id: it.id })]);
+    expect(await db.zscore(SEC_KEYS.open(acct(u)), it.id)).toBeNull();
+    expect(await db.zscore(SEC_KEYS.due(acct(u)), it.id)).toBeNull();
+    expect(await db.zscore(SEC_KEYS.deleted(acct(u)), it.id)).toBe(Date.parse(del.expiresAt!));
+    expect((await auditOf(acct(u))).filter((l) => l.action === "booking_cancel")).toEqual([expect.objectContaining({ actor: "rule", via: "cron", id: it.id })]);
     // already deleted, missing, or not an item id: "gone", nothing written
-    expect(await removeBySystem(u.email, it.id, SYS, "booking_cancel")).toBe("gone");
-    expect(await removeBySystem(u.email, "s0000000000000000", SYS, "booking_cancel")).toBe("gone");
-    expect(await removeBySystem(u.email, "../x", SYS, "booking_cancel")).toBe("gone");
-    expect((await getItem(u.email, it.id))!.rev).toBe(2);
+    expect(await removeBySystem(acct(u), it.id, SYS, "booking_cancel")).toBe("gone");
+    expect(await removeBySystem(acct(u), "s0000000000000000", SYS, "booking_cancel")).toBe("gone");
+    expect(await removeBySystem(acct(u), "../x", SYS, "booking_cancel")).toBe("gone");
+    expect((await getItem(acct(u), it.id))!.rev).toBe(2);
     // a guard that refuses: "kept", nothing written
     const keep = await make({ title: "Keep" });
-    expect(await removeBySystem(u.email, keep.id, SYS, "booking_cancel", { only: () => false })).toBe("kept");
-    expect((await getItem(u.email, keep.id))!).toMatchObject({ rev: 1, deletedAt: null });
+    expect(await removeBySystem(acct(u), keep.id, SYS, "booking_cancel", { only: () => false })).toBe("kept");
+    expect((await getItem(acct(u), keep.id))!).toMatchObject({ rev: 1, deletedAt: null });
     // another holder of the item's lock: "failed", nothing written
-    expect(await db.lock(SEC_KEYS.lock(u.email, keep.id), 10)).toBe(true);
+    expect(await db.lock(SEC_KEYS.lock(acct(u), keep.id), 10)).toBe(true);
     try {
-      expect(await removeBySystem(u.email, keep.id, SYS, "booking_cancel")).toBe("failed");
+      expect(await removeBySystem(acct(u), keep.id, SYS, "booking_cancel")).toBe("failed");
     } finally {
-      await db.unlock(SEC_KEYS.lock(u.email, keep.id));
+      await db.unlock(SEC_KEYS.lock(acct(u), keep.id));
     }
-    expect((await getItem(u.email, keep.id))!.deletedAt).toBeNull();
+    expect((await getItem(acct(u), keep.id))!.deletedAt).toBeNull();
 
     // deleteNextCopy (a reopen of a closed recurring copy) goes through it: the same window, its own audit line by the rule
     const OWN = { actor: "owner", via: "web" } as const;
     const daily = await make({ title: "Daily", dueAt: iso(minuteFrom(DAY)), repeat: { every: "day" } });
-    const closed = await changeItem(u.email, daily.id, { action: "complete", result: "done" }, OWN);
+    const closed = await changeItem(acct(u), daily.id, { action: "complete", result: "done" }, OWN);
     if (!closed.ok) throw new Error(closed.error);
     const next = closed.item.nextId!;
-    expect((await changeItem(u.email, daily.id, { action: "reopen" }, OWN)).ok).toBe(true);
-    const nx = (await getItem(u.email, next))!;
+    expect((await changeItem(acct(u), daily.id, { action: "reopen" }, OWN)).ok).toBe(true);
+    const nx = (await getItem(acct(u), next))!;
     expect(Date.parse(nx.expiresAt!) - Date.parse(nx.deletedAt!)).toBe(SEC_RESTORE_DAYS * DAY);
     expect(nx.rev).toBe(2);
-    expect((await auditOf(u.email)).find((l) => l.action === "series_reopen")).toMatchObject({ actor: "rule", via: "web", id: next });
+    expect((await auditOf(acct(u))).find((l) => l.action === "series_reopen")).toMatchObject({ actor: "rule", via: "web", id: next });
 
     // the per-link cap: 60 creations a day for one link; the 61st is a no-op that spends nothing of the owner's 200
     const v = await newUser("bkcap");
@@ -718,23 +719,23 @@ describe("applying a booking (rules 590-593)", () => {
     const hash = newHash();
     const out = await Promise.all(Array.from({ length: 60 }, () => applyBooking(rec, booking(), hash)));
     expect(out.every((r) => r === "created")).toBe(true);
-    expect(await db.get(`rate:sec:create:${v.email}`)).toBe(60);
+    expect(await db.get(`rate:sec:create:${acct(v)}`)).toBe(60);
     const extra = booking();
     expect(await applyBooking(rec, extra, hash)).toBe("noop");
-    expect(await db.get(`rate:sec:create:${v.email}`)).toBe(60);
-    expect(await listOpenItems(v.email)).toHaveLength(60);
+    expect(await db.get(`rate:sec:create:${acct(v)}`)).toBe(60);
+    expect(await listOpenItems(acct(v))).toHaveLength(60);
     // its claim is released: a refusal is a no-op the provider does not retry, and nothing is left claimed for it
-    expect(await claimOf(v.email, "calcom", extra.externalId)).toBeNull();
+    expect(await claimOf(acct(v), "calcom", extra.externalId)).toBeNull();
     // another link of the same account has its own 60
     expect(await applyBooking(rec, booking(), newHash())).toBe("created");
 
     // the owner's own 200 a day still applies under the link cap
     const w = await newUser("bkown");
-    await db.set(`rate:sec:create:${w.email}`, 200, 86400);
+    await db.set(`rate:sec:create:${acct(w)}`, 200, 86400);
     const p = booking();
     expect(await applyBooking(recOf(w), p, newHash())).toBe("noop");
-    expect(await listOpenItems(w.email)).toHaveLength(0);
-    expect(await claimOf(w.email, "calcom", p.externalId)).toBeNull();
+    expect(await listOpenItems(acct(w))).toHaveLength(0);
+    expect(await claimOf(acct(w), "calcom", p.externalId)).toBeNull();
   });
 });
 
@@ -748,10 +749,12 @@ describe("booking webhook (rules 594-595)", () => {
   /** A live link: owner, plain token, hash and the derived signing key. */
   const link = async (provider: "calcom" | "calendly" = "calcom") => {
     const u = await newUser("bkroute");
-    const token = await createBook(u.email, u.email, provider, "en");
+    // As the route makes it (`linkOwner`): the owner person in its account, a record that carries `pid` and `aid`.
+    const who = { pid: ownerOf(u), aid: aidOf(u), login: u.email, home: true };
+    const token = await createBook(who, acct(u), provider, "en");
     if (token === "busy") throw new Error("busy");
     const hash = hashBookToken(token);
-    return { u, token, hash, key: bookingKey(hash) };
+    return { u, who, token, hash, key: bookingKey(hash) };
   };
   const calcomSig = (body: string, key: string) => ({ "x-cal-signature-256": hex(key, body) });
   const calendlySig = (body: string, key: string, t = Math.floor(Date.now() / 1000)) => ({ "calendly-webhook-signature": `t=${t},v1=${hex(key, `${t}.${body}`)}` });
@@ -774,7 +777,7 @@ describe("booking webhook (rules 594-595)", () => {
     const { u, token, key } = await link();
     const body = JSON.stringify(calcomCreate(minuteFrom(2 * DAY), "bk_594_ok"));
     expect((await post(token, body, calcomSig(body, key))).status).toBe(200);
-    expect(await listOpenItems(u.email)).toHaveLength(1);
+    expect(await listOpenItems(acct(u))).toHaveLength(1);
 
     // A malformed token reads nothing and counts nothing, whatever the body and headers say.
     const get = vi.spyOn(db, "get");
@@ -802,7 +805,7 @@ describe("booking webhook (rules 594-595)", () => {
       get2.mockRestore();
       limit2.mockRestore();
     }
-    expect(await listOpenItems(u.email)).toHaveLength(1);
+    expect(await listOpenItems(acct(u))).toHaveLength(1);
 
     // Unknown token.
     responses.push(await post(randomBytes(32).toString("base64url"), body, calcomSig(body, key), ip));
@@ -818,9 +821,9 @@ describe("booking webhook (rules 594-595)", () => {
     // signed as sent, it is accepted.
     const pretty = JSON.stringify(JSON.parse(fresh), null, 2);
     responses.push(await post(token, pretty, calcomSig(fresh, key), ip));
-    expect(await listOpenItems(u.email)).toHaveLength(1);
+    expect(await listOpenItems(acct(u))).toHaveLength(1);
     expect((await post(token, pretty, calcomSig(pretty, key), ip)).status).toBe(200);
-    expect(await listOpenItems(u.email)).toHaveLength(2);
+    expect(await listOpenItems(acct(u))).toHaveLength(2);
 
     // Calendly: stale timestamp, a v1 list far past any real header, a missing header.
     const cy = await link("calendly");
@@ -830,23 +833,23 @@ describe("booking webhook (rules 594-595)", () => {
     responses.push(await post(cy.token, cyBody, { "calendly-webhook-signature": `${calendlySig(cyBody, cy.key)["calendly-webhook-signature"]},${crowd}` }, ip));
     responses.push(await post(cy.token, cyBody, {}, ip));
     responses.push(await post(cy.token, cyBody, calcomSig(cyBody, cy.key), ip));
-    expect(await listOpenItems(cy.u.email)).toHaveLength(0);
+    expect(await listOpenItems(acct(cy.u))).toHaveLength(0);
     expect((await post(cy.token, cyBody, calendlySig(cyBody, cy.key), ip)).status).toBe(200);
 
     // Revoked link, and a login that no longer holds the scope (suspended, the way the feed's check refuses it).
     const gone = await link();
-    await revokeBook(gone.u.email);
+    await revokeBook(gone.who);
     responses.push(await post(gone.token, body, calcomSig(body, gone.key), ip));
     const sus = await link();
     expect((await post(sus.token, body, calcomSig(body, sus.key), ip)).status).toBe(200);
-    await saveUser({ ...(await getUser(sus.u.email))!, suspended: true });
+    await saveUser({ ...(await getUser(acct(sus.u)))!, suspended: true });
     responses.push(await post(sus.token, body, calcomSig(body, sus.key), ip));
-    expect(await listOpenItems(sus.u.email)).toHaveLength(1);
+    expect(await listOpenItems(acct(sus.u))).toHaveLength(1);
     // A link made before the login's last password event is refused too.
     const old = await link();
-    await saveUser({ ...(await getUser(old.u.email))!, sessionsAfter: new Date(Date.now() + 5000).toISOString() });
+    await saveUser({ ...(await getUser(acct(old.u)))!, sessionsAfter: new Date(Date.now() + 5000).toISOString() });
     responses.push(await post(old.token, body, calcomSig(body, old.key), ip));
-    expect(await listOpenItems(old.u.email)).toHaveLength(0);
+    expect(await listOpenItems(acct(old.u))).toHaveLength(0);
 
     expect(responses.length).toBeGreaterThanOrEqual(20);
     const first = [...responses[0].headers];
@@ -864,16 +867,16 @@ describe("booking webhook (rules 594-595)", () => {
     const send = (o: unknown, headers?: Record<string, string>) => { const b = JSON.stringify(o); return post(token, b, headers ?? calcomSig(b, key)); };
 
     // create: the payload may name any scope it likes; only the record's is used
-    const created = { ...calcomCreate(start, "bk_595_a"), scope: other.email, payload: { ...calcomCreate(start, "bk_595_a").payload, scope: other.email, email: other.email } };
+    const created = { ...calcomCreate(start, "bk_595_a"), scope: acct(other), payload: { ...calcomCreate(start, "bk_595_a").payload, scope: acct(other), email: other.email } };
     const r1 = await send(created);
     expect(r1.status).toBe(200);
     expect(Object.fromEntries(r1.headers)).toMatchObject({ "cache-control": "no-store", "referrer-policy": "no-referrer" });
-    const [it] = await listOpenItems(u.email);
+    const [it] = await listOpenItems(acct(u));
     expect(it).toMatchObject({ source: "booking", title: "Meeting with Omar Example", dueAt: iso(start) });
-    expect(await listOpenItems(other.email)).toHaveLength(0);
+    expect(await listOpenItems(acct(other))).toHaveLength(0);
     // a replay is a 200 too
     expect((await send(created)).status).toBe(200);
-    expect(await listOpenItems(u.email)).toHaveLength(1);
+    expect(await listOpenItems(acct(u))).toHaveLength(1);
 
     // move (a Cal.com reschedule names the previous uid): the same item at the new time
     const resched = clone(fx("booking-calcom-rescheduled")) as any; // eslint-disable-line @typescript-eslint/no-explicit-any
@@ -881,14 +884,14 @@ describe("booking webhook (rules 594-595)", () => {
     resched.payload.rescheduleUid = "bk_595_a"; resched.payload.uid = "bk_595_b";
     resched.payload.startTime = iso(newStart); resched.payload.endTime = iso(newStart + 30 * MIN);
     expect((await send(resched)).status).toBe(200);
-    const moved = await listOpenItems(u.email);
+    const moved = await listOpenItems(acct(u));
     expect(moved).toHaveLength(1);
     expect(moved[0]).toMatchObject({ id: it.id, dueAt: iso(newStart) });
 
     // a signed unknown event is a 200 that changes nothing
     expect((await send({ triggerEvent: "MEETING_ENDED", payload: { uid: "bk_595_a" } })).status).toBe(200);
     expect((await send({ hello: "world" })).status).toBe(200);
-    expect(await listOpenItems(u.email)).toHaveLength(1);
+    expect(await listOpenItems(acct(u))).toHaveLength(1);
 
     // malformed JSON, and an empty body, under a good signature: 400
     for (const raw of ["{not json", ""]) {
@@ -896,22 +899,22 @@ describe("booking webhook (rules 594-595)", () => {
       expect(r.status).toBe(400);
       expect(r.headers.get("cache-control")).toBe("no-store");
     }
-    expect(await listOpenItems(u.email)).toHaveLength(1);
+    expect(await listOpenItems(acct(u))).toHaveLength(1);
 
     // a held item lock: 503 (the provider retries); released, the same delivery is handled
     const cancel = clone(fx("booking-calcom-cancelled")) as any; // eslint-disable-line @typescript-eslint/no-explicit-any
     cancel.payload.uid = "bk_595_b";
-    expect(await db.lock(SEC_KEYS.lock(u.email, it.id), 30)).toBe(true);
+    expect(await db.lock(SEC_KEYS.lock(acct(u), it.id), 30)).toBe(true);
     try {
       const busy = await send(cancel);
       expect(busy.status).toBe(503);
       expect(busy.headers.get("cache-control")).toBe("no-store");
-      expect(await listOpenItems(u.email)).toHaveLength(1);
+      expect(await listOpenItems(acct(u))).toHaveLength(1);
     } finally {
-      await db.unlock(SEC_KEYS.lock(u.email, it.id));
+      await db.unlock(SEC_KEYS.lock(acct(u), it.id));
     }
     expect((await send(cancel)).status).toBe(200);
-    expect(await listOpenItems(u.email)).toHaveLength(0);
+    expect(await listOpenItems(acct(u))).toHaveLength(0);
     expect((await send(cancel)).status).toBe(200);
 
     // a store failure before the item work is 503, not a 404 that tells the sender to give up
@@ -927,21 +930,21 @@ describe("booking webhook (rules 594-595)", () => {
     const cyStart = minuteFrom(4 * DAY);
     const cyCreate = JSON.stringify(calendlyShift("booking-calendly-created", cyStart));
     expect((await post(cy.token, cyCreate, calendlySig(cyCreate, cy.key))).status).toBe(200);
-    expect(await listOpenItems(cy.u.email)).toHaveLength(1);
+    expect(await listOpenItems(acct(cy.u))).toHaveLength(1);
     const cyCancel = JSON.stringify(calendlyShift("booking-calendly-canceled", cyStart));
     expect((await post(cy.token, cyCancel, calendlySig(cyCancel, cy.key))).status).toBe(200);
-    expect(await listOpenItems(cy.u.email)).toHaveLength(0);
+    expect(await listOpenItems(acct(cy.u))).toHaveLength(0);
 
     // a record whose provider is neither (corrupt): 500, nothing done
     const bad = await link();
     const badHash = bad.hash;
     const rec = (await db.get<BookRecord>(BOOK_KEYS.rec(badHash)))!;
     await db.set(BOOK_KEYS.rec(badHash), { ...rec, provider: "zoom" });
-    await db.set(BOOK_KEYS.of(rec.login, "zoom"), badHash);
+    await Promise.all([db.set(BOOK_KEYS.of(rec.login, "zoom"), badHash), db.set(personKey.bookOf(bad.who.pid, bad.who.aid, "zoom"), badHash)]);
     const bb = JSON.stringify(calcomCreate(minuteFrom(2 * DAY), "bk_595_bad"));
     const r500 = await post(bad.token, bb, calcomSig(bb, bad.key));
     expect(r500.status).toBe(500);
-    expect(await listOpenItems(bad.u.email)).toHaveLength(0);
+    expect(await listOpenItems(acct(bad.u))).toHaveLength(0);
 
     // Buckets. The address bucket counts misses only (a well-shaped token with no live record), after the record read:
     // a flood of unknown tokens from one address runs it past 1200, and every miss, over the limit or not, is the same
@@ -965,7 +968,7 @@ describe("booking webhook (rules 594-595)", () => {
     const lb0 = JSON.stringify(calcomCreate(minuteFrom(2 * DAY), "bk_595_live"));
     const ok = await post(live.token, lb0, calcomSig(lb0, live.key), ip);
     expect(ok.status).toBe(200);
-    expect(await listOpenItems(live.u.email)).toHaveLength(1);
+    expect(await listOpenItems(acct(live.u))).toHaveLength(1);
     expect(await db.get(missKey)).toBe(1206);
     expect(await db.get(`rate:book:t:${live.hash}`)).toBe(1);
     // the link bucket still limits hits, per token, from any address: after the record is found, before the holds check,
@@ -982,7 +985,7 @@ describe("booking webhook (rules 594-595)", () => {
       // an unsigned call hits the same bucket first: the 429 shows a live record exists, as the feed's does
       expect((await post(lim.token, lb, {})).status).toBe(429);
       expect(lockSpy).not.toHaveBeenCalled();
-      expect(await listOpenItems(lim.u.email)).toHaveLength(0);
+      expect(await listOpenItems(acct(lim.u))).toHaveLength(0);
     } finally {
       lockSpy.mockRestore();
     }
@@ -1045,7 +1048,7 @@ describe("booking management (rules 596-597)", () => {
       expect(b.secret).toBe(bookingKey(hashBookToken(token)));
       secrets.push(b.secret, token, hashBookToken(token));
       // The record is the acting login's own, in the account's scope (never a body value).
-      expect(await resolveBook(token)).toMatchObject({ login, scope: owner.email, provider: "calcom", lang: "en" });
+      expect(await resolveBook(token)).toMatchObject({ login, scope: acct(owner), provider: "calcom", lang: "en" });
       const signed = JSON.stringify(fx("booking-calcom-created"));
       expect((await webhook(token, signed, { "x-cal-signature-256": hex(b.secret, signed) })).status).toBe(200);
 
@@ -1158,7 +1161,7 @@ describe("booking management (rules 596-597)", () => {
     // The record exists, names the login and scope, and the signing key sent equals the key the webhook verifies against.
     const token = tokenOf(sent.url);
     const rec = await resolveBook(token);
-    expect(rec).toMatchObject({ login: owner.email, scope: owner.email, provider: "calendly" });
+    expect(rec).toMatchObject({ login: owner.email, scope: acct(owner), provider: "calendly" });
     expect(sent.signing_key).toBe(bookingKey(hashBookToken(token)));
     const hook = JSON.stringify(fx("booking-calendly-created"));
     const t = Math.floor(Date.now() / 1000);
@@ -1229,7 +1232,7 @@ describe("booking management (rules 596-597)", () => {
     safeFetchMock.mockReset();
     const busy = await newUser("book597h");
     await signIn(busy.email);
-    const lockKey = `lock:book:${busy.email}:calendly`;
+    const lockKey = personKey.bookLock(ownerOf(busy), aidOf(busy), "calendly"); // the create's first lock, the person's in the account
     const owned = await db.lockOwned(lockKey, 30);
     expect(owned).toBeTruthy();
     const b = await create({ provider: "calendly", token: PAT });
@@ -1296,19 +1299,19 @@ describe("booking revocation (rule 598)", () => {
     const [m1, m2, m3, m4, m5, m6, m7] = [await newMember(owner, "member"), await newMember(owner, "member"), await newMember(owner, "admin"), await newMember(owner, "member"), await newMember(owner, "member"), await newMember(owner, "admin"), await newMember(owner, "member")];
     const other = await newUser("book598x");
     const t = {
-      owner: await live(owner.email, owner.email),
-      m1: await live(m1.email, owner.email),
-      m2: await live(m2.email, owner.email),
-      m3: await live(m3.email, owner.email),
-      m4: await live(m4.email, owner.email),
-      m5: await live(m5.email, owner.email),
-      m6: await live(m6.email, owner.email),
-      m7: await live(m7.email, owner.email),
+      owner: await live(owner.email, acct(owner)),
+      m1: await live(m1.email, acct(owner)),
+      m2: await live(m2.email, acct(owner)),
+      m3: await live(m3.email, acct(owner)),
+      m4: await live(m4.email, acct(owner)),
+      m5: await live(m5.email, acct(owner)),
+      m6: await live(m6.email, acct(owner)),
+      m7: await live(m7.email, acct(owner)),
     };
-    const bystander = await live(other.email, other.email);
+    const bystander = await live(other.email, acct(other));
     // A claim of the owner's brand: it belongs to the scope, so no member leaving takes it.
-    const claim = `sec:book:ext:${owner.email}:calcom:bk_scope598`;
-    expect(await applyBooking(rec(owner.email, owner.email), parsed("bk_scope598"), hashBookToken(t.owner.calcom))).toBe("created");
+    const claim = `sec:book:ext:${acct(owner)}:calcom:bk_scope598`;
+    expect(await applyBooking(rec(acct(owner), owner.email), parsed("bk_scope598"), hashBookToken(t.owner.calcom))).toBe("created");
 
     // 1. Removed by the owner (removeMember): that member's links end, everyone else's stay.
     const acting = (await resolveAs(owner.email))!;
@@ -1351,8 +1354,8 @@ describe("booking revocation (rule 598)", () => {
     await expectAlive(other.email, bystander);
 
     // 7. The founder's reset of the owner: the same, for the owner and the members that have links again.
-    t.owner = await live(owner.email, owner.email);
-    t.m5 = await live(m5.email, owner.email);
+    t.owner = await live(owner.email, acct(owner));
+    t.m5 = await live(m5.email, acct(owner));
     if (!(await getUser(FOUNDER))) await markVerified((await createUser({ email: FOUNDER, name: "Founder", phone: "", password: "abc12345", lang: "ar" })).email);
     await signIn(FOUNDER);
     const res = await adminUserRoute.POST(json("/api/admin/users/x", "POST", { action: "resetPassword" }), params({ email: encodeURIComponent(owner.email) }));
@@ -1363,8 +1366,8 @@ describe("booking revocation (rule 598)", () => {
     await expectAlive(other.email, bystander);
 
     // 8. The owner's own password change ends the owner's links only: the members keep their sessions, so their links stay.
-    t.owner = await live(owner.email, owner.email);
-    t.m5 = await live(m5.email, owner.email);
+    t.owner = await live(owner.email, acct(owner));
+    t.m5 = await live(m5.email, acct(owner));
     await signIn(owner.email);
     expect((await accountRoute.PATCH(json("/api/account", "PATCH", { currentPassword: tempPassword, newPassword: "changed12345" }))).status).toBe(200);
     await expectEnded(owner.email, t.owner);
@@ -1378,22 +1381,22 @@ describe("booking revocation (rule 598)", () => {
     const m1 = await newMember(owner, "member");
     const m2 = await newMember(owner, "admin");
     const logins = [owner.email, m1.email, m2.email];
-    const t = { [owner.email]: await live(owner.email, owner.email), [m1.email]: await live(m1.email, owner.email), [m2.email]: await live(m2.email, owner.email) };
-    const keep = await live(bystander.email, bystander.email);
+    const t = { [owner.email]: await live(owner.email, acct(owner)), [m1.email]: await live(m1.email, acct(owner)), [m2.email]: await live(m2.email, acct(owner)) };
+    const keep = await live(bystander.email, acct(bystander));
     const hashes = Object.values(t).flatMap((x) => Object.values(x)).map(hashBookToken);
-    expect(await applyBooking(rec(owner.email, owner.email), parsed("bk_wipe598"), hashes[0])).toBe("created");
-    expect(await applyBooking(rec(bystander.email, bystander.email), parsed("bk_keep598"), hashes[0])).toBe("created");
-    expect(await db.get(`sec:book:ext:${owner.email}:calcom:bk_wipe598`)).not.toBeNull();
+    expect(await applyBooking(rec(acct(owner), owner.email), parsed("bk_wipe598"), hashes[0])).toBe("created");
+    expect(await applyBooking(rec(acct(bystander), bystander.email), parsed("bk_keep598"), hashes[0])).toBe("created");
+    expect(await db.get(`sec:book:ext:${acct(owner)}:calcom:bk_wipe598`)).not.toBeNull();
 
-    await wipeAccount(owner.email);
+    await wipeAccount(acct(owner));
 
     const keys = [...mem().kv.keys(), ...mem().sets.keys()];
     expect(keys.filter((k) => logins.some((l) => PROVIDERS.some((p) => k === BOOK_KEYS.of(l, p))) || hashes.some((h) => k === BOOK_KEYS.rec(h)))).toEqual([]);
-    expect(keys.filter((k) => k.includes(owner.email) && (k.startsWith("sec:book:ext:") || k.startsWith("sec:bookext:")))).toEqual([]);
+    expect(keys.filter((k) => k.includes(acct(owner)) && (k.startsWith("sec:book:ext:") || k.startsWith("sec:bookext:")))).toEqual([]);
     for (const l of logins) for (const p of PROVIDERS) expect(await resolveBook(t[l][p])).toBeNull();
     // Another account's links and claims are not touched.
     await expectAlive(bystander.email, keep);
-    expect(await db.get(`sec:book:ext:${bystander.email}:calcom:bk_keep598`)).not.toBeNull();
+    expect(await db.get(`sec:book:ext:${acct(bystander)}:calcom:bk_keep598`)).not.toBeNull();
   });
 
   it("rule 598: a link made while the wipe runs is revoked by its last step (the owner's) and by wipeMemberships (a member's)", async () => {
@@ -1401,10 +1404,10 @@ describe("booking revocation (rule 598)", () => {
     // The owner's link appears after the first revoke, as a create already running would leave it: the wipe's last step ends it.
     const real = db.lrange.bind(db);
     const spy = vi.spyOn(db, "lrange").mockImplementationOnce(async (...a: Parameters<typeof db.lrange>) => {
-      await createBook(owner.email, owner.email, "calcom", "en");
+      await createBook(owner.email, acct(owner), "calcom", "en");
       return real(...a);
     });
-    await wipeAccount(owner.email);
+    await wipeAccount(acct(owner));
     spy.mockRestore();
     expect(await getBookStatus(owner.email)).toEqual([]);
     expect(await db.get(BOOK_KEYS.of(owner.email, "calcom"))).toBeNull();
@@ -1412,8 +1415,8 @@ describe("booking revocation (rule 598)", () => {
     // read of the first step).
     const o2 = await newUser("book598t");
     const m = await newMember(o2, "member");
-    const t = await live(m.email, o2.email);
-    await wipeMemberships(storedAccountId(o2.email));
+    const t = await live(m.email, acct(o2));
+    await wipeMemberships(aidOf(o2));
     expect(await getMember(m.email)).toBeNull();
     for (const p of PROVIDERS) expect(await resolveBook(t[p])).toBeNull();
     expect(await getBookStatus(m.email)).toEqual([]);
@@ -1422,19 +1425,19 @@ describe("booking revocation (rule 598)", () => {
   it("rule 598: a booking revoke that fails stops the wipe before the account is touched, and a second wipe finishes it", async () => {
     const owner = await newUser("book598f");
     const m = await newMember(owner, "member");
-    const t = [await live(owner.email, owner.email), await live(m.email, owner.email)];
+    const t = [await live(owner.email, acct(owner)), await live(m.email, acct(owner))];
     // Only the booking locks fail (the feed revoke runs first and succeeds): the wipe stops before anything is deleted.
     const real = db.lockOwned.bind(db);
     const lock = vi.spyOn(db, "lockOwned").mockImplementation((key: string, ttl: number) => (key.startsWith("lock:book:") ? Promise.reject(new Error("store down")) : real(key, ttl)));
     try {
-      await expect(wipeAccount(owner.email)).rejects.toThrow("store down");
+      await expect(wipeAccount(acct(owner))).rejects.toThrow("store down");
     } finally {
       lock.mockRestore();
     }
-    expect(await getUser(owner.email)).not.toBeNull();
+    expect(await getUser(acct(owner))).not.toBeNull();
     expect(await getMember(m.email)).not.toBeNull();
-    await wipeAccount(owner.email);
-    expect(await getUser(owner.email)).toBeNull();
+    await wipeAccount(acct(owner));
+    expect(await getUser(acct(owner))).toBeNull();
     expect(await getMember(m.email)).toBeNull();
     for (const x of t) for (const p of PROVIDERS) expect(await resolveBook(x[p])).toBeNull();
     expect([...mem().kv.keys()].filter((k) => [owner.email, m.email].some((l) => PROVIDERS.some((p) => k === BOOK_KEYS.of(l, p))))).toEqual([]);
