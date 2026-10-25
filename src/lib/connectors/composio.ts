@@ -77,6 +77,10 @@ export const TOOLKIT_VERSION: Readonly<Record<Toolkit, string>> = {
   googledrive: "20261001_00",
   dropbox: "20261001_00",
   one_drive: "20261013_00",
+  // The newest version `composio dev toolkits version googlecalendar` lists (2026-10-25); its schema is the one the
+  // allowlisted argument names were read from. Run scripts/check-composio-pins.ts before naming gcal in COMPOSIO_PROVIDERS.
+  googlecalendar: "20260331_00",
+  calendly: "20261018_00",
 };
 
 const CALL_TIMEOUT_MS = 20_000;
@@ -277,10 +281,21 @@ export async function composioDiscard(accountId: string): Promise<void> {
   if (c) await quietDelete(c, accountId);
 }
 
-/** Revoke at the platform, then delete at Composio. Rejects on either failure so the caller keeps its record. */
+/** The platform has no revoke for this toolkit, or the (expired) connection can no longer be revoked: deleting at Composio is all that is left to do. */
+function revokeNotPossible(e: unknown): boolean {
+  const o = (e && typeof e === "object" ? e : {}) as { code?: unknown; name?: unknown; message?: unknown };
+  const text = `${String(o.code ?? "")} ${String(o.name ?? "")} ${String(o.message ?? e)}`;
+  return /REVOCATION_NOT_SUPPORTED|NOT_REVOKABLE|RevocationNotSupported|NotRevokable/i.test(text);
+}
+
+/** Revoke at the platform, then delete at Composio. Rejects on a real failure so the caller keeps its record; a revoke the platform cannot do (rule 4270) goes straight to the delete. */
 export async function composioRevoke(scope: string, accountId: string): Promise<void> {
   const c = await getClient();
   await count(scope);
-  await c.connectedAccounts.revoke(accountId);
+  try {
+    await c.connectedAccounts.revoke(accountId);
+  } catch (e) {
+    if (!revokeNotPossible(e)) throw e;
+  }
   await c.connectedAccounts.delete(accountId);
 }

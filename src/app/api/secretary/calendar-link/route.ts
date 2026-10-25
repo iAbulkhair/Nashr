@@ -5,8 +5,8 @@ import { db } from "@/lib/db";
 import { getBrand } from "@/lib/brand";
 import { SEC_KEYS, audit } from "@/lib/secretary";
 import { CAL_DECLARATION_V, proofOf } from "@/lib/secretary-cal-proof";
-import { dropLink, getLink, putLink, scheduleSync, type CalLink } from "@/lib/secretary-cal-link";
-import { freshAccess, listOwnCalendars, loseLink, reproof, withCalLock } from "@/lib/secretary-gcal";
+import { getLink, putLink, scheduleSync, type CalLink } from "@/lib/secretary-cal-link";
+import { dropLinkFor, freshAccess, listCalendars, loseLink, reproof, withCalLock } from "@/lib/secretary-gcal";
 import { calLimit, linkView, refuse } from "@/lib/secretary-cal-routes";
 
 /**
@@ -89,7 +89,7 @@ export async function PUT(req: Request) {
     if (!proven && declare !== true) return { ok: false, error: "declaration_required", status: 400 };
     let owned: { id: string; name: string }[];
     try {
-      owned = await listOwnCalendars(link.provider, fresh.access, who.account);
+      owned = await listCalendars(scope, fresh.link, fresh.access, who.account);
     } catch (e) {
       if ((e as { status?: unknown }).status === 401) {
         await loseLink(scope, known, login);
@@ -141,7 +141,7 @@ export async function DELETE() {
   const r = await withCalLock(scope, async (): Promise<{ ok: true } | { ok: false; error: string; status: number }> => {
     const link = await getLink(scope);
     if (!link) return { ok: false, error: "not_linked", status: 404 };
-    await dropLink(scope);
+    await dropLinkFor(scope, link);
     await audit(scope, { actor: "owner", via: "web", login }, "cal_unlink", "-", `provider=${link.provider}`);
     return { ok: true };
   });
