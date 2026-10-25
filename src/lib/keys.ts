@@ -296,7 +296,8 @@ export const accountKey = {
   /** string: who referred this account. */
   referredBy: (email: string) => `referredBy:${email}`,
   /** marker: a share bonus, per platform when given. */
-  shared: (email: string, platform?: string) => (platform === undefined ? `shared:${email}` : `shared:${email}:${platform}`),
+  shared: (email: string, platform?: string) =>
+    platform === undefined ? `shared:${email}` : `shared:${email}:${platform}`,
   /** string: last activity time. */
   lastSeen: (email: string) => `ulast:${email}`,
   /** lock: the weekly mail. */
@@ -544,4 +545,7 @@ export const runClaim = {
  * The records an address may still name after an account moved in place (account-id R2, L3, rule 2740): the account and
  * the person stored under the address as their id. Read only, by `addressBlocked` (src/lib/email-hold.ts).
  */
-export const addressRecordKeys = (address: string): [string, string] => [accountKey.user(address), personKey.person(address as PersonId)];
+export const addressRecordKeys = (address: string): [string, string] => [
+  accountKey.user(address),
+  personKey.person(address as PersonId),
+];

@@ -69,7 +69,17 @@ export type Outcome = "ran" | "refused" | "error";
 
 /** The audit list's rows: a `check` row is written before the call, its `done` row after. Names only, never text. */
 export type AuditRow =
-  | { phase: "check"; id: string; at: string; tool: string; initiator: Initiator; agent?: AgentId; verdict: Verdict; rule: string; run?: string }
+  | {
+      phase: "check";
+      id: string;
+      at: string;
+      tool: string;
+      initiator: Initiator;
+      agent?: AgentId;
+      verdict: Verdict;
+      rule: string;
+      run?: string;
+    }
   | { phase: "done"; id: string; at: string; outcome: Outcome; mismatch: boolean };
 
 /** Rows one workspace keeps, newest first (two per call). */
@@ -112,13 +122,29 @@ export async function readAudit(scope: Scope, n = 100): Promise<AuditRow[]> {
 type Judged = { scope: Scope; id: string; decision: Decision };
 
 /** Writes the check row and answers what `finish` needs; a failed judgement is logged and leaves no row. */
-async function check(user: User, tool: string, initiator: Initiator, agent: AgentId | undefined, input: () => Promise<GateInput>): Promise<Judged | null> {
+async function check(
+  user: User,
+  tool: string,
+  initiator: Initiator,
+  agent: AgentId | undefined,
+  input: () => Promise<GateInput>,
+): Promise<Judged | null> {
   try {
     const scope = sc(user);
     const decision = decide(await input());
     const id = randomUUID();
     const run = currentRunId();
-    await pushAudit(scope, { phase: "check", id, at: new Date().toISOString(), tool, initiator, ...(agent ? { agent } : {}), verdict: decision.verdict, rule: decision.rule, ...(run ? { run } : {}) });
+    await pushAudit(scope, {
+      phase: "check",
+      id,
+      at: new Date().toISOString(),
+      tool,
+      initiator,
+      ...(agent ? { agent } : {}),
+      verdict: decision.verdict,
+      rule: decision.rule,
+      ...(run ? { run } : {}),
+    });
     return { scope, id, decision };
   } catch (e) {
     log.error("gateway check failed", e);
@@ -127,7 +153,13 @@ async function check(user: User, tool: string, initiator: Initiator, agent: Agen
 }
 
 async function finish(j: Judged | null, tool: string, outcome: Outcome, t0: number): Promise<void> {
-  runEvent({ t: "tool", tool, outcome, ms: Date.now() - t0, ...(j ? { verdict: j.decision.verdict, rule: j.decision.rule } : {}) });
+  runEvent({
+    t: "tool",
+    tool,
+    outcome,
+    ms: Date.now() - t0,
+    ...(j ? { verdict: j.decision.verdict, rule: j.decision.rule } : {}),
+  });
   if (!j) return;
   const mismatch = isMismatch(j.decision.verdict, outcome);
   if (mismatch) log.warn("gateway mismatch", { tool, rule: j.decision.rule });
@@ -139,20 +171,32 @@ async function finish(j: Judged | null, tool: string, outcome: Outcome, t0: numb
  * talking agent, the role's action and the owner's authority setting read at the moment of the call. A call with no agent
  * (a test, onboarding) is a person's own; over MCP the caller is the connected app.
  */
-export async function gatedTool(user: User, tool: string, ctx: { agent?: AgentId; via?: "app" | "mcp" }, run: () => Promise<string>, mode: GatewayMode = GATEWAY_MODE): Promise<string> {
+export async function gatedTool(
+  user: User,
+  tool: string,
+  ctx: { agent?: AgentId; via?: "app" | "mcp" },
+  run: () => Promise<string>,
+  mode: GatewayMode = GATEWAY_MODE,
+): Promise<string> {
   const t0 = Date.now();
   const initiator: Initiator = ctx.via === "mcp" ? "mcp" : ctx.agent ? "agent" : "person";
-  const j = mode === "off" ? null : await check(user, tool, initiator, ctx.agent, async () => {
-    const needs = Object.hasOwn(TOOL_ACTION, tool) ? TOOL_ACTION[tool] : null;
-    const cap = ctx.agent ? capOfTool(tool) : null;
-    return {
-      tool,
-      initiator,
-      offered: !ctx.agent || toolsFor(ctx.agent).some((t) => t.name === tool),
-      roleOk: !needs || can(user, needs),
-      authority: cap && ctx.agent ? authorityOf((await getGov(user.scope ?? acct(user))).toolPolicy, ctx.agent, cap) : "on",
-    };
-  });
+  const j =
+    mode === "off"
+      ? null
+      : await check(user, tool, initiator, ctx.agent, async () => {
+          const needs = Object.hasOwn(TOOL_ACTION, tool) ? TOOL_ACTION[tool] : null;
+          const cap = ctx.agent ? capOfTool(tool) : null;
+          return {
+            tool,
+            initiator,
+            offered: !ctx.agent || toolsFor(ctx.agent).some((t) => t.name === tool),
+            roleOk: !needs || can(user, needs),
+            authority:
+              cap && ctx.agent
+                ? authorityOf((await getGov(user.scope ?? acct(user))).toolPolicy, ctx.agent, cap)
+                : "on",
+          };
+        });
   let answer: string;
   try {
     answer = await run();
@@ -168,9 +212,24 @@ export async function gatedTool(user: User, tool: string, ctx: { agent?: AgentId
  * An MCP `tools/call` through the gateway. `need` is the tool's action from `MCP_TOOL_ACTION` (an unknown tool is answered
  * before this). The outcome is read from the JSON-RPC answer: a result marked `isError` or an error object is "refused".
  */
-export async function gatedMcp(user: User, tool: string, need: Action, run: () => Promise<Response>, mode: GatewayMode = GATEWAY_MODE): Promise<Response> {
+export async function gatedMcp(
+  user: User,
+  tool: string,
+  need: Action,
+  run: () => Promise<Response>,
+  mode: GatewayMode = GATEWAY_MODE,
+): Promise<Response> {
   const t0 = Date.now();
-  const j = mode === "off" ? null : await check(user, tool, "mcp", undefined, async () => ({ tool, initiator: "mcp", offered: true, roleOk: can(user, need), authority: "on" }));
+  const j =
+    mode === "off"
+      ? null
+      : await check(user, tool, "mcp", undefined, async () => ({
+          tool,
+          initiator: "mcp",
+          offered: true,
+          roleOk: can(user, need),
+          authority: "on",
+        }));
   let res: Response;
   try {
     res = await run();

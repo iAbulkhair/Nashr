@@ -27,7 +27,15 @@ export type RunKind = "chat" | "mcp" | "batch";
 /** One step of a run. `at` is milliseconds since the run started. */
 export type RunEvent =
   | { t: "model"; at: number; model: string; kind: string; agent?: AgentId; in: number; out: number; ok: boolean }
-  | { t: "tool"; at: number; tool: string; outcome: "ran" | "refused" | "error"; ms: number; verdict?: "allow" | "ask" | "deny"; rule?: string }
+  | {
+      t: "tool";
+      at: number;
+      tool: string;
+      outcome: "ran" | "refused" | "error";
+      ms: number;
+      verdict?: "allow" | "ask" | "deny";
+      rule?: string;
+    }
   | { t: "publish"; at: number; provider: string; ok: boolean; error?: string };
 
 /** A step as the code reports it; `at` is added here. */
