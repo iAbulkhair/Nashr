@@ -122,7 +122,7 @@ describe("rule 2132 (fixtures): p_ persons by default, each with one shadow memb
     const m = await load("p");
     const owner = await m.h.newUser("hpt");
     const bearer = (t: string) => new Request("https://nashr.test/api/mcp", { headers: { authorization: `Bearer ${t}` } });
-    expect((await m.mcp.userFromBearer(bearer(await m.mcp.createMcpToken(owner.email))))!.email).toBe(owner.email);
+    expect((await m.mcp.userFromBearer(bearer(await m.mcp.createMcpToken(m.auth.acct(owner)))))!.email).toBe(owner.email);
     const mem = await m.h.newMember(owner);
     // A token record naming the member's address (as a token minted before the address was a member login would).
     const forged = "nashr_" + "f".repeat(43);

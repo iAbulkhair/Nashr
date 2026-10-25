@@ -59,7 +59,7 @@ export async function chat(user: User, text: string, conv?: string, agentId: Age
   if (trialOver(user)) return { role: "assistant", content: chatRefusedText("trial", lang), at: new Date().toISOString(), agent: agentId, limit: "trial" };
   const agentName = agentById(agentId).name[lang];
   opts.onStatus?.(lang === "ar" ? "أقرأ ملف علامتك ومذكراتي…" : "Reading your brand file and my notes…");
-  const email = user.scope ?? user.email;
+  const email = user.scope ?? acct(user);
   await push(email, { role: "user", content: text, at: new Date().toISOString() }, conv);
   const actions: string[] = [];
   const made: Task[] = [];

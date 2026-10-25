@@ -1,4 +1,4 @@
-import { test, expect, open, LANGS } from "./fixtures/app";
+import { test, expect, open, LANGS, appPath } from "./fixtures/app";
 import { APP_ROUTES, APP_PUBLIC_ROUTES } from "./fixtures/routes";
 
 test.describe("language routing", () => {
@@ -124,9 +124,19 @@ test.describe("old brand paths", () => {
     test(`${from} answers 307 to ${to}`, async ({ request }) => {
       const res = await request.get(from, { maxRedirects: 0 });
       expect(res.status()).toBe(307);
-      const at = new URL(res.headers()["location"], "http://localhost");
+      let at = new URL(res.headers()["location"], "http://localhost");
       const want = new URL(to, "http://localhost");
-      expect(at.pathname).toBe(want.pathname);
+      // With `MULTI_ORG` on the page is also in the session's workspace (`/w/{handle}`, rule 3810). An old settings name
+      // first gains the workspace, then moves inside it in a second 307 that keeps the handle (src/proxy.ts).
+      if (appPath(at) === new URL(from, "http://localhost").pathname) {
+        const again = await request.get(at.pathname + at.search, { maxRedirects: 0 });
+        expect(again.status()).toBe(307);
+        const handle = at.pathname.split("/")[4];
+        at = new URL(again.headers()["location"], "http://localhost");
+        expect(at.pathname.split("/")[4], "the second hop keeps the workspace").toBe(handle);
+      }
+      expect(at.pathname).toMatch(/^\/(ar|en)\/app\/w\/w_[a-z2-7]{16}\//);
+      expect(appPath(at)).toBe(want.pathname);
       expect([...at.searchParams]).toEqual([...want.searchParams]);
     });
   }

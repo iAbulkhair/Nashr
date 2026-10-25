@@ -5,7 +5,7 @@
 import type { Aspect, MediaFailure, MediaKind, MediaModelId, MediaProviderId } from "../media-catalog";
 import type { Task } from "../brand";
 import type { AgentId } from "../agents";
-import type { SpendRef } from "../credits";
+import type { SpendPerson, SpendRef } from "../credits";
 import type { By } from "../actor";
 
 /** What the engine hands an adapter. `imageUrl` is set only when mediaImageFor allowed it. */
@@ -129,6 +129,8 @@ export type StartInput = {
   cap?: number;
   /** That agent's credits this month in this scope, read with the session: a pre-check like `balance`; the ledger decides. */
   spent?: number;
+  /** The team member who starts it and their monthly cap (rule 3771, `personOf`): the ledger refuses past that cap. */
+  person?: SpendPerson;
   taskId: string;
   model: MediaModelId;
   aspect: Aspect;

@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { acct } from "@/lib/account-id";
 import { db } from "@/lib/db";
 import { saveTask, type Brand, type Task } from "@/lib/brand";
 import { globalMetrics, recordThumb, scopeMetrics } from "@/lib/evals";
@@ -55,28 +56,28 @@ describe("the admin quality table covers every workspace, labelled per brand", (
   it("counts suspended accounts and archived brands instead of dropping them, and names each brand", async () => {
     const sus = await newUser("susp");
     await saveUser({ ...sus, suspended: true });
-    await saveTask(sus.email, task({ status: "rejected", decidedAt: daysAgo(0) }), true);
+    await saveTask(acct(sus), task({ status: "rejected", decidedAt: daysAgo(0) }), true);
 
     const ag = await newUser("agcy");
-    await saveBrands(ag.email, [
+    await saveBrands(acct(ag), [
       { id: "default", name: "", createdAt: daysAgo(10), status: "active" },
       { id: "cafe2", name: "Cafe Two", createdAt: daysAgo(10), status: "active" },
       { id: "old", name: "Old", createdAt: daysAgo(10), status: "archived" },
     ]);
-    await saveTask(ag.email, task({ status: "approved", decidedAt: daysAgo(0) }), true);
-    await saveTask(scopeFor(ag.email, "cafe2"), task({ status: "approved", decidedAt: daysAgo(0) }), true);
-    await saveTask(scopeFor(ag.email, "old"), task({ status: "rejected", decidedAt: daysAgo(0) }), true);
+    await saveTask(acct(ag), task({ status: "approved", decidedAt: daysAgo(0) }), true);
+    await saveTask(scopeFor(acct(ag), "cafe2"), task({ status: "approved", decidedAt: daysAgo(0) }), true);
+    await saveTask(scopeFor(acct(ag), "old"), task({ status: "rejected", decidedAt: daysAgo(0) }), true);
 
-    const mine = (await globalMetrics(30)).users.filter((u) => u.email === sus.email || u.email === ag.email);
+    const mine = (await globalMetrics(30)).users.filter((u) => acct(u) === acct(sus) || acct(u) === acct(ag));
     expect(mine.map((u) => u.scope).sort(), "a churned or archived workspace's rejections vanished from the fleet rate")
-      .toEqual([sus.email, ag.email, scopeFor(ag.email, "cafe2"), scopeFor(ag.email, "old")].sort());
-    expect(mine.find((u) => u.scope === sus.email)!.suspended).toBe(true);
-    expect(mine.find((u) => u.scope === scopeFor(ag.email, "old"))!.archived).toBe(true);
+      .toEqual([acct(sus), acct(ag), scopeFor(acct(ag), "cafe2"), scopeFor(acct(ag), "old")].sort());
+    expect(mine.find((u) => u.scope === acct(sus))!.suspended).toBe(true);
+    expect(mine.find((u) => u.scope === scopeFor(acct(ag), "old"))!.archived).toBe(true);
 
-    const labels = mine.filter((u) => u.email === ag.email).map((u) => u.label);
+    const labels = mine.filter((u) => acct(u) === acct(ag)).map((u) => u.label);
     expect(new Set(labels).size, "three brands printed as three identical email addresses").toBe(3);
-    expect(labels).toContain(`${ag.email} · Cafe Two`);
-    expect(labels, "the default brand keeps the plain address").toContain(ag.email);
+    expect(labels).toContain(`${acct(ag)} · Cafe Two`);
+    expect(labels, "the default brand keeps the plain address").toContain(acct(ag));
   });
 });
 
@@ -95,13 +96,13 @@ describe("chat thumbs belong to the brand the chat ran in", () => {
 
   it("the feedback route writes against the active brand, not the account", async () => {
     const u = await newUser("fbroute");
-    await saveBrands(u.email, [{ id: "default", name: "", createdAt: daysAgo(1), status: "active" }, { id: "b2", name: "Two", createdAt: daysAgo(1), status: "active" }]);
+    await saveBrands(acct(u), [{ id: "default", name: "", createdAt: daysAgo(1), status: "active" }, { id: "b2", name: "Two", createdAt: daysAgo(1), status: "active" }]);
     await seedActiveBrand(u.email, "b2");
     await signIn(u.email);
     const route = await import("@/app/api/chat/feedback/route");
     expect((await route.POST(json("/api/chat/feedback", "POST", { agent: "noor", value: -1, reason: "too long" }))).status).toBe(200);
-    expect(await db.lrange(`fblog:${scopeFor(u.email, "b2")}`, 0, -1)).toHaveLength(1);
-    expect(await db.lrange(`fblog:${u.email}`, 0, -1)).toHaveLength(0);
+    expect(await db.lrange(`fblog:${scopeFor(acct(u), "b2")}`, 0, -1)).toHaveLength(1);
+    expect(await db.lrange(`fblog:${acct(u)}`, 0, -1)).toHaveLength(0);
   });
 
   it("the feedback route is rate limited per account, before anything is written (rule 378)", async () => {
@@ -117,31 +118,31 @@ describe("chat thumbs belong to the brand the chat ran in", () => {
     expect(refused.status).toBe(429);
     expect(refused.headers.get("retry-after")).toBe("3600");
     expect(await refused.json()).toMatchObject({ error: "slow_down" });
-    expect(await db.lrange(`fblog:${u.email}`, 0, -1), "the refused thumb wrote nothing").toHaveLength(1);
+    expect(await db.lrange(`fblog:${acct(u)}`, 0, -1), "the refused thumb wrote nothing").toHaveLength(1);
   });
 
   it("deleting an account removes its feedback, including the text the owner typed", async () => {
     const u = await newUser("fbwipe");
-    await saveBrands(u.email, [{ id: "default", name: "", createdAt: daysAgo(1), status: "active" }, { id: "b2", name: "Two", createdAt: daysAgo(1), status: "active" }]);
-    await recordThumb(scopeFor(u.email, "b2"), "noor", -1, "a private complaint in the owner's own words");
-    await recordThumb(u.email, "noor", 1);
-    await db.incrby(`fb:${u.email}:noor:down`, 1); // the old lifetime counter, from before the log replaced it
+    await saveBrands(acct(u), [{ id: "default", name: "", createdAt: daysAgo(1), status: "active" }, { id: "b2", name: "Two", createdAt: daysAgo(1), status: "active" }]);
+    await recordThumb(scopeFor(acct(u), "b2"), "noor", -1, "a private complaint in the owner's own words");
+    await recordThumb(acct(u), "noor", 1);
+    await db.incrby(`fb:${acct(u)}:noor:down`, 1); // the old lifetime counter, from before the log replaced it
     const { wipeAccount } = await import("@/lib/account");
-    await wipeAccount(u.email);
-    expect(await db.lrange(`fblog:${scopeFor(u.email, "b2")}`, 0, -1), "the owner's typed reason outlived the account").toEqual([]);
-    expect(await db.lrange(`fblog:${u.email}`, 0, -1)).toEqual([]);
-    expect(await db.get(`fb:${u.email}:noor:down`)).toBeNull();
+    await wipeAccount(acct(u));
+    expect(await db.lrange(`fblog:${scopeFor(acct(u), "b2")}`, 0, -1), "the owner's typed reason outlived the account").toEqual([]);
+    expect(await db.lrange(`fblog:${acct(u)}`, 0, -1)).toEqual([]);
+    expect(await db.get(`fb:${acct(u)}:noor:down`)).toBeNull();
   });
 });
 
 describe("admin credits used this month", () => {
   it("counts every brand, not only the default", async () => {
     const u = await newUser("admcred");
-    await saveBrands(u.email, [{ id: "default", name: "", createdAt: daysAgo(1), status: "active" }, { id: "b2", name: "Two", createdAt: daysAgo(1), status: "active" }]);
+    await saveBrands(acct(u), [{ id: "default", name: "", createdAt: daysAgo(1), status: "active" }, { id: "b2", name: "Two", createdAt: daysAgo(1), status: "active" }]);
     const { overview } = await import("@/lib/admin-stats");
     const before = (await overview()).revenue.creditsUsedMonth;
     // One social item is TASK_COST.social / TASK_COUNT.social = 1 credit, on the SECOND brand.
-    await saveTask(scopeFor(u.email, "b2"), task({ type: "social", createdAt: new Date().toISOString() }), true);
+    await saveTask(scopeFor(acct(u), "b2"), task({ type: "social", createdAt: new Date().toISOString() }), true);
     const after = (await overview()).revenue.creditsUsedMonth;
     expect(after - before, "spend on an agency's other brands was invisible to the founder").toBe(1);
   });

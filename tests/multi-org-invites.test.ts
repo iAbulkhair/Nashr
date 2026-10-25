@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { randomBytes } from "crypto";
 import * as acceptRoute from "@/app/api/team/accept/route";
 import { acct, currentUser, getUser, saveUser, sessionKey, type User } from "@/lib/auth";
@@ -12,10 +12,9 @@ import { readTeamLog } from "@/lib/teamlog";
 import { wsHandle } from "@/lib/ws-handle";
 import { json, newMember, newUser, signIn, signOut } from "./helpers/session";
 
-vi.mock("@/lib/multi-org", async (orig) => ({ ...(await orig<typeof import("@/lib/multi-org")>()), MULTI_ORG: true }));
 
 /**
- * Multi-workspace M2, invitations (docs/specs/2026-10-18-multi-org.md section 9), with `MULTI_ORG` on for this file.
+ * Multi-workspace M2, invitations (docs/specs/2026-10-18-multi-org.md section 9), with `MULTI_ORG` on (the release switch since M2 enable).
  * Rule 2116: an address that already signs in is invited like a new one (only this account's own people get
  * `already_member`); it is accepted only from the person's own signed-in session with the verified address equal to the
  * invite's, never by address alone and never with a new password. Rule 2117: accepting as a new person makes a `p_`

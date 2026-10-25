@@ -62,7 +62,7 @@ describe("workspace readers take the active scope", () => {
     for (const line of ["runHandoffItem(u, scope, id, item, { by })", "runItemLocked(user, scope, h, n, o)", "runHandoffItem(u, sc(u), id, n, o)"]) expect(scoped.test(line), line).toBe(true);
     // The run route takes the scope from the session, and the auto-run from the cron's user, never from a request.
     expect(readFileSync("src/app/api/handoffs/[id]/run/route.ts", "utf8")).toMatch(/const scope = sc\(u\);\s*\n\s*const r = await runHandoffItem\(u, scope,/);
-    expect(readFileSync("src/lib/handoff-auto.ts", "utf8")).toMatch(/const scope = user\.scope \?\? user\.email;\s*\n\s*return \(await withRunLock\(scope, id, \(\) => runLocked\(user, scope,/);
+    expect(readFileSync("src/lib/handoff-auto.ts", "utf8")).toMatch(/const scope = user\.scope \?\? acct\(user\);\s*\n\s*return \(await withRunLock\(scope, id, \(\) => runLocked\(user, scope,/);
   });
 
   it("the generation pipeline gets the active scope as its second argument, never the account email", () => {

@@ -14,7 +14,6 @@ import { readTeamLog } from "@/lib/teamlog";
 import { codeAt } from "./helpers/staff";
 import { addShadowMembership, jar, json, markVerified, newMember, newUser, signIn, signOut } from "./helpers/session";
 
-vi.mock("@/lib/multi-org", async (orig) => ({ ...(await orig<typeof import("@/lib/multi-org")>()), MULTI_ORG: true }));
 
 /** Runs once after the first membership left: a join landing between the delete's first read and its final check. */
 const race = vi.hoisted(() => ({ after: null as null | (() => Promise<void>) }));
@@ -34,7 +33,7 @@ vi.mock("@/lib/team", async (orig) => {
 
 /**
  * Multi-workspace M3, deleting a person (docs/specs/2026-10-18-multi-org.md section 13; rules 2127, 2754), with
- * `MULTI_ORG` on for this file. The fixtures are `a_` accounts owned by `p_` persons and `p_` members whatever
+ * `MULTI_ORG` on (the release switch since M2 enable). The fixtures are `a_` accounts owned by `p_` persons and `p_` members whatever
  * `TEST_PERSONS` says, because only a `person:`-source person is deleted here (plan reconciliation 7); the legacy shape is
  * pinned as refused.
  */

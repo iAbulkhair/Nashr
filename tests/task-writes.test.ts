@@ -60,7 +60,7 @@ import type { MediaJob, StartInput } from "@/lib/media/types";
 import { fakeAdapter, fakeDeps, noNetwork, resetMediaCounters } from "./helpers/media";
 import { newUser, params, settle, signIn } from "./helpers/session";
 import { vjson } from "./helpers/version";
-import { currentUser, type User } from "@/lib/auth";
+import { acct, currentUser, type User } from "@/lib/auth";
 import * as publishRoute from "@/app/api/publish/[id]/route";
 import * as taskRoute from "@/app/api/tasks/[id]/route";
 
@@ -84,14 +84,14 @@ const CLIP = "https://tempfile.kie.example/clip.mp4";
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 async function taskFor(u: User, over: Partial<Task> = {}): Promise<Task> {
   const t: Task = { id: `tw${randomBytes(4).toString("hex")}`, type: "social", channel: "instagram", title: "Weekend offer", body: "Two for one this weekend.", status: "pending", createdAt: new Date().toISOString(), lang: "ar", ...over };
-  await saveTask(u.email, t, true);
+  await saveTask(acct(u), t, true);
   return t;
 }
 /** A 12-credit kie video running on the task, and the advance that finishes it. */
 async function runningVideo(u: User, t: Task) {
   const deps = fakeDeps({ kie: fakeAdapter("kie", { status: () => ({ state: "done", urls: [CLIP] }) }) });
   const input: StartInput = {
-    scope: u.email, email: u.email, lang: u.lang, accountSince: u.createdAt, plan: "pro", balance: u.credits, agent: "noor", taskId: t.id, model: "vid-quick",
+    scope: acct(u), email: acct(u), lang: u.lang, accountSince: u.createdAt, plan: "pro", balance: u.credits, agent: "noor", taskId: t.id, model: "vid-quick",
     aspect: "portrait", deadline: Date.now() + 100_000, prompt: async () => "a test prompt",
   };
   const r = await startMedia(input, deps);
@@ -108,21 +108,21 @@ describe("updateTask", () => {
     const u = await newUser("tw");
     const t = await taskFor(u);
     await Promise.all([
-      updateTask(u.email, t.id, (c) => ({ ...c, videoUrl: "https://s.public.blob.vercel-storage.com/media/v.mp4" })),
-      updateTask(u.email, t.id, (c) => ({ ...c, status: "approved" })),
-      updateTask(u.email, t.id, (c) => ({ ...c, scheduledFor: "2026-10-01" })),
+      updateTask(acct(u), t.id, (c) => ({ ...c, videoUrl: "https://s.public.blob.vercel-storage.com/media/v.mp4" })),
+      updateTask(acct(u), t.id, (c) => ({ ...c, status: "approved" })),
+      updateTask(acct(u), t.id, (c) => ({ ...c, scheduledFor: "2026-10-01" })),
     ]);
-    expect(await getTask(u.email, t.id)).toMatchObject({ videoUrl: expect.any(String), status: "approved", scheduledFor: "2026-10-01" });
-    expect(await updateTask(u.email, "nope", (c) => c)).toBeNull();
-    expect(await getTask(u.email, "nope")).toBeNull();
+    expect(await getTask(acct(u), t.id)).toMatchObject({ videoUrl: expect.any(String), status: "approved", scheduledFor: "2026-10-01" });
+    expect(await updateTask(acct(u), "nope", (c) => c)).toBeNull();
+    expect(await getTask(acct(u), "nope")).toBeNull();
   });
 
   it("a mutate that declines leaves the stored task, and what it returns, unchanged", async () => {
     const u = await newUser("tw");
     const t = await taskFor(u);
-    const back = await updateTask(u.email, t.id, (c) => { c.status = "approved"; return null; });
+    const back = await updateTask(acct(u), t.id, (c) => { c.status = "approved"; return null; });
     expect(back!.status).toBe("pending");
-    expect((await getTask(u.email, t.id))!.status).toBe("pending");
+    expect((await getTask(acct(u), t.id))!.status).toBe("pending");
   });
 });
 
@@ -130,13 +130,13 @@ describe("a render finishing while another writer holds the task", () => {
   it("the publish route keeps a clip that finished during the publish, and its credits", async () => {
     const u = await newUser("tw");
     await signIn(u.email);
-    await saveConnection(u.email, { provider: "telegram", data: { token: "t", chat: "c" }, connectedAt: new Date().toISOString() });
+    await saveConnection(acct(u), { provider: "telegram", data: { token: "t", chat: "c" }, connectedAt: new Date().toISOString() });
     const t = await taskFor(u);
     const video = await runningVideo(u, t);
     h.duringPublish = video.finish;
     const res = await publishRoute.POST(await vjson(`/api/publish/${t.id}`, "POST", { provider: "telegram" }), params({ id: t.id }));
     expect(res.status).toBe(200);
-    const saved = (await getTask(u.email, t.id))!;
+    const saved = (await getTask(acct(u), t.id))!;
     expect(saved).toMatchObject({ videoUrl: video.deps.stored[0].url, videoModel: "vid-quick", mediaCredits: 12, status: "approved", published: [{ provider: "telegram" }] });
     expect(saved.mediaJob).toBeUndefined();
     expect(((await res.json()) as { task: Task }).task.videoUrl).toBe(video.deps.stored[0].url);
@@ -144,7 +144,7 @@ describe("a render finishing while another writer holds the task", () => {
 
   it("the chat tool publish_item keeps a clip that finished during the publish", async () => {
     const u = await newUser("tw");
-    await saveConnection(u.email, { provider: "telegram", data: { token: "t", chat: "c" }, connectedAt: new Date().toISOString() });
+    await saveConnection(acct(u), { provider: "telegram", data: { token: "t", chat: "c" }, connectedAt: new Date().toISOString() });
     // Approved by a person (decidedAt): publish_item refuses an item only auto-approval passed (rule 214).
     const t = await taskFor(u, { status: "approved", decidedAt: new Date().toISOString() });
     const video = await runningVideo(u, t);
@@ -153,7 +153,7 @@ describe("a render finishing while another writer holds the task", () => {
     await signIn(u.email);
     const me = (await currentUser())!;
     expect(await runTool(me, "publish_item", { task_id: t.id, provider: "telegram" }, [])).toMatch(/^Published to telegram/);
-    expect((await getTask(u.email, t.id))!).toMatchObject({ videoUrl: video.deps.stored[0].url, mediaCredits: 12, published: [{ provider: "telegram" }] });
+    expect((await getTask(acct(u), t.id))!).toMatchObject({ videoUrl: video.deps.stored[0].url, mediaCredits: 12, published: [{ provider: "telegram" }] });
   });
 
   it("an approval keeps a clip that finished while the approve request was in flight", async () => {
@@ -164,7 +164,7 @@ describe("a render finishing while another writer holds the task", () => {
     h.duringGov = video.finish;
     const res = await taskRoute.PATCH(await vjson(`/api/tasks/${t.id}`, "PATCH", { status: "approved" }), params({ id: t.id }));
     expect(res.status).toBe(200);
-    expect((await getTask(u.email, t.id))!).toMatchObject({ status: "approved", videoUrl: video.deps.stored[0].url, mediaCredits: 12 });
+    expect((await getTask(acct(u), t.id))!).toMatchObject({ status: "approved", videoUrl: video.deps.stored[0].url, mediaCredits: 12 });
   });
 
   it("a finalize and an approval landing together keep both: the engine's own read-to-write window", async () => {
@@ -172,7 +172,7 @@ describe("a render finishing while another writer holds the task", () => {
     await signIn(u.email);
     const t = await taskFor(u);
     const video = await runningVideo(u, t);
-    const key = `task:${u.email}:${t.id}`;
+    const key = `task:${acct(u)}:${t.id}`;
     const realGet = db.get.bind(db);
     let reads = 0;
     let patching: Promise<Response> | null = null;
@@ -191,7 +191,7 @@ describe("a render finishing while another writer holds the task", () => {
     await video.finish();
     expect(patching).not.toBeNull();
     expect((await patching!).status).toBe(200);
-    expect((await getTask(u.email, t.id))!).toMatchObject({ status: "approved", videoUrl: video.deps.stored[0].url, mediaCredits: 12 });
+    expect((await getTask(acct(u), t.id))!).toMatchObject({ status: "approved", videoUrl: video.deps.stored[0].url, mediaCredits: 12 });
   });
 });
 
@@ -202,7 +202,7 @@ describe("a render finishing while another writer holds the task", () => {
 describe("the judge's verdict racing a publish", () => {
   const brand: Brand = { name: "Rose Coffee", website: "", industry: "coffee", dialect: "saudi", languages: ["ar"], tone: "warm", products: "coffee", audience: "Riyadh", offers: "", competitors: "", banned: "", preferred: "", channels: ["telegram"], city: "Riyadh", updatedAt: new Date().toISOString() };
   const good = { completeness: 90, brand: 90, honesty: 90, language: 90, format: 90, notes: "ready" };
-  const connect = (u: User) => saveConnection(u.email, { provider: "telegram", data: { token: "t", chat: "c" }, connectedAt: new Date().toISOString() });
+  const connect = (u: User) => saveConnection(acct(u), { provider: "telegram", data: { token: "t", chat: "c" }, connectedAt: new Date().toISOString() });
   const publish = async (t: Task) => publishRoute.POST(await vjson(`/api/publish/${t.id}`, "POST", { provider: "telegram" }), params({ id: t.id }));
   const vetoNotes = async (email: string) => (await listNotifs(email)).filter((n) => n.title.startsWith("أُعيد"));
 
@@ -214,8 +214,8 @@ describe("the judge's verdict racing a publish", () => {
     h.judgeOn = true;
     h.verdict = good;
     h.duringJudge = async () => { expect((await publish(t)).status).toBe(200); };
-    await judgeTasks(u.email, u.email, brand, [t]);
-    const saved = (await getTask(u.email, t.id))!;
+    await judgeTasks(acct(u), acct(u), brand, [t]);
+    const saved = (await getTask(acct(u), t.id))!;
     expect(saved).toMatchObject({ status: "approved", published: [{ provider: "telegram" }], quality: { score: 90 } });
   });
 
@@ -226,9 +226,9 @@ describe("the judge's verdict racing a publish", () => {
     const t = await taskFor(u);
     h.judgeOn = true;
     h.verdict = good;
-    h.duringPublish = async () => { await judgeTasks(u.email, u.email, brand, [t]); };
+    h.duringPublish = async () => { await judgeTasks(acct(u), acct(u), brand, [t]); };
     expect((await publish(t)).status).toBe(200);
-    const saved = (await getTask(u.email, t.id))!;
+    const saved = (await getTask(acct(u), t.id))!;
     expect(saved).toMatchObject({ status: "approved", published: [{ provider: "telegram" }], quality: { score: 90 } });
   });
 
@@ -241,16 +241,16 @@ describe("the judge's verdict racing a publish", () => {
 
     // Control: nobody touched it, so the veto applies (approved by auto-approval alone: no decidedAt).
     const held = await taskFor(u, { status: "approved" });
-    await judgeTasks(u.email, u.email, brand, [held]);
-    expect(await getTask(u.email, held.id)).toMatchObject({ status: "pending", quality: { autofail: "fake_proof" } });
-    expect(await vetoNotes(u.email)).toHaveLength(1);
+    await judgeTasks(acct(u), acct(u), brand, [held]);
+    expect(await getTask(acct(u), held.id)).toMatchObject({ status: "pending", quality: { autofail: "fake_proof" } });
+    expect(await vetoNotes(acct(u))).toHaveLength(1);
 
     // The owner publishes it while the judge thinks: a post that went out is never reverted to pending.
     const posted = await taskFor(u, { status: "approved" });
     h.duringJudge = async () => { expect((await publish(posted)).status).toBe(200); };
-    await judgeTasks(u.email, u.email, brand, [posted]);
-    const saved = (await getTask(u.email, posted.id))!;
+    await judgeTasks(acct(u), acct(u), brand, [posted]);
+    const saved = (await getTask(acct(u), posted.id))!;
     expect(saved).toMatchObject({ status: "approved", published: [{ provider: "telegram" }], quality: { autofail: "fake_proof" } });
-    expect(await vetoNotes(u.email), "no new send-back notice for the published one").toHaveLength(1);
+    expect(await vetoNotes(acct(u)), "no new send-back notice for the published one").toHaveLength(1);
   });
 });

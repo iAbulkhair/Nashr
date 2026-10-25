@@ -1,4 +1,5 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { acct } from "@/lib/account-id";
 import { readFileSync } from "node:fs";
 
 /**
@@ -48,7 +49,7 @@ afterEach(() => { signOut(); vi.restoreAllMocks(); vi.unstubAllEnvs(); });
 const src = (f: string) => readFileSync(f, "utf8");
 async function account(plan: Plan, extra: Partial<User> = {}): Promise<User> {
   const u = await newUser("fu");
-  const x = { ...(await getUser(u.email))!, plan, credits: 300, ...extra };
+  const x = { ...(await getUser(acct(u)))!, plan, credits: 300, ...extra };
   await saveUser(x);
   return x;
 }
@@ -58,7 +59,7 @@ const spend = (email: string, month: string, modelUsd: number, mediaUsd = 0) =>
 /** A Starter account (299 SAR net) whose cost this month is past its limit. */
 async function paused(extra: Partial<User> = {}): Promise<User> {
   const u = await account("starter", extra);
-  await spend(u.email, monthKey(), 60, 30); // 90 USD × 3.75 = 337.5 SAR ≥ 284.05 (95% of 299)
+  await spend(acct(u), monthKey(), 60, 30); // 90 USD × 3.75 = 337.5 SAR ≥ 284.05 (95% of 299)
   return u;
 }
 
@@ -110,15 +111,16 @@ describe("the reads (rules 1726, 1728)", () => {
   it("one MGET of the margin alert's two counters; nothing read for an account the stop does not apply to", async () => {
     const u = await account("starter");
     const month = "2031-07";
-    await spend(u.email, month, 70, 10);
+    await spend(acct(u), month, 70, 10);
     const mget = vi.spyOn(db, "mget");
     const s = await fairUseOf(u, month);
     expect(mget).toHaveBeenCalledTimes(1);
-    expect(mget.mock.calls[0][0]).toEqual([`usage:${u.email}:${month}:usd_micro`, mediaCostKey(u.email, month)]);
+    expect(mget.mock.calls[0][0]).toEqual([`usage:${acct(u)}:${month}:usd_micro`, mediaCostKey(acct(u), month)]);
     expect(s).toMatchObject({ costSar: 300, limitSar: 284.05, paused: true });
-    mget.mockClear();
     const t = await account("trial");
-    await spend(t.email, month, 1000);
+    await spend(acct(t), month, 1000);
+    // Cleared after the fixture: a new account's first draft is auto-assigned (rule 3764), which reads the roster.
+    mget.mockClear();
     expect((await fairUseOf(t, month)).paused).toBe(false);
     expect(mget).not.toHaveBeenCalled();
   });
@@ -138,17 +140,17 @@ describe("the stop, before any provider call (rules 1722-1725)", () => {
     const r = await chatRoute.POST(json("/api/chat", "POST", { text: "مرحبا" }));
     expect(r.status).toBe(402);
     expect((await r.json()).error).toBe(FAIR_USE_ERROR);
-    expect(Number((await db.get<number>(chatMsgKey(u.email))) ?? 0)).toBe(0);
+    expect(Number((await db.get<number>(chatMsgKey(acct(u)))) ?? 0)).toBe(0);
     expect(h.calls).toBe(0);
   });
   it("below the limit the same kind of account is not refused by the stop", async () => {
     const u = await account("starter");
-    await spend(u.email, monthKey(), 10);
+    await spend(acct(u), monthKey(), 10);
     expect(await fairUseGate(u)).toBeNull();
   });
   it("MCP ask_noor gets the fair-use sentence and no model call (rule 1732)", async () => {
     const u = await paused();
-    const token = await createMcpToken(u.email);
+    const token = await createMcpToken(acct(u));
     const res = await mcpRoute.POST(new Request("https://nashr.test/api/mcp", { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${token}` }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "ask_noor", arguments: { message: "hi" } } }) }));
     const j = (await res.json()) as { result: { content: { text: string }[]; isError?: boolean } };
     expect(j.result.content[0].text).toBe(fairUseText());
@@ -157,10 +159,10 @@ describe("the stop, before any provider call (rules 1722-1725)", () => {
   });
   it("generateBatch refuses with fair_use before the classifier, the charge and the model", async () => {
     const u = await paused();
-    await saveBrand(u.email, { name: "Rose", website: "", industry: "coffee", dialect: "saudi", languages: ["ar"], tone: "warm", products: "coffee", audience: "Riyadh", offers: "", competitors: "", banned: "", preferred: "", channels: ["instagram"], city: "Riyadh", updatedAt: new Date().toISOString() });
+    await saveBrand(acct(u), { name: "Rose", website: "", industry: "coffee", dialect: "saudi", languages: ["ar"], tone: "warm", products: "coffee", audience: "Riyadh", offers: "", competitors: "", banned: "", preferred: "", channels: ["instagram"], city: "Riyadh", updatedAt: new Date().toISOString() });
     const r = await generateBatch(u, sc(u), { type: "social", source: "manual", via: "app" });
     expect(r).toMatchObject({ ok: false, reason: "fair_use", resumes: resumesOn(monthKey()) });
-    expect((await getUser(u.email))!.credits).toBe(300);
+    expect((await getUser(acct(u)))!.credits).toBe(300);
     expect(h.calls).toBe(0);
   });
   it("image and video renders refuse 402 fair_use, the free placeholder card included", async () => {
@@ -172,7 +174,7 @@ describe("the stop, before any provider call (rules 1722-1725)", () => {
   });
   it("the trial is not gated twice: a trial account past any cost is not refused by the stop", async () => {
     const u = await account("trial");
-    await spend(u.email, monthKey(), 5000);
+    await spend(acct(u), monthKey(), 5000);
     expect(await fairUseGate(u)).toBeNull();
   });
 });
@@ -185,8 +187,9 @@ describe("the founder (rules 1729-1731, 1733)", () => {
     const month = monthKey();
     expect(await fairUseGate(u, month)).toMatchObject({ error: "fair_use", month });
     expect(await fairUseGate(u, month)).not.toBeNull();
-    const items = (await listNotifs(founder.email)).filter((n) => n.href.endsWith("/admin/usage#margin"));
+    const items = (await listNotifs(acct(founder))).filter((n) => n.href.endsWith("/admin/usage#margin"));
     expect(items).toHaveLength(1);
+    expect(JSON.stringify(items[0])).not.toContain(acct(u));
     expect(JSON.stringify(items[0])).not.toContain(u.email);
     expect(await db.get(fairUseAlertedKey(month, u.email))).toBeTruthy();
     expect(fairUseAlertedKey(month, u.email)).not.toContain(u.email);
@@ -211,14 +214,14 @@ describe("the founder (rules 1729-1731, 1733)", () => {
     expect(lift.status).toBe(200);
     expect(lift.headers.get("cache-control")).toBe("no-store");
     expect((await lift.json()).fairUse).toMatchObject({ email: u.email, month: monthKey(), lifted: true, paused: false });
-    const after = (await getUser(u.email))!;
+    const after = (await getUser(acct(u)))!;
     expect(after.fairUseLift?.month).toBe(monthKey());
     expect(await fairUseGate(after)).toBeNull();
     const row = JSON.parse((await db.lrange("admin:log", 0, 0))[0]) as { action: string; target: string; reason: string };
     expect(row).toMatchObject({ action: "fair_use_lift", target: u.email, reason: "goodwill" });
 
     expect((await call({ email: u.email, action: "clear", reason: "back to normal" })).status).toBe(200);
-    const cleared = (await getUser(u.email))!;
+    const cleared = (await getUser(acct(u)))!;
     expect(cleared.fairUseLift).toBeUndefined();
     expect(await fairUseGate(cleared)).not.toBeNull();
     expect(JSON.parse((await db.lrange("admin:log", 0, 0))[0]).action).toBe("fair_use_clear");

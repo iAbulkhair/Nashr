@@ -125,10 +125,22 @@ export type PersonRowValue = z.output<typeof PersonRow>;
 export const MembershipRow = z.looseObject({
   aid: z.string().min(1),
   pid: z.string().min(1),
-  role: z.enum(["admin", "member"]),
+  // Customer roles M3 (rules 3750-3752, expand): "viewer" is new, and "editor" is read as "member", the stored name of
+  // the Editor role until the contract release writes "editor". A build before M3 parses neither, so a viewer row reads
+  // there as "no membership" (signed out, never a wider role).
+  role: z.enum(["admin", "member", "editor", "viewer"]).transform((r) => (r === "editor" ? ("member" as const) : r)),
   acceptedAt: z.string().min(1),
   invitedBy: z.string().catch(""),
   disabled: z.literal("seats").optional(),
+  /**
+   * Rule 3756: the brand ids of this account the person may act in; absent = every brand. A malformed value reads as an
+   * empty list (no brand at all), never as "every brand".
+   */
+  brands: z.array(z.string().min(1).max(64)).max(200).optional().catch([]),
+  /** Rule 3760: the owner or an admin turned approving on for this editor or viewer. Anything but `true` is off. */
+  approves: z.literal(true).optional().catch(undefined),
+  /** Rule 3770: the owner's monthly credit cap for this person. A malformed value reads as 0 (no spend), never as no cap. */
+  creditCap: z.number().int().min(0).max(10_000_000).optional().catch(0),
 });
 export type MembershipValue = z.output<typeof MembershipRow>;
 
@@ -145,6 +157,8 @@ export const TEAM_LOG_KINDS = [
   "ownership_offered",
   "ownership_transferred",
   "workspace_created",
+  // Customer roles M3 (rule 3763): brand scope, the approve toggle or the credit cap of a membership changed.
+  "access_changed",
   // Expand (rule 3554, 2026-10-23): Thakeen support renamed the workspace from the console. Code from before this release
   // skips a row it cannot parse (`readTeamLog`), so the new kind is safe to write while older code still runs.
   "workspace_renamed",
@@ -160,7 +174,7 @@ export const TeamLogRow = z.looseObject({
   actor: z.looseObject({ pid: z.string(), email: z.string() }),
   target: z.looseObject({ pid: z.string().optional(), email: z.string() }),
   /** The role the event gave or concerned (`TeamRole`). Tightened in multi-workspace M1 (2026-10-19): nothing read the log before it. */
-  role: z.enum(["admin", "member"]).optional(),
+  role: z.enum(["admin", "member", "editor", "viewer"]).transform((r) => (r === "editor" ? ("member" as const) : r)).optional(),
   via: z.enum(["web", "console", "system"]),
 });
 export type TeamLogRowValue = z.output<typeof TeamLogRow>;

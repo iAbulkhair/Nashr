@@ -1,6 +1,7 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { jar, json, newUser, signIn } from "./helpers/session";
+import { acct, sc } from "@/lib/auth";
 import { fakeComposio, ok, type Answer, type Call as ToolCall } from "./helpers/composio-fake";
 import { db } from "@/lib/db";
 import { getConnection, OAUTH_COOKIE, saveConnection, saveState, type Connection } from "@/lib/connectors/store";
@@ -80,7 +81,7 @@ const metaAdsConn = (): Connection => ({ provider: "meta_ads", connectedAt: new 
 const snapConn = (): Connection => ({ provider: "snapchat", connectedAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 25 * 60e3).toISOString(), data: { access_token: "snap-access", refresh_token: "snap-refresh" }, meta: { adAccount: SNAP_ACC, account: "Roastery Snap", currency: "SAR" } });
 async function oauth(provider: string, tag: string) {
   const u = await newUser(tag);
-  await saveState(`s-${tag}`, { email: u.email, provider, lang: "en", shop: "", verifier: "" });
+  await saveState(`s-${tag}`, { email: sc(u), provider, lang: "en", shop: "", verifier: "" });
   await signIn(u.email);
   jar().set(OAUTH_COOKIE, `s-${tag}`);
   const res = await callback.GET(new Request(`https://app.test/api/connect/${provider}/callback?state=s-${tag}&code=c`), ctx(provider));
@@ -103,7 +104,7 @@ describe("connecting ad accounts (rule 87)", () => {
     fake();
     const { u, q } = await oauth("meta_ads", "metaads");
     expect(q.get("connected")).toBe("meta_ads");
-    const c = (await getConnection(u.email, "meta_ads"))!;
+    const c = (await getConnection(sc(u), "meta_ads"))!;
     expect(c.data).toEqual({ access_token: "long-ads" });
     expect(c.meta).toMatchObject({ adAccount: "act_111", account: "Roastery Ads", currency: "SAR" });
     expect(JSON.parse(c.meta!.adAccounts).map((a: { id: string }) => a.id)).toEqual(["act_111", "act_333"]);
@@ -116,7 +117,7 @@ describe("connecting ad accounts (rule 87)", () => {
     fake();
     const { u, q } = await oauth("snapchat", "snapads");
     expect(q.get("connected")).toBe("snapchat");
-    const c = (await getConnection(u.email, "snapchat"))!;
+    const c = (await getConnection(sc(u), "snapchat"))!;
     expect(c.data).toMatchObject({ access_token: "snap-access", refresh_token: "snap-refresh" });
     expect(c.meta).toMatchObject({ adAccount: SNAP_ACC, account: "Roastery Snap" });
   });
@@ -125,16 +126,16 @@ describe("connecting ad accounts (rule 87)", () => {
     fake({ noAccounts: true });
     const { u, q } = await oauth("meta_ads", "metanone");
     expect(q.get("error")).toBe("no_ad_account");
-    expect(await getConnection(u.email, "meta_ads")).toBeNull();
+    expect(await getConnection(sc(u), "meta_ads")).toBeNull();
   });
 
   it("switches only to an ad account the platform listed", async () => {
     const u = await newUser("adsel");
-    await saveConnection(u.email, metaAdsConn());
+    await saveConnection(sc(u), metaAdsConn());
     await signIn(u.email);
     expect((await act("meta_ads", { action: "select_ad_account", accountId: "act_999" })).status).toBe(400);
     expect((await act("meta_ads", { action: "select_ad_account", accountId: "act_333" })).status).toBe(200);
-    expect((await getConnection(u.email, "meta_ads"))!.meta).toMatchObject({ adAccount: "act_333", currency: "AED" });
+    expect((await getConnection(sc(u), "meta_ads"))!.meta).toMatchObject({ adAccount: "act_333", currency: "AED" });
   });
 });
 
@@ -142,16 +143,16 @@ describe("reading results (rule 88)", () => {
   it("Meta: pages through insights, counts omni purchases once, reads the ad copy, and lands in Noor's memory, free", async () => {
     fake();
     const u = await newUser("metasync");
-    await saveConnection(u.email, metaAdsConn());
+    await saveConnection(sc(u), metaAdsConn());
     await signIn(u.email);
     const credits = u.credits;
     const res = await act("meta_ads", { action: "sync_ads" });
     expect(res.status).toBe(200);
-    const snap = (await getPerf(u.email))!;
+    const snap = (await getPerf(sc(u)))!;
     expect(snap).toMatchObject({ source: "meta_ads", platform: "Meta Ads", rows: 10 });
     expect(snap.totals.conversions).toBe(META_ADS.reduce((s, a) => s + Number(a.actions[0].value), 0)); // omni only, never the pixel's double count
     expect(snap.findings.some((f) => f.kind === "pattern" && /offer/.test(f.text.en))).toBe(true);
-    expect((await readFile(u.email, "performance-learnings.md"))!.content).toContain("Meta Ads");
+    expect((await readFile(sc(u), "performance-learnings.md"))!.content).toContain("Meta Ads");
     // Two pages for the window, and the same reader again for the 30 days before it (rule 733), which this fake answers
     // with the same two pages; Noor's analysis above holds the window's 10 ads only.
     const insights = calls.filter((k) => k.url.includes("/insights"));
@@ -161,26 +162,26 @@ describe("reading results (rule 88)", () => {
     expect(new URL(insights[0].url).searchParams.get("level")).toBe("ad");
     // The ad copy is read once, for the window: the previous read keeps totals only (totalsOnly).
     expect(calls.filter((k) => new URL(k.url).searchParams.has("ids"))).toHaveLength(1);
-    expect((await (await import("@/lib/auth")).getUser(u.email))!.credits).toBe(credits);
+    expect((await (await import("@/lib/auth")).getUser(acct(u)))!.credits).toBe(credits);
   });
 
   it("Meta: never follows a paging link off the Graph host", async () => {
     fake({ evilNext: true });
     const u = await newUser("metaevil");
-    await saveConnection(u.email, metaAdsConn());
+    await saveConnection(sc(u), metaAdsConn());
     await signIn(u.email);
     expect((await act("meta_ads", { action: "sync_ads" })).status).toBe(200);
     expect(calls.some((k) => k.url.includes("evil.example"))).toBe(false);
-    expect((await getPerf(u.email))!.rows).toBe(5);
+    expect((await getPerf(sc(u)))!.rows).toBe(5);
   });
 
   it("Snapchat: converts micro-currency, names ads, and asks for one total broken down by ad", async () => {
     fake();
     const u = await newUser("snapsync");
-    await saveConnection(u.email, snapConn());
+    await saveConnection(sc(u), snapConn());
     await signIn(u.email);
     expect((await act("snapchat", { action: "sync_ads" })).status).toBe(200);
-    const snap = (await getPerf(u.email))!;
+    const snap = (await getPerf(sc(u)))!;
     expect(snap.totals).toMatchObject({ spend: 290, revenue: 1890, conversions: 13, impressions: 21000, clicks: 570 });
     expect(snap.top[0].name).toBe("عرض الجمعة");
     const stats = new URL(calls.find((k) => k.url.includes("/stats"))!.url);
@@ -194,17 +195,17 @@ describe("reading results (rule 88)", () => {
   it("a revoked token asks the owner to reconnect instead of showing a raw error", async () => {
     fake({ revoked: true });
     const u = await newUser("adrevoked");
-    await saveConnection(u.email, metaAdsConn());
+    await saveConnection(sc(u), metaAdsConn());
     await signIn(u.email);
     const res = await act("meta_ads", { action: "sync_ads" });
     expect((await res.json()).error).toBe("reconnect_required");
-    expect((await getConnection(u.email, "meta_ads"))!.needsReconnect).toBeTruthy();
+    expect((await getConnection(sc(u), "meta_ads"))!.needsReconnect).toBeTruthy();
   });
 
   it("six ad refreshes an hour per workspace, every ad platform together; the seventh asks no platform (735)", async () => {
     fake();
     const u = await newUser("adsyncrate");
-    await Promise.all([saveConnection(u.email, metaAdsConn()), saveConnection(u.email, snapConn())]);
+    await Promise.all([saveConnection(sc(u), metaAdsConn()), saveConnection(sc(u), snapConn())]);
     await signIn(u.email);
     for (let i = 1; i <= 5; i++) expect((await act("meta_ads", { action: "sync_ads" })).status, `click ${i}`).toBe(200);
     expect((await act("snapchat", { action: "sync_ads" })).status, "click 6, another platform").toBe(200);
@@ -221,10 +222,10 @@ describe("reading results (rule 88)", () => {
   it("the daily job reads a connected account once a day and never more", async () => {
     fake();
     const u = await newUser("addaily");
-    await saveConnection(u.email, metaAdsConn());
-    expect(await syncAdsIfDue(u.email)).toBe("meta_ads");
-    expect(await syncAdsIfDue(u.email)).toBeNull();
-    expect((await getPerf(u.email))!.source).toBe("meta_ads");
+    await saveConnection(sc(u), metaAdsConn());
+    expect(await syncAdsIfDue(sc(u))).toBe("meta_ads");
+    expect(await syncAdsIfDue(sc(u))).toBeNull();
+    expect((await getPerf(sc(u)))!.source).toBe("meta_ads");
   });
 });
 
@@ -342,13 +343,13 @@ describe("LinkedIn Ads through Composio (rule 743)", () => {
     expect(JSON.parse(c.meta!.adAccounts).map((a: { id: string }) => a.id)).toEqual(["5001", "5003"]);
 
     const u = await newUser("liadsel");
-    await saveConnection(u.email, c);
+    await saveConnection(sc(u), c);
     await signIn(u.email);
     expect((await act("linkedin_ads", { action: "select_ad_account", accountId: "5002" })).status).toBe(400);
     expect((await act("linkedin_ads", { action: "select_ad_account", accountId: "urn:li:sponsoredAccount:5003" })).status).toBe(400);
-    expect((await getConnection(u.email, "linkedin_ads"))!.meta).toMatchObject({ adAccount: "5001" });
+    expect((await getConnection(sc(u), "linkedin_ads"))!.meta).toMatchObject({ adAccount: "5001" });
     expect((await act("linkedin_ads", { action: "select_ad_account", accountId: "5003" })).status).toBe(200);
-    expect((await getConnection(u.email, "linkedin_ads"))!.meta).toMatchObject({ adAccount: "5003", account: "Second brand", currency: "AED" });
+    expect((await getConnection(sc(u), "linkedin_ads"))!.meta).toMatchObject({ adAccount: "5003", account: "Second brand", currency: "AED" });
 
     // A login with no active ad account is refused rather than saved.
     answers.LINKEDIN_ADS_SEARCH_AD_ACCOUNTS = ok({ elements: [{ id: 5002, name: "Old brand", status: "CANCELED" }] });
@@ -359,7 +360,7 @@ describe("LinkedIn Ads through Composio (rule 743)", () => {
     answers.LINKEDIN_ADS_GET_AD_ANALYTICS = (a) => ok((a.dateRange as { start: { month: number } }).start.month === 9 ? CUR : PREV);
     answers.LINKEDIN_ADS_SEARCH_CAMPAIGNS = ok(CAMPAIGNS);
     const u = await newUser("liadsync");
-    const snap = await syncAds(u.email, "linkedin_ads", liConn(), NOW);
+    const snap = await syncAds(sc(u), "linkedin_ads", liConn(), NOW);
     expect(snap).toMatchObject({ source: "linkedin_ads", platform: "LinkedIn Ads", rows: 2 });
     // The previous read is the same constant call over the 30 days before the window, totals only: no second names call.
     const analytics = tc.filter((c) => c.slug === "LINKEDIN_ADS_GET_AD_ANALYTICS");
@@ -369,25 +370,25 @@ describe("LinkedIn Ads through Composio (rule 743)", () => {
     ]));
     expect(analytics).toHaveLength(2);
     expect(tc.filter((c) => c.slug === "LINKEDIN_ADS_SEARCH_CAMPAIGNS")).toHaveLength(1);
-    const st = (await db.get<AdStats>(ADSTATS_KEY(u.email, "linkedin_ads")))!;
+    const st = (await db.get<AdStats>(ADSTATS_KEY(sc(u), "linkedin_ads")))!;
     expect(st).toMatchObject({ provider: "linkedin_ads", account: "Ward Ads", currency: "SAR", range: { from: "2026-09-08", to: "2026-10-07" }, spend: 570.5, impressions: 17000, clicks: 340, conversions: 10, revenue: null });
     expect(st.top[0]).toEqual({ name: "عرض الخريف الجديد", spend: 450.5, clicks: 300, conversions: 9 });
     expect(st.prev).toEqual({ range: { from: "2026-08-09", to: "2026-09-07" }, spend: 300, impressions: 8000, clicks: 150, conversions: 4, revenue: null });
-    expect(await db.get(`adsync:${u.email}:linkedin_ads`)).toBe(NOW.toISOString());
+    expect(await db.get(`adsync:${sc(u)}:linkedin_ads`)).toBe(NOW.toISOString());
   });
 
   it("no previous period when the 30 days before delivered nothing or failed (733)", async () => {
     answers.LINKEDIN_ADS_GET_AD_ANALYTICS = (a) => (a.dateRange as { start: { month: number } }).start.month === 9 ? ok(CUR) : ok({ elements: [] });
     answers.LINKEDIN_ADS_SEARCH_CAMPAIGNS = ok(CAMPAIGNS);
     const u = await newUser("liadnoprev");
-    await syncAds(u.email, "linkedin_ads", liConn(), NOW);
-    expect((await db.get<AdStats>(ADSTATS_KEY(u.email, "linkedin_ads")))!.prev).toBeUndefined();
+    await syncAds(sc(u), "linkedin_ads", liConn(), NOW);
+    expect((await db.get<AdStats>(ADSTATS_KEY(sc(u), "linkedin_ads")))!.prev).toBeUndefined();
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const err = vi.spyOn(console, "error").mockImplementation(() => {});
     try {
       answers.LINKEDIN_ADS_GET_AD_ANALYTICS = (a) => (a.dateRange as { start: { month: number } }).start.month === 9 ? ok(CUR) : { successful: false, error: "server error" };
-      await syncAds(u.email, "linkedin_ads", liConn(), NOW);
-      expect((await db.get<AdStats>(ADSTATS_KEY(u.email, "linkedin_ads")))!.prev).toBeUndefined();
+      await syncAds(sc(u), "linkedin_ads", liConn(), NOW);
+      expect((await db.get<AdStats>(ADSTATS_KEY(sc(u), "linkedin_ads")))!.prev).toBeUndefined();
       expect(warn).toHaveBeenCalledWith("ad_prev_failed", { provider: "linkedin_ads", error: "linkedin_ads 502 ads_get_ad_analytics" });
     } finally { warn.mockRestore(); err.mockRestore(); }
   });

@@ -23,7 +23,7 @@ export const WORKSPACE_EDIT_COPY = {
     inviteRole: "Role",
     inviteLang: "Email language",
     langs: { ar: "Arabic", en: "English" },
-    roleOptions: { member: "Member", admin: "Admin" },
+    roleOptions: { member: "Editor", viewer: "Viewer", admin: "Admin" },
     remove: "Remove",
     removeTitle: "Remove this member?",
     removeMessage: "They lose access to this workspace at once and their seat is freed. Their own login and other workspaces are untouched. This cannot be undone; they can be invited again.",
@@ -49,7 +49,7 @@ export const WORKSPACE_EDIT_COPY = {
       workspace_changed: "This address now opens another workspace. Reload the tab before changing anything.",
       unchanged: "That is already the workspace's name.",
       owner_protected: "The owner cannot be removed. Ownership moves only through the customer's own transfer.",
-      invalid_role: "Pick member or admin.",
+      invalid_role: "Pick editor, viewer or admin.",
       invalid_email: "Write one valid email address.",
       slow_down: "Too many changes for now. Try again later.",
       audit_failed: "The audit log could not be written, so the change was not kept (or, for a removal, was kept and flagged). Check the log.",
@@ -72,7 +72,7 @@ export const WORKSPACE_EDIT_COPY = {
     inviteRole: "الدور",
     inviteLang: "لغة البريد",
     langs: { ar: "العربية", en: "الإنجليزية" },
-    roleOptions: { member: "عضو", admin: "مدير" },
+    roleOptions: { member: "محرر", viewer: "مشاهد", admin: "مدير" },
     remove: "إزالة",
     removeTitle: "إزالة هذا العضو؟",
     removeMessage: "يفقد الوصول إلى مساحة العمل فوراً ويتحرر مقعده. حسابه ومساحاته الأخرى لا تتغير. لا يمكن التراجع عن هذا، ويمكن دعوته من جديد.",
@@ -98,7 +98,7 @@ export const WORKSPACE_EDIT_COPY = {
       workspace_changed: "هذا العنوان يفتح الآن مساحة عمل أخرى. أعد تحميل التبويب قبل أي تعديل.",
       unchanged: "هذا هو اسم مساحة العمل الحالي.",
       owner_protected: "ما يمكن إزالة المالك. الملكية تنتقل فقط بنقل الملكية من العميل نفسه.",
-      invalid_role: "اختر عضو أو مدير.",
+      invalid_role: "اختر محرر أو مشاهد أو مدير.",
       invalid_email: "اكتب عنوان بريد صحيحاً واحداً.",
       slow_down: "تعديلات كثيرة الآن. حاول لاحقاً.",
       audit_failed: "ما انكتب سجل التدقيق، فلم يُحفظ التعديل (أو حُفظ وعُلّم إن كان إزالة). راجع السجل.",
@@ -176,13 +176,13 @@ export function useWorkspaceEdit({ lang, email, owner, onDone }: { lang: "ar" | 
       title: C.inviteTitle, subject: owner, message: C.inviteMessage, submitLabel: C.invite,
       fields: [
         { name: "email", label: C.inviteEmail, ltr: true, maxLength: 254 },
-        { name: "role", label: C.inviteRole, kind: "select", initial: "member", options: [{ value: "member", label: C.roleOptions.member }, { value: "admin", label: C.roleOptions.admin }] },
+        { name: "role", label: C.inviteRole, kind: "select", initial: "member", options: [{ value: "member", label: C.roleOptions.member }, { value: "viewer", label: C.roleOptions.viewer }, { value: "admin", label: C.roleOptions.admin }] },
         { name: "lang", label: C.inviteLang, kind: "select", initial: lang, options: [{ value: "ar", label: C.langs.ar }, { value: "en", label: C.langs.en }] },
       ],
       parse: (f) => {
         const e = emailField(f.email ?? "");
         if (!e.ok) return e;
-        return { ok: true, value: { email: e.value, role: f.role === "admin" ? "admin" : "member", lang: f.lang === "en" ? "en" : "ar" } };
+        return { ok: true, value: { email: e.value, role: f.role === "admin" || f.role === "viewer" ? f.role : "member", lang: f.lang === "en" ? "en" : "ar" } };
       },
     });
     if (v) await send({ action: "invite", email: v.email, role: v.role, lang: v.lang }, v.reason);

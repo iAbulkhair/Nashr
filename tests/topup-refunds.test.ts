@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import type { ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { adminSignIn, jar, json, newMember, newUser, params, signIn } from "./helpers/session";
-import { getUser, saveUser, type Plan } from "@/lib/auth";
+import { acct, getUser, saveUser, type Plan } from "@/lib/auth";
 import { addTopup, charge, monthKey, refund, type AgentCharge } from "@/lib/credits";
 import { db } from "@/lib/db";
 import { PARTNER_TERMS_VERSION, commissionAfterRefund, commissionSar, ksaDay, type LedgerRow } from "@/lib/partner-rules";
@@ -47,13 +47,15 @@ const day = (offsetDays = 0) => ksaDay(Date.now() + offsetDays * DAY);
 const payId = () => `pay_${randomBytes(9).toString("hex")}`;
 const rfId = () => `rf_${randomBytes(9).toString("hex")}`;
 const ok = (r: AgentCharge) => { if (!r.ok) throw new Error(r.reason); return r; };
-const meta = (email: string) => ({ scope: email, agent: "noor" as const });
+const meta = (id: string) => ({ scope: id, agent: "noor" as const });
 
-/** An owner on a paid plan whose month's plan credits are `monthly` (renewed this month, so no renewal is due). */
+/** The owner's sign-in address of an account id: what the console and the admin routes name an account by. */
+const addr = async (id: string) => (await getUser(id))!.email;
+/** An owner (the account id) on a paid plan whose month's plan credits are `monthly` (renewed this month, so no renewal is due). */
 async function paid(monthly = 0, plan: Plan = "starter"): Promise<string> {
   const u = await newUser("trf");
-  await saveUser({ ...(await getUser(u.email))!, plan, credits: monthly, renewedAt: monthKey() });
-  return u.email;
+  await saveUser({ ...(await getUser(acct(u)))!, plan, credits: monthly, renewedAt: monthKey() });
+  return acct(u);
 }
 /** An approved partner, and a paying customer with no plan credits left, attributed to it `daysAgo` days ago. */
 async function referred(daysAgo = 2): Promise<{ customer: string; partner: string }> {
@@ -67,13 +69,13 @@ async function referred(daysAgo = 2): Promise<{ customer: string; partner: strin
   return { customer, partner: p.email };
 }
 /** A pack added the way the console adds it, with its payment. */
-async function pack(email: string, credits = 300, paidSar = credits, extra: { paymentId?: string } = {}): Promise<TopupLot> {
-  const r = await addPaidTopup(email, { credits, paidSar, paidOn: day(), ref: "TRX-PACK", paymentId: extra.paymentId ?? payId() }, "key");
+async function pack(id: string, credits = 300, paidSar = credits, extra: { paymentId?: string } = {}): Promise<TopupLot> {
+  const r = await addPaidTopup(id, { credits, paidSar, paidOn: day(), ref: "TRX-PACK", paymentId: extra.paymentId ?? payId() }, "key");
   if (!r.ok) throw new Error(r.error);
   return r.lot;
 }
-const lotOf = async (email: string, id: string) => lotsOf((await getUser(email))!).find((l) => l.id === id);
-const payments = async (email: string) => db.hgetall<Payment>(`payments:${email}`);
+const lotOf = async (acctId: string, lotId: string) => lotsOf((await getUser(acctId))!).find((l) => l.id === lotId);
+const payments = async (id: string) => db.hgetall<Payment>(`payments:${id}`);
 const ledger = async (email: string) => Object.values(await db.hgetall<LedgerRow>(`partner:ledger:${email}`));
 const ask = (credits: number, extra: { on?: string; ref?: string; id?: string } = {}) => ({ credits, on: extra.on ?? day(), ref: extra.ref ?? "RF-SECRET-1", ...(extra.id ? { id: extra.id } : {}) });
 const post = (body: Record<string, unknown>) => topupsRoute.POST(json("/api/admin/topups", "POST", body));
@@ -92,20 +94,20 @@ describe("refunding a pack's unused credits: the amount and the ledger (rule 460
   });
 
   it("partial use: exactly the credits left leave the pack and the balance; the plan credits are untouched", async () => {
-    const email = await paid(50);
-    const l = await pack(email, 300, 250);
-    const c = ok(await charge(email, 80, meta(email)));
+    const id = await paid(50);
+    const l = await pack(id, 300, 250);
+    const c = ok(await charge(id, 80, meta(id)));
     expect(c.from, "plan credits first, then the pack").toEqual({ monthly: 50, lots: [{ id: l.id, n: 30 }] });
-    await saveUser({ ...(await getUser(email))!, credits: (await getUser(email))!.credits + 10 }); // 10 plan credits back (a bonus)
-    const r = await refundPaidTopup(email, l.id, ask(270), "key");
+    await saveUser({ ...(await getUser(id))!, credits: (await getUser(id))!.credits + 10 }); // 10 plan credits back (a bonus)
+    const r = await refundPaidTopup(id, l.id, ask(270), "key");
     if (!r.ok) throw new Error(r.error);
     // 270 × 250 / 300 = 225.
     expect(r).toMatchObject({ before: 280, credits: 10, refunded: { credits: 270, sar: 225 } });
-    const u = (await getUser(email))!;
+    const u = (await getUser(id))!;
     expect([u.credits, monthlyCredits(u)]).toEqual([10, 10]);
     expect(lotsOf(u)[0]).toMatchObject({ id: l.id, left: 0, refund: { credits: 270, sar: 225, on: day(), ref: "RF-SECRET-1", by: "key" } });
     // The refunded credits are gone: a charge can spend only the 10 plan credits.
-    expect(await charge(email, 11)).toEqual({ ok: false, reason: "no_credits", credits: 10, need: 11 });
+    expect(await charge(id, 11)).toEqual({ ok: false, reason: "no_credits", credits: 10, need: 11 });
   });
 
   it("refused, with nothing changed: expired, voided, already refunded, given for nothing, nothing left, a changed balance, a day before the payment", async () => {
@@ -154,21 +156,21 @@ describe("refunding a pack's unused credits: the amount and the ledger (rule 460
   });
 
   it("a charge racing the refund never spends refunded credits: every credit is either spent or refunded, once", async () => {
-    const email = await paid(0);
-    const l = await pack(email, 300);
-    const charges = Array.from({ length: 10 }, () => charge(email, 20, meta(email)));
+    const id = await paid(0);
+    const l = await pack(id, 300);
+    const charges = Array.from({ length: 10 }, () => charge(id, 20, meta(id)));
     // The founder's console re-reads what is left and asks again when a charge landed first.
-    let r = await refundPaidTopup(email, l.id, ask(300), "key");
-    for (let i = 0; i < 20 && !r.ok && r.error === "left_changed"; i++) r = await refundPaidTopup(email, l.id, ask(r.left!), "key");
+    let r = await refundPaidTopup(id, l.id, ask(300), "key");
+    for (let i = 0; i < 20 && !r.ok && r.error === "left_changed"; i++) r = await refundPaidTopup(id, l.id, ask(r.left!), "key");
     const done = await Promise.all(charges);
     if (!r.ok) throw new Error(r.error);
     const spent = done.filter((x) => x.ok).length * 20;
     expect(spent + r.refunded.credits, "spent + refunded = the pack").toBe(300);
     expect(r.refunded.sar).toBe(r.refunded.credits);
-    const u = (await getUser(email))!;
+    const u = (await getUser(id))!;
     expect([u.credits, lotsOf(u)[0].left]).toEqual([0, 0]);
     for (const x of done) if (!x.ok) expect(x).toMatchObject({ reason: "no_credits" });
-    expect((await payments(email))[l.paymentId!].refund).toMatchObject({ credits: r.refunded.credits, sar: r.refunded.sar });
+    expect((await payments(id))[l.paymentId!].refund).toMatchObject({ credits: r.refunded.credits, sar: r.refunded.sar });
   });
 
   it("parseTopupRefund checks the credits shown, the transfer day and its reference before anything is read", () => {
@@ -184,14 +186,14 @@ describe("refunding a pack's unused credits: the amount and the ledger (rule 460
 
 describe("a failed charge's credits owed to a pack that is gone or refunded go to the plan credits (rule 461)", () => {
   it("a charge taken from a pack before its refund, refunded after it, comes back as plan credits", async () => {
-    const email = await paid(0);
-    const l = await pack(email, 100);
-    const c = ok(await charge(email, 40, meta(email)));
+    const id = await paid(0);
+    const l = await pack(id, 100);
+    const c = ok(await charge(id, 40, meta(id)));
     expect(c.from).toEqual({ monthly: 0, lots: [{ id: l.id, n: 40 }] });
-    const r = await refundPaidTopup(email, l.id, ask(60), "key");
+    const r = await refundPaidTopup(id, l.id, ask(60), "key");
     expect(r.ok && r.refunded).toEqual({ credits: 60, sar: 60 });
-    await refund(email, 40, c);
-    const u = (await getUser(email))!;
+    await refund(id, 40, c);
+    const u = (await getUser(id))!;
     expect([u.credits, monthlyCredits(u), lotsOf(u)[0].left], "the refunded pack takes nothing back").toEqual([40, 40, 0]);
   });
 
@@ -209,12 +211,12 @@ describe("a failed charge's credits owed to a pack that is gone or refunded go t
   });
 
   it("settleTopups keeps a refunded pack empty whatever its stored left says", async () => {
-    const email = await paid(5);
-    const l = await pack(email, 100);
-    expect((await refundPaidTopup(email, l.id, ask(100), "key")).ok).toBe(true);
-    const u = (await getUser(email))!;
+    const id = await paid(5);
+    const l = await pack(id, 100);
+    expect((await refundPaidTopup(id, l.id, ask(100), "key")).ok).toBe(true);
+    const u = (await getUser(id))!;
     await saveUser({ ...u, credits: 105, topups: u.topups!.map((x) => ({ ...x, left: 100 })) });
-    const v = (await getUser(email))!;
+    const v = (await getUser(id))!;
     expect([v.credits, lotsOf(v)[0].left, monthlyCredits(v)]).toEqual([105, 0, 105]);
   });
 });
@@ -265,10 +267,10 @@ describe("the refund is recorded on the pack's payment and the commission drops 
   it("top-up revenue counts what was kept: the amount paid less the refund, in the payment's month", async () => {
     const m = (paidSar: number, refund?: number): { topups: TopupLot[] } => ({ topups: [{ id: String(paidSar), credits: 300, left: 0, at: "", expiresAt: "", paidSar, paidOn: "2026-10-05", ref: "", by: "key", ...(refund !== undefined ? { refund: { credits: 1, sar: refund, on: "2026-10-06", ref: "", at: "", by: "key" } } : {}) }] });
     expect(topupRevenueSar([m(300, 120), m(100.1), m(50, 50)], "2026-10")).toBe(280.1);
-    const email = await paid(0, "pro");
+    const id = await paid(0, "pro");
     const before = (await overview()).revenue.topupSarMonth;
-    const l = await pack(email, 300, 250);
-    expect((await refundPaidTopup(email, l.id, ask(300), "key")).ok).toBe(true);
+    const l = await pack(id, 300, 250);
+    expect((await refundPaidTopup(id, l.id, ask(300), "key")).ok).toBe(true);
     const after = (await overview()).revenue.topupSarMonth;
     expect(Math.round((after - before) * 100) / 100, "a full refund leaves nothing").toBe(0);
   });
@@ -279,9 +281,9 @@ describe("POST /api/admin/topups refund: founder only, checked, logged without r
   beforeEach(async () => { jar().clear(); await adminSignIn(); });
 
   it("founder only, and every field is checked before anything is read or written", async () => {
-    const email = await paid(0);
-    const l = await pack(email, 300);
-    const good = { email, action: "refund", id: l.id, credits: 300, on: day(), ref: "RF-1" };
+    const id = await paid(0);
+    const l = await pack(id, 300);
+    const good = { email: await addr(id), action: "refund", id: l.id, credits: 300, on: day(), ref: "RF-1" };
     const logged = (await db.lrange("admin:log", 0, -1)).length;
     jar().clear();
     expect((await post(good)).status).toBe(401);
@@ -304,8 +306,8 @@ describe("POST /api/admin/topups refund: founder only, checked, logged without r
       expect(res.status, JSON.stringify(body)).toBe(status);
       expect(((await res.json()) as { error: string }).error, JSON.stringify(body)).toBe(error);
     }
-    expect((await lotOf(email, l.id))!).toMatchObject({ left: 300 });
-    expect((await lotOf(email, l.id))!.refund).toBeUndefined();
+    expect((await lotOf(id, l.id))!).toMatchObject({ left: 300 });
+    expect((await lotOf(id, l.id))!.refund).toBeUndefined();
     expect((await db.lrange("admin:log", 0, -1)).length, "a refused request is not logged").toBe(logged);
   });
 
@@ -314,12 +316,12 @@ describe("POST /api/admin/topups refund: founder only, checked, logged without r
     const l = await pack(customer, 300);
     ok(await charge(customer, 180, meta(customer)));
     const refundId = rfId();
-    const body = { email: customer, action: "refund", id: l.id, credits: 120, on: day(), ref: "RF-SECRET-55", refundId, reason: "customer asked on WhatsApp" };
+    const body = { email: await addr(customer), action: "refund", id: l.id, credits: 120, on: day(), ref: "RF-SECRET-55", refundId, reason: "customer asked on WhatsApp" };
     const res = await post(body);
     expect(res.status).toBe(200);
     expect(await res.json()).toMatchObject({ ok: true, credits: 0, topupCredits: 0, refunded: { credits: 120, sar: 120 }, already: false, payment: { commission: { sar: 27 } } });
     const log = JSON.parse((await db.lrange("admin:log", 0, 0))[0]) as Record<string, unknown>;
-    expect(log).toMatchObject({ actor: "key", email: customer, what: `topup_refund:300 removed:120 sar:120 payment:${l.paymentId} commission:45->27`, before: { credits: 120 }, after: { credits: 0 }, refund: { credits: 120, sar: 120, on: day() }, reason: "customer asked on WhatsApp" });
+    expect(log).toMatchObject({ actor: "key", email: await addr(customer), what: `topup_refund:300 removed:120 sar:120 payment:${l.paymentId} commission:45->27`, before: { credits: 120 }, after: { credits: 0 }, refund: { credits: 120, sar: 120, on: day() }, reason: "customer asked on WhatsApp" });
     for (const secret of ["RF-SECRET-55", "TRX-PACK"]) expect(JSON.stringify(log), secret).not.toContain(secret);
 
     const logged = (await db.lrange("admin:log", 0, -1)).length;
@@ -337,12 +339,12 @@ describe("POST /api/admin/topups refund: founder only, checked, logged without r
     const la = await pack(a, 100);
     const ua = (await getUser(a))!;
     await saveUser({ ...ua, topups: ua.topups!.map((l) => ({ ...l, expiresAt: new Date(Date.now() - DAY).toISOString() })) });
-    const expired = await post({ email: a, action: "refund", id: la.id, credits: 100, on: day(), ref: "RF" });
+    const expired = await post({ email: await addr(a), action: "refund", id: la.id, credits: 100, on: day(), ref: "RF" });
     expect([expired.status, ((await expired.json()) as { error: string }).error]).toEqual([409, "topup_expired"]);
     const b = await paid(0);
     const lb = await pack(b, 100);
-    expect((await post({ email: b, action: "void", id: lb.id })).status).toBe(200);
-    const voided = await post({ email: b, action: "refund", id: lb.id, credits: 100, on: day(), ref: "RF" });
+    expect((await post({ email: await addr(b), action: "void", id: lb.id })).status).toBe(200);
+    const voided = await post({ email: await addr(b), action: "refund", id: lb.id, credits: 100, on: day(), ref: "RF" });
     expect([voided.status, ((await voided.json()) as { error: string }).error]).toEqual([409, "topup_voided"]);
 
     // The credits left (saved first), the payment not marked yet: the request died in between.
@@ -353,7 +355,7 @@ describe("POST /api/admin/topups refund: founder only, checked, logged without r
     expect(half.ok).toBe(true);
     await saveUser(u);
     expect((await payments(customer))[lc.paymentId!].refund).toBeUndefined();
-    const finish = await post({ email: customer, action: "refund", id: lc.id, credits: 300, on: day(), ref: "RF-HALF" });
+    const finish = await post({ email: await addr(customer), action: "refund", id: lc.id, credits: 300, on: day(), ref: "RF-HALF" });
     expect(finish.status).toBe(200);
     expect(await finish.json()).toMatchObject({ ok: true, completed: true, refunded: { credits: 300, sar: 300 }, payment: { notCounted: "refunded", refund: { credits: 300, sar: 300, reference: "RF-HALF" } } });
     expect((await getUser(customer))!.credits, "nothing left twice").toBe(0);
@@ -386,11 +388,11 @@ describe("the owner is told unused top-up credits can be refunded; a refunded pa
   const AR = "يمكن استرداد كريدت باقات الشحن غير المستخدم عند الطلب قبل انتهاء صلاحيته.";
 
   it("the billing page's top-up card says it in both languages, to the owner, a member and a trial", async () => {
-    const email = await paid(300);
-    await signIn(email);
+    const id = await paid(300);
+    await signIn(await addr(id));
     expect(await billing("en")).toContain(EN);
     expect(await billing("ar")).toContain(AR);
-    const m = await newMember((await getUser(email))!, "admin");
+    const m = await newMember((await getUser(id))!, "admin");
     await signIn(m.email);
     expect(await billing("en")).toContain(EN);
     const t = await newUser("trftrial");
@@ -404,31 +406,31 @@ describe("the owner is told unused top-up credits can be refunded; a refunded pa
     expect(terms("ar")).toContain("إلا أن كريدت باقات الشحن غير المستخدم يمكن استرداده عند الطلب قبل انتهاء صلاحيته");
     // Moved again on 2026-10-13 by the fair-use sentence (rule 1736, tests/fair-use.test.ts).
     expect(LEGAL.en.terms.updated).toBe("Last updated: 2026-10-13");
-    // The privacy policy changed on its own since, with the processor list and the export (rules 1320-1330) and the agent scope log (rule 1415), and the private media store (rule 1764).
-    expect(LEGAL.en.privacy.updated).toBe("Last updated: 2026-10-13");
+    // The privacy policy changed on its own since, with the processor list and the export (rules 1320-1330) and the agent scope log (rule 1415), the private media store (rule 1764), and Geidea for card payments (rule 3918).
+    expect(LEGAL.en.privacy.updated).toBe("Last updated: 2026-10-24");
   });
 
   it("a refunded pack is not listed on the billing page or sent by the profile; the console still shows it", async () => {
-    const email = await paid(10);
-    const kept = await pack(email, 100);
-    const gone = await pack(email, 300);
-    expect((await refundPaidTopup(email, gone.id, ask(300), "key")).ok).toBe(true);
-    expect(openLots((await getUser(email))!).map((l) => l.id)).toEqual([kept.id]);
-    await signIn(email);
+    const id = await paid(10);
+    const kept = await pack(id, 100);
+    const gone = await pack(id, 300);
+    expect((await refundPaidTopup(id, gone.id, ask(300), "key")).ok).toBe(true);
+    expect(openLots((await getUser(id))!).map((l) => l.id)).toEqual([kept.id]);
+    await signIn(await addr(id));
     const html = await billing("en");
     expect(html).toContain(`data-lot="${kept.id}"`);
     expect(html).not.toContain(`data-lot="${gone.id}"`);
     const body = (await (await profileRoute.GET()).json()) as { user: { credits: number; topups: unknown } };
     expect(body.user.credits).toBe(110);
     expect(body.user.topups).toEqual([{ credits: 100, left: 100, expiresAt: kept.expiresAt }]);
-    expect(lotsOf((await getUser(email))!).map((l) => l.id).sort(), "the founder's record keeps both").toEqual([kept.id, gone.id].sort());
+    expect(lotsOf((await getUser(id))!).map((l) => l.id).sort(), "the founder's record keeps both").toEqual([kept.id, gone.id].sort());
   });
 });
 
 describe("a refund that stopped halfway can be finished, and a pack's missing payment is recorded with its refund (rule 465)", () => {
   beforeEach(async () => { jar().clear(); await adminSignIn(); });
-  const detail = async (email: string) =>
-    (await (await adminUser.GET(json("/api/admin/users/x", "GET"), params({ email: encodeURIComponent(email) }))).json()) as { unfinishedRefunds: string[]; user: { topups: TopupLot[] } };
+  const detail = async (id: string) =>
+    (await (await adminUser.GET(json("/api/admin/users/x", "GET"), params({ email: encodeURIComponent(await addr(id)) }))).json()) as { unfinishedRefunds: string[]; user: { topups: TopupLot[] } };
   /** A referred customer's 300-credit pack, 200 credits spent, whose refund of the 100 left stopped after the credits left. */
   async function stopped(): Promise<{ customer: string; partner: string; lot: TopupLot }> {
     const { customer, partner } = await referred(1);
@@ -445,7 +447,7 @@ describe("a refund that stopped halfway can be finished, and a pack's missing pa
     expect((await payments(customer))[lot.paymentId!].commission, "the full commission before it is finished").toEqual({ partner, sar: 45 });
     expect((await detail(customer)).unfinishedRefunds, "the console is told which pack to finish").toEqual([lot.id]);
     // Exactly what the Users section's `finishRefund` posts (src/components/admin/Users.tsx).
-    const body = { email: customer, action: "refund", id: lot.id, finish: true };
+    const body = { email: await addr(customer), action: "refund", id: lot.id, finish: true };
     const res = await post(body);
     expect(res.status).toBe(200);
     expect(await res.json()).toMatchObject({ ok: true, completed: true, credits: 0, refunded: { credits: 100, sar: 100 }, payment: { commission: { sar: 30 }, refund: { credits: 100, sar: 100, reference: "RF-STOP" } } });
@@ -461,12 +463,12 @@ describe("a refund that stopped halfway can be finished, and a pack's missing pa
   });
 
   it("finish on a pack never refunded is 409 not_refunded and changes nothing; the console offers it only on an unfinished refund", async () => {
-    const email = await paid(0);
-    const l = await pack(email, 100);
-    const res = await post({ email, action: "refund", id: l.id, finish: true });
+    const id = await paid(0);
+    const l = await pack(id, 100);
+    const res = await post({ email: await addr(id), action: "refund", id: l.id, finish: true });
     expect([res.status, ((await res.json()) as { error: string }).error]).toEqual([409, "not_refunded"]);
-    expect((await lotOf(email, l.id))!).toMatchObject({ left: 100 });
-    expect((await lotOf(email, l.id))!.refund).toBeUndefined();
+    expect((await lotOf(id, l.id))!).toMatchObject({ left: 100 });
+    expect((await lotOf(id, l.id))!.refund).toBeUndefined();
     const src = adminConsoleSrc();
     expect(src).toContain('body: JSON.stringify({ email: u.email, action: "refund", id: l.id, finish: true, reason })');
     expect(src).toContain("sel.unfinishedRefunds?.includes(l.id) && ");
@@ -501,15 +503,15 @@ describe("a refund that stopped halfway can be finished, and a pack's missing pa
   });
 
   it("on an account no longer on a paid plan, a pack with a missing payment is refused (409 payment_missing) with nothing changed", async () => {
-    const email = await paid(0);
-    const added = await addTopup(email, { credits: 100, paidSar: 100, paidOn: day(), ref: "TRX", by: "key", paymentId: payId() });
+    const id = await paid(0);
+    const added = await addTopup(id, { credits: 100, paidSar: 100, paidOn: day(), ref: "TRX", by: "key", paymentId: payId() });
     expect(added.ok).toBe(true);
     const lot = (added as { lot: TopupLot }).lot;
-    await saveUser({ ...(await getUser(email))!, plan: "trial" });
-    const res = await post({ email, action: "refund", id: lot.id, credits: 100, on: day(), ref: "RF" });
+    await saveUser({ ...(await getUser(id))!, plan: "trial" });
+    const res = await post({ email: await addr(id), action: "refund", id: lot.id, credits: 100, on: day(), ref: "RF" });
     expect([res.status, ((await res.json()) as { error: string }).error]).toEqual([409, "payment_missing"]);
-    expect((await lotOf(email, lot.id))!).toMatchObject({ left: 100 });
-    expect(await payments(email)).toEqual({});
+    expect((await lotOf(id, lot.id))!).toMatchObject({ left: 100 });
+    expect(await payments(id)).toEqual({});
   });
 });
 

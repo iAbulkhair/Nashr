@@ -1,4 +1,5 @@
 import { NextResponse, after } from "next/server";
+import { forbid } from "@/lib/roles";
 import { currentUser, sc } from "@/lib/auth";
 import { getBrand, getTask } from "@/lib/brand";
 import { errCode, mediaResponse, renderImage, startThrew } from "@/lib/media/start";
@@ -14,6 +15,9 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   const deadline = deadlineFor(maxDuration);
   const u = await currentUser();
   if (!u) return NextResponse.json({ ok: false }, { status: 401 });
+  // A Viewer reads and comments only: no agent runs, no credits spent (rule 3752).
+  const no = forbid(u, "images");
+  if (no) return no;
   const { id } = await ctx.params;
   const [t, brand] = await Promise.all([getTask(sc(u), id), getBrand(sc(u))]);
   if (!t || !brand) return NextResponse.json({ ok: false, error: "not_found" }, { status: 404 });

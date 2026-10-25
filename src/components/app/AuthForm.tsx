@@ -254,8 +254,11 @@ export function LoginForm({ t, lang, google = false, passkeys = false }: { t: Ap
     // `next` outside the app (the OAuth consent page) is reached after the code instead of looping back here.
     if (p.body.verify === true) { r.push(`/${lang}/app/verify?next=${encodeURIComponent(next || appHref(lang))}`); return; }
     if (next) { window.location.href = next; return; }
-    r.push(appHref(lang));
-    r.refresh();
+    // A full load into the app, as the verify page and the workspace switcher do (rule 3828): the proxy's 307 picks the
+    // workspace and a page's own redirect (no brand file yet: the start page) keeps it. A client push into a `/w/{handle}`
+    // page, which the proxy serves by rewrite, lost the segment on that redirect, and `refresh()` then refetched the same
+    // page without end.
+    window.location.assign(appHref(lang));
   }
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -519,8 +522,8 @@ export function ResetForm({ lang }: { lang: Lang }) {
       // bad_token, weak_password, slow_down and suspended keep their own messages; disabled, network and server errors
       // get the shared ones.
       if (!succeeded(p)) return setErr(authMessage(failureCode(p), lang, { ...(S as Record<string, string>), suspended: suspendedMessage(p.body.until, lang, S.suspended) }));
-      r.push(appHref(lang));
-      r.refresh();
+      // A full load into the app, as after a sign-in (rule 3828).
+      window.location.assign(appHref(lang));
     } finally {
       setBusy(false);
     }

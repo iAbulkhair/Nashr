@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { acct } from "@/lib/account-id";
 import { readFileSync } from "node:fs";
 import { json, newUser, params, signIn } from "./helpers/session";
 import { currentUser, type User } from "@/lib/auth";
@@ -23,7 +24,7 @@ const BRAND: Brand = { name: "محمصة ريف", website: "https://reef.example
 
 async function owner(prefix: string): Promise<User> {
   const u = await newUser(prefix);
-  await saveBrand(u.email, { ...BRAND });
+  await saveBrand(acct(u), { ...BRAND });
   await signIn(u.email);
   return (await currentUser())!;
 }
@@ -56,9 +57,9 @@ describe("update_brand never writes the brand file: every field is a proposal th
       expect(proposed).toHaveLength(1);
       expect(proposed[0]).toMatchObject({ field: c.key, from: String(BRAND[c.key]), via: "chat", agent: "noor" });
       expect(actions).toEqual([`brandprop:${c.key}`]);
-      expect(await getBrand(u.email)).toEqual(BRAND);
+      expect(await getBrand(acct(u))).toEqual(BRAND);
       expect(await (await decide(proposed[0].id, "apply")).json()).toMatchObject({ ok: true, applied: true, field: c.key });
-      expect((await getBrand(u.email))![c.key]).toBe(c.after);
+      expect((await getBrand(acct(u)))![c.key]).toBe(c.after);
     });
   }
 
@@ -68,7 +69,7 @@ describe("update_brand never writes the brand file: every field is a proposal th
     expect(await runTool(u, "update_brand", { field: "dialect", value: "pirate" }, [], [], undefined, { proposed })).toMatch(/^Not saved: brand\.dialect/);
     expect(await runTool(u, "update_brand", { field: "channels", value: "x" }, [], [], undefined, { proposed })).toMatch(/^Cannot change brand/);
     expect(proposed).toEqual([]);
-    expect(await getBrand(u.email)).toEqual(BRAND);
+    expect(await getBrand(acct(u))).toEqual(BRAND);
   });
 
   it("one reply proposes at most 5 changes, so every proposal has its card", async () => {
@@ -77,7 +78,7 @@ describe("update_brand never writes the brand file: every field is a proposal th
     for (const f of ["tone", "products", "audience", "competitors", "city"] as const) expect(await runTool(u, "update_brand", { field: f, value: CHANGES[f].value }, [], [], undefined, { proposed })).toMatch(/^Not saved yet/);
     expect(await runTool(u, "update_brand", { field: "name", value: "Evil Corp" }, [], [], undefined, { proposed })).toMatch(/^Not done: this reply already carries 5/);
     expect(proposed).toHaveLength(5);
-    expect(await getBrand(u.email)).toEqual(BRAND);
+    expect(await getBrand(acct(u))).toEqual(BRAND);
   });
 
   it("the code has no brand write left in the update_brand tool", () => {
@@ -96,8 +97,8 @@ describe("over MCP update_brand is the same proposal, marked as MCP's (rule 569)
       const out = await runTool(u, "update_brand", { field, value: CHANGES[field].value }, [], [], undefined, { via: "mcp", proposed });
       expect(out).toMatch(/in the Thakeen app chat/);
       expect(proposed.map((p) => p.via)).toEqual(["mcp"]);
-      expect((await db.get<BrandProposal>(`brandprop:${u.email}:${proposed[0].id}`))!.via).toBe("mcp");
-      expect(await getBrand(u.email)).toEqual(BRAND);
+      expect((await db.get<BrandProposal>(`brandprop:${acct(u)}:${proposed[0].id}`))!.via).toBe("mcp");
+      expect(await getBrand(acct(u))).toEqual(BRAND);
     });
   }
   it("ask_noor runs its chat turn as MCP", () => {
@@ -110,48 +111,48 @@ describe("the Brand page's Save and a proposal's apply hold the brand lock (rule
 
   it("PUT /api/brand waits for the lock instead of writing over a change applied under it", async () => {
     const u = await owner("inj-lock-put");
-    const lock = `brandlock:${u.email}`;
+    const lock = `brandlock:${acct(u)}`;
     expect(await db.lock(lock, 10)).toBe(true);
     let finished = false;
     const saving = brandRoute.PUT(form({ tone: "هادئ" })).then((r) => ((finished = true), r));
     await new Promise((r) => setTimeout(r, 120));
     expect(finished, "the Save waits for the brand lock").toBe(false);
     // What an applied proposal does under the same lock: read, change a field the form does not send, save.
-    await saveBrand(u.email, { ...(await getBrand(u.email))!, city: "جدة" });
+    await saveBrand(acct(u), { ...(await getBrand(acct(u)))!, city: "جدة" });
     await db.unlock(lock);
     expect((await saving).status).toBe(200);
-    expect(await getBrand(u.email)).toMatchObject({ tone: "هادئ", city: "جدة" });
+    expect(await getBrand(acct(u))).toMatchObject({ tone: "هادئ", city: "جدة" });
   });
 
   it("a proposal applied at the same time as a Save is not lost", async () => {
     const u = await owner("inj-lock-race");
     const proposed: BrandProposal[] = [];
     await runTool(u, "update_brand", { field: "city", value: "جدة" }, [], [], undefined, { proposed });
-    const [res, applied] = await Promise.all([brandRoute.PUT(form({ tone: "هادئ" })), decideProposal(u.email, proposed[0].id, "apply")]);
+    const [res, applied] = await Promise.all([brandRoute.PUT(form({ tone: "هادئ" })), decideProposal(acct(u), proposed[0].id, "apply")]);
     expect(res.status).toBe(200);
     expect(applied).toMatchObject({ ok: true, applied: true });
-    expect(await getBrand(u.email)).toMatchObject({ tone: "هادئ", city: "جدة" });
+    expect(await getBrand(acct(u))).toMatchObject({ tone: "هادئ", city: "جدة" });
   });
 
   it("a proposal's apply waits for the lock too", async () => {
     const u = await owner("inj-lock-apply");
     const proposed: BrandProposal[] = [];
     await runTool(u, "update_brand", { field: "tone", value: "رسمي" }, [], [], undefined, { proposed });
-    const lock = `brandlock:${u.email}`;
+    const lock = `brandlock:${acct(u)}`;
     expect(await db.lock(lock, 10)).toBe(true);
     let finished = false;
-    const applying = decideProposal(u.email, proposed[0].id, "apply").then((r) => ((finished = true), r));
+    const applying = decideProposal(acct(u), proposed[0].id, "apply").then((r) => ((finished = true), r));
     await new Promise((r) => setTimeout(r, 120));
     expect(finished).toBe(false);
-    expect((await getBrand(u.email))!.tone).toBe(BRAND.tone);
+    expect((await getBrand(acct(u)))!.tone).toBe(BRAND.tone);
     await db.unlock(lock);
     expect(await applying).toMatchObject({ ok: true, applied: true });
-    expect((await getBrand(u.email))!.tone).toBe("رسمي");
+    expect((await getBrand(acct(u)))!.tone).toBe("رسمي");
   });
 
   it("a Save that cannot take the lock answers busy and writes nothing", async () => {
     const u = await owner("inj-lock-busy");
-    const lock = `brandlock:${u.email}`;
+    const lock = `brandlock:${acct(u)}`;
     expect(await db.lock(lock, 30)).toBe(true);
     try {
       const res = await brandRoute.PUT(form({ tone: "صاخب" }));
@@ -160,7 +161,7 @@ describe("the Brand page's Save and a proposal's apply hold the brand lock (rule
     } finally {
       await db.unlock(lock);
     }
-    expect((await getBrand(u.email))!.tone).toBe(BRAND.tone);
+    expect((await getBrand(acct(u)))!.tone).toBe(BRAND.tone);
   }, 15_000);
 });
 

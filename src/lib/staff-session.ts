@@ -27,6 +27,9 @@ export const STAFF_COOKIE = "__Host-thakeen_staff";
 export const STAFF_COOKIE_DEV = "thakeen_staff_dev";
 export const STAFF_PRE_COOKIE = "__Host-thakeen_staff_pre";
 export const STAFF_PRE_COOKIE_DEV = "thakeen_staff_pre_dev";
+/** The setup hand-off (rule 3701): the bootstrap from the founder's session leaves the setup code here, never in a URL. */
+export const STAFF_SETUP_COOKIE = "__Host-thakeen_staff_setup";
+export const STAFF_SETUP_COOKIE_DEV = "thakeen_staff_setup_dev";
 /** Idle limit, absolute limit and renewal spacing, seconds. The same numbers as the key session. */
 export const STAFF_SESSION_IDLE = 15 * 60;
 export const STAFF_SESSION_MAX = 12 * 60 * 60;
@@ -43,9 +46,11 @@ const preKey = (hash: string) => `staffpre:${hash}`;
 const ID = /^[0-9a-f]{64}$/;
 export const isStaffHash = (h: unknown): h is string => typeof h === "string" && ID.test(h);
 
-/** The two cookie names for this transport (rule 1633). */
-export async function staffCookieNames(): Promise<{ session: string; pre: string }> {
-  return (await loopbackHttp()) ? { session: STAFF_COOKIE_DEV, pre: STAFF_PRE_COOKIE_DEV } : { session: STAFF_COOKIE, pre: STAFF_PRE_COOKIE };
+/** The staff cookie names for this transport (rules 1633, 3701). */
+export async function staffCookieNames(): Promise<{ session: string; pre: string; setup: string }> {
+  return (await loopbackHttp())
+    ? { session: STAFF_COOKIE_DEV, pre: STAFF_PRE_COOKIE_DEV, setup: STAFF_SETUP_COOKIE_DEV }
+    : { session: STAFF_COOKIE, pre: STAFF_PRE_COOKIE, setup: STAFF_SETUP_COOKIE };
 }
 
 /** Every staff cookie's attributes (rule 1633). No `domain`: host-only, as the `__Host-` prefix requires. */
@@ -165,4 +170,26 @@ export async function setStaffPreStage(p: StaffPre & { hash: string }, stage: St
 export async function dropStaffPre(hash?: string): Promise<void> {
   const names = await staffCookieNames();
   await Promise.all([hash ? db.del(preKey(hash)) : Promise.resolve(), clearCookie(names.pre)]);
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+// The setup hand-off (rule 3701)
+
+/**
+ * After the founder creates the first staff owner from their own session, the setup code goes into an HttpOnly,
+ * `SameSite=Strict`, host-only cookie for the code's 30 minutes, so the setup screen can take it without the founder
+ * copying it by hand and without it ever being in a URL, a page or a log. Only the code's hash is stored (`staffsetup:`).
+ */
+export async function setStaffSetupCookie(code: string, maxAge: number): Promise<void> {
+  (await cookies()).set((await staffCookieNames()).setup, code, await staffCookieOptions(maxAge));
+}
+
+/** The setup code the hand-off cookie holds, or null. Its record is still checked by `peekSetupCode`/`takeSetupCode`. */
+export async function readStaffSetupCookie(): Promise<string | null> {
+  const v = (await cookies()).get((await staffCookieNames()).setup)?.value;
+  return v && v.length <= 64 ? v : null;
+}
+
+export async function clearStaffSetupCookie(): Promise<void> {
+  await clearCookie((await staffCookieNames()).setup);
 }

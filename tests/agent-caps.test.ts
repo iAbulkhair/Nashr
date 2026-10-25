@@ -15,7 +15,8 @@ import { json, newUser, params, settle, signIn } from "./helpers/session";
 import { fakeAdapter, fakeDeps, mediaEnv, resetMediaCounters } from "./helpers/media";
 import { ProviderError } from "@/lib/media/types";
 import { claudeOn } from "./helpers/model";
-import { getUser, saveUser, type User } from "@/lib/auth";
+import { acct, currentUser, getUser, saveUser, sc, type User } from "@/lib/auth";
+import { handleOf } from "@/lib/ws-handle";
 import { agentSpendFor, monthKey, refund } from "@/lib/credits";
 import { db } from "@/lib/db";
 import { AGENT_CAP_MAX, getGov, saveGov, type GovPatch } from "@/lib/governance";
@@ -48,12 +49,12 @@ const task = (id: string, type: TaskType): Task => ({ id, type, channel: type ==
 async function owner(prefix: string, lang: "ar" | "en" = "ar"): Promise<User> {
   const u = await newUser(prefix);
   if (lang !== "ar") await saveUser({ ...u, lang });
-  await db.set(`brand:${u.email}`, brand);
+  await db.set(`brand:${sc(u)}`, brand);
   await signIn(u.email);
-  return (await getUser(u.email))!;
+  return (await getUser(acct(u)))!;
 }
-const spend = async (email: string, scope = email) => agentSpendFor((await getUser(email))!, scope);
-const credits = async (email: string) => (await getUser(email))!.credits;
+const spend = async (id: string, scope = id) => agentSpendFor((await getUser(id))!, scope);
+const credits = async (id: string) => (await getUser(id))!.credits;
 const mcpCall = (token: string, name: string, args: Record<string, unknown>) =>
   mcpRoute.POST(new Request("https://nashr.test/api/mcp", { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${token}` }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name, arguments: args } }) }));
 
@@ -96,35 +97,35 @@ describe("every charging path enforces the agent's cap before charging (rules 10
   it("/api/generate answers 402 agent_cap before any model call and without debiting; under the cap it charges the owning agent", async () => {
     const made = sdk();
     const u = await owner("cap-gen");
-    await saveGov(u.email, { agentCaps: { razan: 3 } });
+    await saveGov(sc(u), { agentCaps: { razan: 3 } });
     const route = await import("@/app/api/generate/route");
 
     const res = await route.POST(json("/api/generate", "POST", { type: "pricing_review" }));
     expect(res.status).toBe(402);
     expect(await res.json()).toEqual({ ok: false, error: "agent_cap", agent: "razan", spent: 0, cap: 3 });
     expect(made.n, "a capped request reached the model").toBe(0);
-    expect(await credits(u.email)).toBe(50);
-    expect(await spend(u.email)).toEqual({});
-    expect(await listTasks(u.email)).toEqual([]);
+    expect(await credits(acct(u))).toBe(50);
+    expect(await spend(acct(u))).toEqual({});
+    expect(await listTasks(sc(u))).toEqual([]);
 
     // Noor has no cap; Razan's cap does not touch her.
     expect((await route.POST(json("/api/generate", "POST", { type: "whatsapp" }))).status).toBe(200);
     expect(made.n).toBeGreaterThan(0);
-    await saveGov(u.email, { agentCaps: { razan: 10 } });
+    await saveGov(sc(u), { agentCaps: { razan: 10 } });
     expect((await route.POST(json("/api/generate", "POST", { type: "pricing_review" }))).status).toBe(200);
-    expect(await spend(u.email)).toEqual({ noor: 3, razan: 4 });
-    expect(await credits(u.email)).toBe(50 - 3 - 4);
+    expect(await spend(acct(u))).toEqual({ noor: 3, razan: 4 });
+    expect(await credits(acct(u))).toBe(50 - 3 - 4);
     await settle();
   });
 
   it("a failed generation gives back the credits and lowers the counter it raised", async () => {
     sdk({ genFails: true });
     const u = await owner("cap-genfail");
-    await saveGov(u.email, { agentCaps: { razan: 10 } });
+    await saveGov(sc(u), { agentCaps: { razan: 10 } });
     const route = await import("@/app/api/generate/route");
     expect((await route.POST(json("/api/generate", "POST", { type: "pricing_review" }))).status).toBe(502);
-    expect(await credits(u.email)).toBe(50);
-    expect(await spend(u.email)).toEqual({ razan: 0 });
+    expect(await credits(acct(u))).toBe(50);
+    expect(await spend(acct(u))).toEqual({ razan: 0 });
   });
 
   it("the image route charges the owner of the item it illustrates, stops at that agent's cap, a failed render refunds both, and a placeholder charges neither", async () => {
@@ -135,38 +136,38 @@ describe("every charging path enforces the agent's cap before charging (rules 10
     g.deps = fakeDeps({ fal });
     const u = await owner("cap-img");
     // Every item type that takes an image is Noor's (src/lib/tasks.ts IMAGE_TYPES, src/lib/agents.ts).
-    await Promise.all(["post", "post2", "post3", "post4"].map((id) => saveTask(u.email, task(id, "social"), true)));
-    await saveGov(u.email, { agentCaps: { noor: 0, razan: 5 } });
+    await Promise.all(["post", "post2", "post3", "post4"].map((id) => saveTask(sc(u), task(id, "social"), true)));
+    await saveGov(sc(u), { agentCaps: { noor: 0, razan: 5 } });
     const post = (id: string) => imageRoute.POST(json(`/api/tasks/${id}/image`, "POST"), params({ id }));
 
     const stopped = await post("post");
     expect(stopped.status).toBe(402);
     expect(await stopped.json()).toEqual({ ok: false, error: "agent_cap", agent: "noor", spent: 0, cap: 0 });
-    expect(await credits(u.email)).toBe(50);
+    expect(await credits(acct(u))).toBe(50);
     expect(fal.submits, "a capped render reached the provider").toHaveLength(0);
 
     // Under the cap: charged to Noor, the item's owner, in this brand scope.
-    await saveGov(u.email, { agentCaps: { noor: 5, razan: 5 } });
+    await saveGov(sc(u), { agentCaps: { noor: 5, razan: 5 } });
     const ok = await post("post2");
     expect(ok.status).toBe(200);
     expect(await ok.json()).toMatchObject({ ok: true, provider: "fal", credits: 49 });
-    expect(await spend(u.email)).toEqual({ noor: 1 });
+    expect(await spend(acct(u))).toEqual({ noor: 1 });
 
     // A render that fails is refunded by the engine: the balance and Noor's counter both come back.
     g.deps = fakeDeps({ fal: fakeAdapter("fal", { submit: () => { throw new ProviderError("unavailable", 503); } }) });
     const failed = await post("post3");
     expect(failed.status).toBe(502);
     expect(await failed.json()).toMatchObject({ ok: false, error: "media_failed", credits: 49 });
-    expect(await spend(u.email)).toEqual({ noor: 1 });
+    expect(await spend(acct(u))).toEqual({ noor: 1 });
 
     // No image service: the placeholder card costs nothing, so neither the balance nor the cap stands in its way.
     mediaEnv({});
-    await saveGov(u.email, { agentCaps: { noor: 0 } });
+    await saveGov(sc(u), { agentCaps: { noor: 0 } });
     const card = await post("post4");
     expect(card.status).toBe(200);
     expect(await card.json()).toMatchObject({ ok: true, provider: "placeholder", credits: 49 });
-    expect(await credits(u.email)).toBe(49);
-    expect(await spend(u.email)).toEqual({ noor: 1 });
+    expect(await credits(acct(u))).toBe(49);
+    expect(await spend(acct(u))).toEqual({ noor: 1 });
   });
 
   it("the video route stops at the agent's cap before the balance, the trial's one clip or a provider is touched, then charges the item's owner under it", async () => {
@@ -177,39 +178,39 @@ describe("every charging path enforces the agent's cap before charging (rules 10
     g.deps = fakeDeps({ kie });
     const u = await owner("cap-vid");
     expect(u.plan).toBe("trial");
-    await Promise.all(["clip", "clip2"].map((id) => saveTask(u.email, task(id, "social"), true)));
+    await Promise.all(["clip", "clip2"].map((id) => saveTask(sc(u), task(id, "social"), true)));
     const clip = (id: string) => videoRoute.POST(json(`/api/tasks/${id}/video`, "POST", { model: "vid-quick" }), params({ id }));
 
     // vid-quick costs 12: a cap of 11 refuses it, and the answer names the agent, what it spent and the cap.
-    await saveGov(u.email, { agentCaps: { noor: 11, razan: 0 } });
+    await saveGov(sc(u), { agentCaps: { noor: 11, razan: 0 } });
     const stopped = await clip("clip");
     expect(stopped.status).toBe(402);
     expect(await stopped.json()).toEqual({ ok: false, error: "agent_cap", agent: "noor", spent: 0, cap: 11 });
-    expect(await credits(u.email)).toBe(50);
-    expect(await spend(u.email)).toEqual({});
+    expect(await credits(acct(u))).toBe(50);
+    expect(await spend(acct(u))).toEqual({});
     expect(kie.submits, "a capped clip reached the provider").toHaveLength(0);
 
     // The refusal burned nothing: the trial's one clip is still there, and it starts under a cap that fits it.
-    await saveGov(u.email, { agentCaps: { noor: 12 } });
+    await saveGov(sc(u), { agentCaps: { noor: 12 } });
     const ok = await clip("clip2");
     expect(ok.status).toBe(202);
-    expect(await credits(u.email)).toBe(38);
-    expect(await spend(u.email)).toEqual({ noor: 12 });
+    expect(await credits(acct(u))).toBe(38);
+    expect(await spend(acct(u))).toEqual({ noor: 12 });
     expect(kie.submits).toHaveLength(1);
     await settle();
   });
 
   it("MCP generate_content returns a tool error at the cap and charges nothing", async () => {
     const u = await owner("cap-mcp");
-    await saveGov(u.email, { agentCaps: { razan: 0 } });
-    const token = await createMcpToken(u.email);
+    await saveGov(sc(u), { agentCaps: { razan: 0 } });
+    const token = await createMcpToken(acct(u));
     const res = await mcpCall(token, "generate_content", { type: "cash_forecast" });
     expect(res.status).toBe(200);
     const j = (await res.json()) as { result: { isError?: boolean; content: { text: string }[] } };
     expect(j.result.isError).toBe(true);
     expect(j.result.content[0].text).toMatch(/Razan reached the monthly credit cap .* \(0 of 0 credits this month\)\. No credits were used/);
-    expect(await credits(u.email)).toBe(50);
-    expect(await listTasks(u.email)).toEqual([]);
+    expect(await credits(acct(u))).toBe(50);
+    expect(await listTasks(sc(u))).toEqual([]);
   });
 
   it("chat generate_content, draft_items and generate_image return a sentence to relay and push limit:agent_cap", async () => {
@@ -219,16 +220,16 @@ describe("every charging path enforces the agent's cap before charging (rules 10
     const fal = fakeAdapter("fal");
     g.deps = fakeDeps({ fal });
     const u = await owner("cap-chat-tools");
-    await saveTask(u.email, task("post", "social"), true);
-    await saveGov(u.email, { agentCaps: { razan: 0, noor: 0 } });
+    await saveTask(sc(u), task("post", "social"), true);
+    await saveGov(sc(u), { agentCaps: { razan: 0, noor: 0 } });
     for (const [tool, input] of [["generate_content", { type: "pricing_review" }], ["draft_items", { type: "social", count: 1, brief: "منشور" }], ["generate_image", { task_id: "post" }]] as const) {
       const actions: string[] = [];
-      const out = await runTool((await getUser(u.email))!, tool, input, actions);
+      const out = await runTool((await currentUser())!, tool, input, actions);
       expect(out, tool).toMatch(/^Not done: (Razan|Noor) reached the monthly credit cap the owner set for this agent in Governance \(0 of 0 credits this month\), so nothing was created and no credits were used\./);
       expect(actions, tool).toEqual(["limit:agent_cap"]);
     }
-    expect(await credits(u.email)).toBe(50);
-    expect(await listTasks(u.email)).toHaveLength(1);
+    expect(await credits(acct(u))).toBe(50);
+    expect(await listTasks(sc(u))).toHaveLength(1);
     expect(fal.submits, "a capped image reached the provider").toHaveLength(0);
   });
 
@@ -236,38 +237,38 @@ describe("every charging path enforces the agent's cap before charging (rules 10
     const seen: Params[] = [];
     sdk({ chat: (p) => { seen.push(p); return seen.length === 1 ? toolUse("generate_content", { type: "pricing_review" }) : reply("وصلت رزان إلى حدها الشهري."); } });
     const u = await owner("cap-chat");
-    await saveGov(u.email, { agentCaps: { razan: 2 } });
+    await saveGov(sc(u), { agentCaps: { razan: 2 } });
     const route = await import("@/app/api/chat/route");
     const res = await route.POST(json("/api/chat", "POST", { text: "راجعي أسعارنا", agent: "razan" }));
     const j = (await res.json()) as { ok: boolean; limit: string | null; message: { actions: string[] } };
     expect(j).toMatchObject({ ok: true, limit: "agent_cap" });
     expect(j.message.actions, "limit actions are not stored with the message").toEqual([]);
     expect(JSON.stringify(seen[1].messages), "the tool result the model relays").toContain("reached the monthly credit cap");
-    expect(await credits(u.email)).toBe(50);
+    expect(await credits(acct(u))).toBe(50);
   });
 
   it("the weekly plan is Noor's: at her cap it returns agent_cap and charges nothing", async () => {
     const u = await owner("cap-weekly");
-    await saveGov(u.email, { agentCaps: { noor: 0 } });
-    expect(await runWeekly((await getUser(u.email))!)).toBe("agent_cap");
-    expect(await credits(u.email)).toBe(50);
-    await saveGov(u.email, { agentCaps: { noor: 5 } });
-    expect(await runWeekly((await getUser(u.email))!)).toMatch(/^ok:/);
-    expect(await spend(u.email)).toEqual({ noor: TASK_COST.weekly_plan });
+    await saveGov(sc(u), { agentCaps: { noor: 0 } });
+    expect(await runWeekly((await currentUser())!)).toBe("agent_cap");
+    expect(await credits(acct(u))).toBe(50);
+    await saveGov(sc(u), { agentCaps: { noor: 5 } });
+    expect(await runWeekly((await currentUser())!)).toMatch(/^ok:/);
+    expect(await spend(acct(u))).toEqual({ noor: TASK_COST.weekly_plan });
     await settle();
   });
 
   it("caps and counters belong to the active brand: another brand's cap never applies", async () => {
     const u = await owner("cap-brands");
     await saveUser({ ...u, plan: "agency" });
-    await saveGov(u.email, { agentCaps: { razan: 0 } }); // the default brand's cap
-    const second = await addBrand((await getUser(u.email))!, "Second");
+    await saveGov(sc(u), { agentCaps: { razan: 0 } }); // the default brand's cap
+    const second = await addBrand((await getUser(acct(u)))!, "Second");
     if ("error" in second) throw new Error(second.error);
-    const scope = scopeFor(u.email, second.id);
+    const scope = scopeFor(acct(u), second.id);
     await db.set(`brand:${scope}`, brand);
     expect((await generateRoute.POST(json("/api/generate", "POST", { type: "pricing_review" }))).status).toBe(200);
-    expect(await spend(u.email, scope)).toEqual({ razan: 4 });
-    expect(await spend(u.email)).toEqual({});
+    expect(await spend(acct(u), scope)).toEqual({ razan: 4 });
+    expect(await spend(acct(u))).toEqual({});
     await saveGov(scope, { agentCaps: { razan: 4 } });
     const res = await generateRoute.POST(json("/api/generate", "POST", { type: "pricing_review" }));
     expect(res.status).toBe(402);
@@ -279,98 +280,98 @@ describe("every charging path enforces the agent's cap before charging (rules 10
 describe("the 80% warning (rule 108)", () => {
   it("fires once per scope, agent and month, naming the agent, the brand and X of Y only", async () => {
     const u = await owner("cap-warn");
-    await saveGov(u.email, { agentCaps: { razan: 5 } });
+    await saveGov(sc(u), { agentCaps: { razan: 5 } });
     expect((await generateRoute.POST(json("/api/generate", "POST", { type: "pricing_review" }))).status).toBe(200);
-    const warned = (await listNotifs(u.email)).filter((x) => x.kind === "credits");
+    const warned = (await listNotifs(acct(u))).filter((x) => x.kind === "credits");
     expect(warned).toHaveLength(1);
-    expect(warned[0]).toMatchObject({ agent: "razan", title: "رزان في «مقهى الفنجان»: 4 من 5 كريدت هذا الشهر", href: "/ar/app/b/default/settings/governance" });
+    expect(warned[0]).toMatchObject({ agent: "razan", title: "رزان في «مقهى الفنجان»: 4 من 5 كريدت هذا الشهر", href: `/ar/app/w/${handleOf(u)}/b/default/settings/governance` });
     expect(warned[0].body).toContain("«مقهى الفنجان»");
     expect(warned[0].body, "no number other than X of Y").not.toMatch(/\d/);
 
     // A refund dips below 80% and the next batch crosses it again: still one warning this month.
-    await refund(u.email, 4, { scope: u.email, agent: "razan", month: monthKey() });
+    await refund(acct(u), 4, { scope: sc(u), agent: "razan", month: monthKey() });
     expect((await generateRoute.POST(json("/api/generate", "POST", { type: "pricing_review" }))).status).toBe(200);
-    expect((await listNotifs(u.email)).filter((x) => x.kind === "credits")).toHaveLength(1);
+    expect((await listNotifs(acct(u))).filter((x) => x.kind === "credits")).toHaveLength(1);
     await settle();
   });
 
   it("is in the owner's language, and silent without warn80 or a cap", async () => {
     const u = await owner("cap-warn-en", "en");
-    const base = { ok: true as const, credits: 10, scope: u.email, agent: "dana" as AgentId, month: monthKey(), spent: 8 };
+    const base = { ok: true as const, credits: 10, scope: sc(u), agent: "dana" as AgentId, month: monthKey(), spent: 8 };
     await warnAgentCap(u, { ...base, cap: 10, warn80: false });
     await warnAgentCap(u, { ...base, warn80: true });
-    expect(await listNotifs(u.email)).toEqual([]);
+    expect(await listNotifs(acct(u))).toEqual([]);
     await warnAgentCap(u, { ...base, cap: 10, warn80: true });
     await warnAgentCap(u, { ...base, cap: 10, warn80: true });
-    const n = await listNotifs(u.email);
+    const n = await listNotifs(acct(u));
     expect(n).toHaveLength(1);
-    expect(n[0]).toMatchObject({ kind: "credits", agent: "dana", title: "Dana in “مقهى الفنجان”: 8 of 10 credits this month", href: "/en/app/b/default/settings/governance" });
+    expect(n[0]).toMatchObject({ kind: "credits", agent: "dana", title: "Dana in “مقهى الفنجان”: 8 of 10 credits this month", href: `/en/app/w/${handleOf(u)}/b/default/settings/governance` });
   });
 
   it("names the brand the cap belongs to, not the one that is open: the bell is per account", async () => {
     const u = await owner("cap-warn-brand", "en");
     await saveUser({ ...u, plan: "agency" });
-    const second = await addBrand((await getUser(u.email))!, "Oud House");
+    const second = await addBrand((await getUser(acct(u)))!, "Oud House");
     if ("error" in second) throw new Error(second.error);
     const base = { ok: true as const, credits: 10, agent: "noor" as AgentId, month: monthKey(), spent: 16, cap: 20, warn80: true };
     // The default brand is open; the second brand's routine crosses 80% of its own cap from the cron.
-    await warnAgentCap(u, { ...base, scope: scopeFor(u.email, second.id) });
-    await warnAgentCap(u, { ...base, scope: u.email });
-    const [open, other] = await listNotifs(u.email);
+    await warnAgentCap(u, { ...base, scope: scopeFor(acct(u), second.id) });
+    await warnAgentCap(u, { ...base, scope: sc(u) });
+    const [open, other] = await listNotifs(acct(u));
     expect(other.title).toBe("Noor in “Oud House”: 16 of 20 credits this month");
     expect(other.body).toContain("switch to that brand");
     expect(open.title, "the default brand is named by its brand file").toBe("Noor in “مقهى الفنجان”: 16 of 20 credits this month");
     // A brand with no name anywhere keeps the plain wording.
     const bare = await newUser("cap-warn-bare");
-    await warnAgentCap(bare, { ...base, scope: bare.email });
-    expect((await listNotifs(bare.email))[0].title).toBe("نور: 16 من 20 كريدت هذا الشهر");
+    await warnAgentCap(bare, { ...base, scope: sc(bare) });
+    expect((await listNotifs(acct(bare)))[0].title).toBe("نور: 16 من 20 كريدت هذا الشهر");
   });
 
   it("wipeAccount deletes the warning's marker for every brand, so an account made again at the same address is warned", async () => {
     const u = await owner("cap-warn-wipe");
     await saveUser({ ...u, plan: "agency" });
-    const second = await addBrand((await getUser(u.email))!, "Second");
+    const second = await addBrand((await getUser(acct(u)))!, "Second");
     if ("error" in second) throw new Error(second.error);
     const month = monthKey();
-    const scopes = [u.email, scopeFor(u.email, second.id)];
+    const scopes = [sc(u), scopeFor(acct(u), second.id)];
     await Promise.all(scopes.map((scope) => warnAgentCap(u, { ok: true, credits: 10, scope, agent: "razan", month, spent: 4, cap: 5, warn80: true })));
-    for (const scope of scopes) expect(await db.get(`notifseen:${u.email}:agentcap80:${scope}:razan:${month}`), scope).toBe(1);
-    await wipeAccount(u.email);
-    for (const scope of scopes) expect(await db.get(`notifseen:${u.email}:agentcap80:${scope}:razan:${month}`), scope).toBeNull();
+    for (const scope of scopes) expect(await db.get(`notifseen:${acct(u)}:agentcap80:${scope}:razan:${month}`), scope).toBe(1);
+    await wipeAccount(acct(u));
+    for (const scope of scopes) expect(await db.get(`notifseen:${acct(u)}:agentcap80:${scope}:razan:${month}`), scope).toBeNull();
   });
 });
 
 describe("governance validates what it stores (rule 109)", () => {
   it("caps: agents only, finite, whole, clamped; null or empty removes; other fields keep their caps", async () => {
     const u = await newUser("gov-caps");
-    const g = await saveGov(u.email, { agentCaps: { razan: 12.7, noor: -5, sami: NaN, faris: "7", dana: 1e9, hacker: 3, constructor: 1, layan: Infinity } } as unknown as GovPatch);
+    const g = await saveGov(sc(u), { agentCaps: { razan: 12.7, noor: -5, sami: NaN, faris: "7", dana: 1e9, hacker: 3, constructor: 1, layan: Infinity } } as unknown as GovPatch);
     expect(g.agentCaps).toEqual({ razan: 12, noor: 0, dana: AGENT_CAP_MAX });
-    expect((await saveGov(u.email, { agentCaps: { razan: null, noor: "", majed: 3 } })).agentCaps).toEqual({ dana: AGENT_CAP_MAX, majed: 3 });
-    expect((await saveGov(u.email, { learning: false })).agentCaps).toEqual({ dana: AGENT_CAP_MAX, majed: 3 });
-    expect((await getGov(u.email)).agentCaps).toEqual({ dana: AGENT_CAP_MAX, majed: 3 });
+    expect((await saveGov(sc(u), { agentCaps: { razan: null, noor: "", majed: 3 } })).agentCaps).toEqual({ dana: AGENT_CAP_MAX, majed: 3 });
+    expect((await saveGov(sc(u), { learning: false })).agentCaps).toEqual({ dana: AGENT_CAP_MAX, majed: 3 });
+    expect((await getGov(sc(u))).agentCaps).toEqual({ dana: AGENT_CAP_MAX, majed: 3 });
   });
 
   it("auto-approve takes task types with boolean values only; NaN never replaces a number; a non-object body changes nothing", async () => {
     const u = await newUser("gov-fields");
-    const g = await saveGov(u.email, { autoApprove: { social: true, ads: "yes", gbp: 1, constructor: true, hacker: true }, weeklyCap: NaN, notifyMinutes: Infinity } as unknown as GovPatch);
+    const g = await saveGov(sc(u), { autoApprove: { social: true, ads: "yes", gbp: 1, constructor: true, hacker: true }, weeklyCap: NaN, notifyMinutes: Infinity } as unknown as GovPatch);
     expect(g.autoApprove).toEqual({ social: true });
     expect(g.weeklyCap).toBe(20);
     expect(g.notifyMinutes).toBe(60);
-    expect((await saveGov(u.email, { weeklyCap: 500, notifyMinutes: -3 })).weeklyCap).toBe(200);
-    for (const body of [null, [], "x", 7]) expect(await saveGov(u.email, body as unknown as GovPatch)).toEqual(await getGov(u.email));
+    expect((await saveGov(sc(u), { weeklyCap: 500, notifyMinutes: -3 })).weeklyCap).toBe(200);
+    for (const body of [null, [], "x", 7]) expect(await saveGov(sc(u), body as unknown as GovPatch)).toEqual(await getGov(sc(u)));
   });
 
   it("the PUT route stores caps under the caller's active brand only, echoes them, and survives a null body", async () => {
     const u = await owner("gov-route");
     await saveUser({ ...u, plan: "agency" });
-    const second = await addBrand((await getUser(u.email))!, "Second");
+    const second = await addBrand((await getUser(acct(u)))!, "Second");
     if ("error" in second) throw new Error(second.error);
-    const scope = scopeFor(u.email, second.id);
-    const res = await govRoute.PUT(json("/api/governance", "PUT", { agentCaps: { razan: 40, ghost: 1 }, scope: u.email, email: "other@test.example" }));
+    const scope = scopeFor(acct(u), second.id);
+    const res = await govRoute.PUT(json("/api/governance", "PUT", { agentCaps: { razan: 40, ghost: 1 }, scope: sc(u), email: "other@test.example" }));
     expect(res.status).toBe(200);
     expect(((await res.json()) as { governance: { agentCaps: unknown } }).governance.agentCaps).toEqual({ razan: 40 });
     expect((await getGov(scope)).agentCaps).toEqual({ razan: 40 });
-    expect((await getGov(u.email)).agentCaps).toEqual({});
+    expect((await getGov(sc(u))).agentCaps).toEqual({});
     expect((await govRoute.PUT(json("/api/governance", "PUT", null))).status).toBe(200);
     expect((await getGov(scope)).agentCaps).toEqual({ razan: 40 });
   });
@@ -381,15 +382,15 @@ describe("model usage per agent (rule 110)", () => {
     const u = await newUser("usage-agent");
     const m = monthKey();
     const all = Number((await db.get(`usage:_all:${m}:agent:faris:calls`)) ?? 0);
-    await meter(u.email, "claude-opus-5-5", "generate", { input_tokens: 1000, output_tokens: 1000 }, "faris");
-    await meter(u.email, "claude-sonnet-5-5", "judge", { input_tokens: 1000, output_tokens: 0 }, "faris");
-    await meter(u.email, "claude-sonnet-5-5", "tool", { input_tokens: 10, output_tokens: 10 });
-    await meter(u.email, "claude-sonnet-5-5", "tool", { input_tokens: 10, output_tokens: 10 }, "ghost" as AgentId);
-    expect(await db.get(`usage:${u.email}:${m}:agent:faris:calls`)).toBe(2);
-    expect(await db.get(`usage:${u.email}:${m}:agent:faris:usd_micro`)).toBe(24000 + 2000);
+    await meter(acct(u), "claude-opus-5-5", "generate", { input_tokens: 1000, output_tokens: 1000 }, "faris");
+    await meter(acct(u), "claude-sonnet-5-5", "judge", { input_tokens: 1000, output_tokens: 0 }, "faris");
+    await meter(acct(u), "claude-sonnet-5-5", "tool", { input_tokens: 10, output_tokens: 10 });
+    await meter(acct(u), "claude-sonnet-5-5", "tool", { input_tokens: 10, output_tokens: 10 }, "ghost" as AgentId);
+    expect(await db.get(`usage:${acct(u)}:${m}:agent:faris:calls`)).toBe(2);
+    expect(await db.get(`usage:${acct(u)}:${m}:agent:faris:usd_micro`)).toBe(24000 + 2000);
     expect(Number(await db.get(`usage:_all:${m}:agent:faris:calls`))).toBe(all + 2);
-    expect(await db.get(`usage:${u.email}:${m}:agent:ghost:calls`)).toBeNull();
-    const usage = await getUsage(u.email);
+    expect(await db.get(`usage:${acct(u)}:${m}:agent:ghost:calls`)).toBeNull();
+    const usage = await getUsage(acct(u));
     expect(usage.calls).toBe(4);
     expect(usage.byAgent).toEqual({ faris: { calls: 2, usd: 0.026 } });
   });
@@ -401,15 +402,15 @@ describe("model usage per agent (rule 110)", () => {
     expect((await route.POST(json("/api/generate", "POST", { type: "pricing_review" }))).status).toBe(200);
     await settle();
     const { chat } = await import("@/lib/chat");
-    await chat((await getUser(u.email))!, "مرحبا", undefined, "sami");
+    await chat((await currentUser())!, "مرحبا", undefined, "sami");
     // The image prompt is written for the item's owner (src/lib/media/prompts.ts), the agent its render is charged to.
     const { imagePrompt } = await import("@/lib/media/prompts");
-    await imagePrompt(brand, task("post", "social"), "img-fast", "square", u.email);
+    await imagePrompt(brand, task("post", "social"), "img-fast", "square", acct(u));
     const { buildFromSite } = await import("@/lib/onboard");
-    await buildFromSite({ url: "https://cafe.example", ok: true, title: "Cafe", description: "", text: "", links: [], platform: "unknown" } as SiteSnapshot, "ar", undefined, u.email);
+    await buildFromSite({ url: "https://cafe.example", ok: true, title: "Cafe", description: "", text: "", links: [], platform: "unknown" } as SiteSnapshot, "ar", undefined, acct(u));
 
     const { getUsage: usageOf } = await import("@/lib/usage");
-    const usage = await usageOf(u.email);
+    const usage = await usageOf(acct(u));
     const k = (kind: string) => usage.byKind[kind]?.calls ?? 0;
     expect(usage.byAgent.razan?.calls).toBe(k("generate") + k("review") + k("judge"));
     expect(k("generate") + k("review") + k("judge")).toBe(3);
@@ -426,11 +427,11 @@ describe("model usage per agent (rule 110)", () => {
   it("wipeAccount deletes every per-agent counter; the key list is built from KINDS and AGENT_IDS", async () => {
     // No shadow membership: this pins a person who holds nothing else, so the deletion takes the login too (multi-org M1).
     const u = await newUser("usage-wipe", { shadow: false });
-    await Promise.all(AGENT_IDS.map((a) => meter(u.email, "claude-opus-5-5", "generate", { input_tokens: 5, output_tokens: 5 }, a)));
-    expect(await db.get(`usage:${u.email}:${monthKey()}:agent:layan:usd_micro`)).not.toBeNull();
-    await wipeAccount(u.email);
+    await Promise.all(AGENT_IDS.map((a) => meter(acct(u), "claude-opus-5-5", "generate", { input_tokens: 5, output_tokens: 5 }, a)));
+    expect(await db.get(`usage:${acct(u)}:${monthKey()}:agent:layan:usd_micro`)).not.toBeNull();
+    await wipeAccount(acct(u));
     const mem = (globalThis as unknown as { __nashrMem: { kv: Map<string, unknown>; lists: Map<string, string[]>; sets: Map<string, Set<string>> } }).__nashrMem;
-    const residue = [...mem.kv.keys(), ...mem.lists.keys(), ...mem.sets.keys()].filter((key) => key.includes(u.email) && mem.kv.get(key) !== null);
+    const residue = [...mem.kv.keys(), ...mem.lists.keys(), ...mem.sets.keys()].filter((key) => (key.includes(acct(u)) || key.includes(u.email)) && mem.kv.get(key) !== null);
     expect(residue).toEqual([]);
 
     const keys = usageMonthKeys("x@test.example", "2026-09");

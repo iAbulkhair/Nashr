@@ -5,6 +5,7 @@ import { NextRequest } from "next/server";
 import { BRAND_HEADER } from "@/lib/brand-path";
 import { ACCOUNT_SC_API, BRAND_API, BRAND_GUARD_MODE, brandMissingRefusal } from "@/lib/brand-guard";
 import { CROSS_SITE_METHODS } from "@/lib/csrf";
+import { WS_HEADER } from "@/lib/ws-path";
 import { proxy } from "@/proxy";
 
 /**
@@ -17,6 +18,8 @@ afterEach(() => vi.restoreAllMocks());
 
 const FORWARDED = `x-middleware-request-${BRAND_HEADER}`;
 const SESSION = { cookie: "thakeen_session=abc123" };
+/** A browser mutation with a session also names its workspace (multi-workspace M2: the proxy answers 409 `workspace_missing` without it). */
+const SESSION_WS = { ...SESSION, [WS_HEADER]: "w_aaaaaaaaaaaaaaaa" };
 const req = (path: string, init: { method?: string; headers?: Record<string, string> } = {}) =>
   new NextRequest(`https://thakeen.example${path}`, { method: init.method ?? "GET", headers: init.headers });
 
@@ -62,7 +65,7 @@ describe("rule 887: a page request carries only the brand its path names", () =>
 
   it("leaves a header on an /api/ request untouched", () => {
     expect(proxy(req("/api/tasks", { headers: { [BRAND_HEADER]: "b2" } })).headers.get(FORWARDED)).toBe("b2");
-    expect(proxy(req("/api/tasks", { method: "POST", headers: { [BRAND_HEADER]: "b2", ...SESSION } })).headers.get(FORWARDED)).toBe("b2");
+    expect(proxy(req("/api/tasks", { method: "POST", headers: { [BRAND_HEADER]: "b2", ...SESSION_WS } })).headers.get(FORWARDED)).toBe("b2");
   });
 });
 
@@ -174,12 +177,12 @@ describe("rule 888: a browser mutation to a brand route without the brand header
     expect(BRAND_GUARD_MODE).toBe("log");
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const same = { "sec-fetch-site": "same-origin", "content-type": "application/json" };
-    const res = proxy(req("/api/tasks/abc", { method: "PATCH", headers: { ...same, ...SESSION } }));
+    const res = proxy(req("/api/tasks/abc", { method: "PATCH", headers: { ...same, ...SESSION_WS } }));
     expect(res.status).toBe(200);
     expect(warn.mock.calls.filter((c) => c[0] === "brand_missing")).toHaveLength(1);
     // A cross-site post is still the 403 of rule 690, and is not also counted as a missing brand.
     warn.mockClear();
-    const cross = proxy(req("/api/tasks/abc", { method: "PATCH", headers: { "sec-fetch-site": "cross-site", "content-type": "application/json", ...SESSION } }));
+    const cross = proxy(req("/api/tasks/abc", { method: "PATCH", headers: { "sec-fetch-site": "cross-site", "content-type": "application/json", ...SESSION_WS } }));
     expect(cross.status).toBe(403);
     expect(warn).not.toHaveBeenCalled();
   });
@@ -240,6 +243,7 @@ describe("rule 888: the guarded list is held to the routes on disk", () => {
       "/api/push/seen": "the login's away mark (pushLogin), no brand data",
       "/api/referral/share": "the account's share credits (acct(u))",
       "/api/support": "a support ticket with the login's address, no brand data",
+      "/api/team": "the account's approval policy, written on acct(u) under its lock (rule 3762), no brand data",
       "/api/team/invite": "the account's team",
       "/api/team/leave": "the account's team",
       "/api/team/member": "the account's team",

@@ -2,6 +2,8 @@ import { readdirSync, readFileSync, statSync } from "fs";
 import { join } from "path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { jar, json, newUser, signIn } from "./helpers/session";
+import { acct, type User } from "@/lib/auth";
+import { handleOf } from "@/lib/ws-handle";
 import { db } from "@/lib/db";
 import { getConnection, OAUTH_COOKIE, saveConnection, saveState, type Connection } from "@/lib/connectors/store";
 import { bucketFor, errorShape, TOOLKIT_VERSION, composioEnabled, composioRead, composioUserId, composioWrite, setComposioClientForTests, type ComposioClient } from "@/lib/connectors/composio";
@@ -135,10 +137,10 @@ describe("what a failure says (rule 647)", () => {
 
   it("asks the owner to reconnect when the platform refused the token", async () => {
     const u = await newUser("cpre");
-    await saveConnection(u.email, via("x", { twitter: "ca_x" }, { account: "@ward" }));
+    await saveConnection(acct(u), via("x", { twitter: "ca_x" }, { account: "@ward" }));
     answers.TWITTER_CREATION_OF_A_POST = { successful: false, error: "Unauthorized: token revoked" };
-    await expect(publishTask(u.email, post({ channel: "x" }), "x")).rejects.toBeInstanceOf(ReconnectRequired);
-    expect((await getConnection(u.email, "x"))!.needsReconnect).toBeTruthy();
+    await expect(publishTask(acct(u), post({ channel: "x" }), "x")).rejects.toBeInstanceOf(ReconnectRequired);
+    expect((await getConnection(acct(u), "x"))!.needsReconnect).toBeTruthy();
   });
 
   it("caps calls per workspace per hour", async () => {
@@ -154,7 +156,7 @@ describe("connecting (rule 648)", () => {
     await signIn(u.email);
     const res = await start.GET(new Request("https://app.test/api/connect/meta/start?lang=en&toolkit=facebook"), ctx("meta"));
     expect(res.headers.get("location")).toBe(redirect);
-    expect(calls.link[0]).toMatchObject({ userId: composioUserId(u.email), auth: "ac_facebook", allowMultiple: true });
+    expect(calls.link[0]).toMatchObject({ userId: composioUserId(acct(u)), auth: "ac_facebook", allowMultiple: true });
     const state = jar().get(OAUTH_COOKIE)!;
     expect(calls.link[0].callbackUrl).toContain(`/api/connect/meta/callback?state=${state}`);
     expect(await db.get(`oauthstate:${state}`)).toMatchObject({ via: "composio", toolkit: "facebook", accountId: "ca_new", provider: "meta" });
@@ -164,14 +166,14 @@ describe("connecting (rule 648)", () => {
 
     redirect = "https://evil.example/phish";
     const bad = await start.GET(new Request("https://app.test/api/connect/x/start?lang=en"), ctx("x"));
-    expect(new URL(bad.headers.get("location")!).pathname, "back to the page, not raw JSON").toBe("/en/app/b/default/settings/connections");
+    expect(new URL(bad.headers.get("location")!).pathname, "back to the page, not raw JSON").toBe(`/en/app/w/${handleOf(u)}/b/default/settings/connections`);
     expect(new URL(bad.headers.get("location")!).searchParams.get("error")).toBe("connect_failed");
     expect(calls.deleted).toEqual(["ca_new"]);
   });
 
-  const finish = async (u: { email: string }, provider: string, toolkit: string, accountId: string, query = "") => {
+  const finish = async (u: User, provider: string, toolkit: string, accountId: string, query = "") => {
     const s = `st-${Math.random().toString(16).slice(2)}`;
-    await saveState(s, { email: u.email, provider, lang: "en", shop: "", verifier: "", via: "composio", toolkit, accountId });
+    await saveState(s, { email: acct(u), provider, lang: "en", shop: "", verifier: "", via: "composio", toolkit, accountId });
     await signIn(u.email);
     jar().set(OAUTH_COOKIE, s);
     const res = await callback.GET(new Request(`https://app.test/api/connect/${provider}/callback?state=${s}${query}`), ctx(provider));
@@ -181,22 +183,22 @@ describe("connecting (rule 648)", () => {
   it("stores only after the account is ACTIVE and this workspace's own; the callback's query never names the account", async () => {
     const u = await newUser("cpcb");
     answers.FACEBOOK_LIST_MANAGED_PAGES = ok({ data: [{ id: "111", name: "متجر الورد" }, { id: "222", name: "Ward Riyadh" }] });
-    owned[composioUserId(u.email)] = ["ca_other"];
+    owned[composioUserId(acct(u))] = ["ca_other"];
     expect((await finish(u, "meta", "facebook", "ca_fb")).get("error")).toBe("connect_failed");
     expect(calls.deleted).toContain("ca_fb");
-    expect(await getConnection(u.email, "meta")).toBeNull();
+    expect(await getConnection(acct(u), "meta")).toBeNull();
 
-    owned[composioUserId(u.email)] = ["ca_fb"];
+    owned[composioUserId(acct(u))] = ["ca_fb"];
     expect((await finish(u, "meta", "facebook", "ca_fb", "&connected_account_id=ca_evil")).get("connected")).toBe("meta");
-    const c = (await getConnection(u.email, "meta"))!;
+    const c = (await getConnection(acct(u), "meta"))!;
     expect(c.data).toEqual({ facebook: "ca_fb" });
     expect(c.meta).toMatchObject({ via: "composio", pageId: "111", account: "متجر الورد" });
     expect(calls.exec.find((e) => e.slug === "FACEBOOK_LIST_MANAGED_PAGES")!.args.fields, "never asks for Page tokens").toBe("id,name");
 
-    owned[composioUserId(u.email)] = ["ca_fb", "ca_ig"];
+    owned[composioUserId(acct(u))] = ["ca_fb", "ca_ig"];
     answers.INSTAGRAM_GET_USER_INFO = ok({ data: { id: "1784", username: "ward.sa" } });
     await finish(u, "meta", "instagram", "ca_ig");
-    const both = (await getConnection(u.email, "meta"))!;
+    const both = (await getConnection(acct(u), "meta"))!;
     expect(both.data).toEqual({ facebook: "ca_fb", instagram: "ca_ig" });
     expect(both.meta).toMatchObject({ igId: "1784", account: "متجر الورد · @ward.sa" });
     expect(connectedTargets([{ provider: "meta", meta: both.meta }])).toEqual(["meta", "facebook", "instagram"]);
@@ -210,21 +212,21 @@ describe("connecting (rule 648)", () => {
   it("refuses a toolkit the provider does not list, and revokes the old account when one is reconnected", async () => {
     const u = await newUser("cptk");
     expect((await finish(u, "x", "facebook", "ca_1")).get("error")).toBe("invalid_state");
-    owned[composioUserId(u.email)] = ["ca_x2"];
+    owned[composioUserId(acct(u))] = ["ca_x2"];
     answers.TWITTER_USER_LOOKUP_ME = ok({ data: { username: "ward" } });
-    await saveConnection(u.email, via("x", { twitter: "ca_x1" }));
+    await saveConnection(acct(u), via("x", { twitter: "ca_x1" }));
     await finish(u, "x", "twitter", "ca_x2");
-    expect((await getConnection(u.email, "x"))!).toMatchObject({ data: { twitter: "ca_x2" }, meta: { account: "@ward" } });
+    expect((await getConnection(acct(u), "x"))!).toMatchObject({ data: { twitter: "ca_x2" }, meta: { account: "@ward" } });
     expect(calls.revoked).toEqual(["ca_x1"]);
   });
 
   it("deletes the new Composio account when the callback cannot store it, so a retry is not blocked", async () => {
     const u = await newUser("cpdisc");
-    owned[composioUserId(u.email)] = ["ca_li"];
+    owned[composioUserId(acct(u))] = ["ca_li"];
     answers.LINKEDIN_GET_MY_INFO = { successful: false, error: "profile unavailable" };
     expect((await finish(u, "linkedin", "linkedin", "ca_li")).get("error")).toBe("connect_failed");
     expect(calls.deleted).toEqual(["ca_li"]);
-    expect(await getConnection(u.email, "linkedin")).toBeNull();
+    expect(await getConnection(acct(u), "linkedin")).toBeNull();
   });
 
   it("pins a dated version for every toolkit, since the SDK will not execute a tool on \"latest\"", () => {
@@ -234,71 +236,71 @@ describe("connecting (rule 648)", () => {
 
   it("keeps LinkedIn's author from the profile", async () => {
     const u = await newUser("cpli");
-    owned[composioUserId(u.email)] = ["ca_li"];
+    owned[composioUserId(acct(u))] = ["ca_li"];
     answers.LINKEDIN_GET_MY_INFO = ok({ response_dict: { sub: "abc123", name: "Abulkhair" } });
     await finish(u, "linkedin", "linkedin", "ca_li");
-    expect((await getConnection(u.email, "linkedin"))!.meta).toMatchObject({ author: "urn:li:person:abc123", account: "Abulkhair" });
+    expect((await getConnection(acct(u), "linkedin"))!.meta).toMatchObject({ author: "urn:li:person:abc123", account: "Abulkhair" });
   });
 });
 
 describe("publishing (rule 649)", () => {
   it("posts to X, Facebook and LinkedIn with the stored account, plain text and the platform's own link", async () => {
     const u = await newUser("cppub");
-    await saveConnection(u.email, via("x", { twitter: "ca_x" }));
-    await saveConnection(u.email, via("meta", { facebook: "ca_fb" }, { pageId: "111" }));
-    await saveConnection(u.email, via("linkedin", { linkedin: "ca_li" }, { author: "urn:li:person:abc" }));
+    await saveConnection(acct(u), via("x", { twitter: "ca_x" }));
+    await saveConnection(acct(u), via("meta", { facebook: "ca_fb" }, { pageId: "111" }));
+    await saveConnection(acct(u), via("linkedin", { linkedin: "ca_li" }, { author: "urn:li:person:abc" }));
     answers.TWITTER_CREATION_OF_A_POST = ok({ data: { id: "1799" } });
     answers.FACEBOOK_CREATE_PHOTO_POST = ok({ id: "photo-5", post_id: "111_222" });
     answers.LINKEDIN_CREATE_LINKED_IN_POST = ok({ id: "urn:li:share:77" });
-    expect(await publishTask(u.email, post({ channel: "x" }), "x")).toMatchObject({ url: "https://x.com/i/status/1799", status: "published" });
-    expect(await publishTask(u.email, post({ channel: "facebook" }), "facebook")).toMatchObject({ url: "https://www.facebook.com/111_222" });
+    expect(await publishTask(acct(u), post({ channel: "x" }), "x")).toMatchObject({ url: "https://x.com/i/status/1799", status: "published" });
+    expect(await publishTask(acct(u), post({ channel: "facebook" }), "facebook")).toMatchObject({ url: "https://www.facebook.com/111_222" });
     expect(calls.exec.find((e) => e.slug === "FACEBOOK_CREATE_PHOTO_POST")).toMatchObject({ accountId: "ca_fb", args: { page_id: "111", url: IMG, message: "عود ملكي\nجديد في المتجر (اليوم)", published: true } });
-    expect(await publishTask(u.email, post({ channel: "linkedin" }), "linkedin")).toMatchObject({ url: "https://www.linkedin.com/feed/update/urn:li:share:77/" });
+    expect(await publishTask(acct(u), post({ channel: "linkedin" }), "linkedin")).toMatchObject({ url: "https://www.linkedin.com/feed/update/urn:li:share:77/" });
     expect(calls.exec.find((e) => e.slug === "LINKEDIN_CREATE_LINKED_IN_POST")!.args).toEqual({ author: "urn:li:person:abc", commentary: "عود ملكي\nجديد في المتجر \\(اليوم\\)", visibility: "PUBLIC", lifecycleState: "PUBLISHED" });
     expect(liEscape("a_b #c @d")).toBe("a\\_b \\#c \\@d");
   });
 
   it("reads a repeated X post as a duplicate, not a dead token", async () => {
     const u = await newUser("cpdup");
-    await saveConnection(u.email, via("x", { twitter: "ca_x" }));
+    await saveConnection(acct(u), via("x", { twitter: "ca_x" }));
     answers.TWITTER_CREATION_OF_A_POST = { successful: false, error: "403 Forbidden: You are not allowed to create a Tweet with duplicate content." };
-    await expect(publishTask(u.email, post({ channel: "x" }), "x")).rejects.toThrow("x_duplicate");
-    expect((await getConnection(u.email, "x"))!.needsReconnect).toBeUndefined();
+    await expect(publishTask(acct(u), post({ channel: "x" }), "x")).rejects.toThrow("x_duplicate");
+    expect((await getConnection(acct(u), "x"))!.needsReconnect).toBeUndefined();
   });
 
   it("publishes to Instagram in two steps, stops at the daily limit, and calls a rejected image a refusal", async () => {
     const u = await newUser("cpig");
-    await saveConnection(u.email, via("meta", { instagram: "ca_ig" }, { igId: "1784" }));
+    await saveConnection(acct(u), via("meta", { instagram: "ca_ig" }, { igId: "1784" }));
     answers.INSTAGRAM_GET_IG_USER_CONTENT_PUBLISHING_LIMIT = ok({ data: [{ quota_usage: 3, config: { quota_total: 100 } }] });
     answers.INSTAGRAM_POST_IG_USER_MEDIA = ok({ id: "c-1" });
     answers.INSTAGRAM_POST_IG_USER_MEDIA_PUBLISH = ok({ id: "m-9" });
-    expect(await publishTask(u.email, post(), "instagram")).toMatchObject({ id: "m-9", status: "published" });
+    expect(await publishTask(acct(u), post(), "instagram")).toMatchObject({ id: "m-9", status: "published" });
     expect(calls.exec.find((e) => e.slug === "INSTAGRAM_POST_IG_USER_MEDIA_PUBLISH")!.args).toEqual({ ig_user_id: "1784", creation_id: "c-1", max_wait_seconds: 20 });
 
     answers.INSTAGRAM_POST_IG_USER_MEDIA = { successful: false, error: "The image's aspect ratio is not supported" };
-    const e = await failure(publishTask(u.email, post(), "instagram"));
+    const e = await failure(publishTask(acct(u), post(), "instagram"));
     expect(e.message).toBe("meta media 400: image_rejected");
     expect(mayHavePosted(e)).toBe(false);
 
     answers.INSTAGRAM_GET_IG_USER_CONTENT_PUBLISHING_LIMIT = ok({ data: [{ quota_usage: 100, config: { quota_total: 100 } }] });
     calls.exec = [];
-    await expect(publishTask(u.email, post(), "instagram")).rejects.toThrow("instagram_limit_reached");
+    await expect(publishTask(acct(u), post(), "instagram")).rejects.toThrow("instagram_limit_reached");
     expect(calls.exec.map((x) => x.slug)).toEqual(["INSTAGRAM_GET_IG_USER_CONTENT_PUBLISHING_LIMIT"]);
   });
 
   it("sends TikTok an image as a draft to the owner's inbox, and needs a generated image", async () => {
     const u = await newUser("cptt");
-    await saveConnection(u.email, via("tiktok", { tiktok: "ca_tt" }));
+    await saveConnection(acct(u), via("tiktok", { tiktok: "ca_tt" }));
     answers.TIKTOK_POST_PHOTO = ok({ data: { publish_id: "p_1" } });
-    expect(await publishTask(u.email, post({ channel: "tiktok" }), "tiktok")).toMatchObject({ id: "p_1", status: "draft" });
+    expect(await publishTask(acct(u), post({ channel: "tiktok" }), "tiktok")).toMatchObject({ id: "p_1", status: "draft" });
     expect(calls.exec[0].args).toMatchObject({ photo_images: [IMG], photo_cover_index: 0, post_mode: "MEDIA_UPLOAD" });
-    await expect(publishTask(u.email, post({ channel: "tiktok", imageUrl: undefined, imageProvider: undefined }), "tiktok")).rejects.toThrow("tiktok_needs_image");
+    await expect(publishTask(acct(u), post({ channel: "tiktok", imageUrl: undefined, imageProvider: undefined }), "tiktok")).rejects.toThrow("tiktok_needs_image");
   });
 
   it("never publishes to LinkedIn or TikTok through a direct record", async () => {
     const u = await newUser("cpdir");
-    await saveConnection(u.email, { provider: "linkedin", data: { access_token: "t" }, meta: {}, connectedAt: new Date().toISOString() });
-    await expect(publishTask(u.email, post({ channel: "linkedin" }), "linkedin")).rejects.toThrow("unsupported_provider");
+    await saveConnection(acct(u), { provider: "linkedin", data: { access_token: "t" }, meta: {}, connectedAt: new Date().toISOString() });
+    await expect(publishTask(acct(u), post({ channel: "linkedin" }), "linkedin")).rejects.toThrow("unsupported_provider");
     expect(calls.exec).toEqual([]);
   });
 });
@@ -320,33 +322,33 @@ describe("disconnecting (rule 651)", () => {
   it("revokes at the platform before deleting, keeps a record it could not revoke, and treats a gone account as revoked", async () => {
     const u = await newUser("cpdel");
     await signIn(u.email);
-    await saveConnection(u.email, via("meta", { facebook: "ca_fb", instagram: "ca_ig" }, { pageId: "1" }));
+    await saveConnection(acct(u), via("meta", { facebook: "ca_fb", instagram: "ca_ig" }, { pageId: "1" }));
     revokeFails = "network down";
     const bad = await connectRoute.DELETE(new Request("https://app.test/api/connect/meta", { method: "DELETE" }), ctx("meta"));
     expect(bad.status).toBe(502);
-    expect((await getConnection(u.email, "meta"))!.needsReconnect).toBe("revoke_failed");
+    expect((await getConnection(acct(u), "meta"))!.needsReconnect).toBe("revoke_failed");
 
     revokeFails = "Connected account not found";
     const gone = await connectRoute.DELETE(new Request("https://app.test/api/connect/meta", { method: "DELETE" }), ctx("meta"));
     expect(gone.status).toBe(200);
-    expect(await getConnection(u.email, "meta")).toBeNull();
+    expect(await getConnection(acct(u), "meta")).toBeNull();
 
     revokeFails = null;
-    await saveConnection(u.email, via("x", { twitter: "ca_x" }));
+    await saveConnection(acct(u), via("x", { twitter: "ca_x" }));
     await connectRoute.DELETE(new Request("https://app.test/api/connect/x", { method: "DELETE" }), ctx("x"));
     expect(calls.revoked).toEqual(["ca_x"]);
     expect(calls.deleted).toEqual(["ca_x"]);
-    expect(await getConnection(u.email, "x")).toBeNull();
+    expect(await getConnection(acct(u), "x")).toBeNull();
   });
 
   it("revokes every Composio account when the account is deleted", async () => {
     const u = await newUser("cpwipe");
-    await saveConnection(u.email, via("x", { twitter: "ca_x" }));
-    await saveConnection(u.email, via("meta", { facebook: "ca_fb" }));
-    await saveConnection(u.email, { provider: "telegram", data: { botToken: "t", chatId: "@c" }, connectedAt: new Date().toISOString() });
-    await wipeAccount(u.email);
+    await saveConnection(acct(u), via("x", { twitter: "ca_x" }));
+    await saveConnection(acct(u), via("meta", { facebook: "ca_fb" }));
+    await saveConnection(acct(u), { provider: "telegram", data: { botToken: "t", chatId: "@c" }, connectedAt: new Date().toISOString() });
+    await wipeAccount(acct(u));
     expect([...calls.revoked].sort()).toEqual(["ca_fb", "ca_x"]);
-    expect(await getConnection(u.email, "x")).toBeNull();
+    expect(await getConnection(acct(u), "x")).toBeNull();
   });
 });
 

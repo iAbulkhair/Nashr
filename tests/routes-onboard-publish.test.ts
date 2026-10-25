@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { json, newMember, newUser, signIn, signOut } from "./helpers/session";
 import { vjson } from "./helpers/version";
 import { noSiteBrand, type GameAnswers } from "@/lib/dictionary";
-import { currentUser, getUser } from "@/lib/auth";
+import { acct, currentUser, getUser } from "@/lib/auth";
 import { getBrand, getTask, saveTask, type Task } from "@/lib/brand";
 import { listFiles } from "@/lib/files";
 import { saveConnection } from "@/lib/connectors/store";
@@ -37,9 +37,9 @@ describe("onboarding limits (rule 14)", () => {
     expect((await confirm("roastery.example")).status).toBe(200);
     const events = await drain(await onboard.POST(json("/api/onboard", "POST", { url: "roastery.example" })));
     expect(events.at(-1)!.type).toBe("done");
-    expect(await getBrand(u.email)).not.toBeNull();
-    expect((await listFiles(u.email)).map((f) => f.name).sort()).toEqual(["brand-guidelines.md", "brand.md", "market-research.md", "opportunities.md", "preferences.md", "strategy.md"]);
-    expect((await getUser(u.email))!.credits).toBe(50);
+    expect(await getBrand(acct(u))).not.toBeNull();
+    expect((await listFiles(acct(u))).map((f) => f.name).sort()).toEqual(["brand-guidelines.md", "brand.md", "market-research.md", "opportunities.md", "preferences.md", "strategy.md"]);
+    expect((await getUser(acct(u)))!.credits).toBe(50);
     expect((await onboard.POST(json("/api/onboard", "POST", { url: "roastery.example" }))).status).toBe(409);
   });
   it("allows at most three runs a day per account, even when each run starts from an empty workspace", async () => {
@@ -51,7 +51,7 @@ describe("onboarding limits (rule 14)", () => {
       const res = await onboard.POST(json("/api/onboard", "POST", { url: "roastery.example" }));
       codes.push(res.status);
       if (res.status === 200) await drain(res);
-      await db.del(`brand:${u.email}`); // as if the owner deleted the brand to get another free build
+      await db.del(`brand:${acct(u)}`); // as if the owner deleted the brand to get another free build
     }
     expect(codes).toEqual([200, 200, 200, 429]);
   });
@@ -71,11 +71,11 @@ describe("onboarding builds only from a site the owner confirmed (rule 97)", () 
     expect((await confirm("   ")).status).toBe(400);
     expect((await confirm("roastery.example")).status).toBe(200);
     expect((await drain(await onboard.POST(json("/api/onboard", "POST", { url: "roastery.example" })))).at(-1)!.type).toBe("done");
-    expect(await db.get(`onboardok:${u.email}`), "the build clears its confirmation").toBeNull();
+    expect(await db.get(`onboardok:${acct(u)}`), "the build clears its confirmation").toBeNull();
     const again = await confirm("other.example");
     expect(again.status).toBe(409);
     expect(await again.json()).toEqual({ ok: false, error: "already_onboarded" });
-    expect(await db.get(`onboardok:${u.email}`)).toBeNull();
+    expect(await db.get(`onboardok:${acct(u)}`)).toBeNull();
   });
 
   it("a URL nobody confirmed reads nothing and spends none of the three daily runs", async () => {
@@ -88,8 +88,8 @@ describe("onboarding builds only from a site the owner confirmed (rule 97)", () 
       expect(await res.text()).toBe("unconfirmed");
     }
     expect(crawled.length, "no crawl").toBe(before);
-    expect(await getBrand(u.email)).toBeNull();
-    expect(await db.get(`onboardlock:${u.email}`), "no lock taken").toBeNull();
+    expect(await getBrand(acct(u))).toBeNull();
+    expect(await db.get(`onboardlock:${acct(u)}`), "no lock taken").toBeNull();
     // Four refusals would have used up the allowance of three if they counted; the owner's own site still builds.
     await confirm("roastery.example");
     expect((await drain(await onboard.POST(json("/api/onboard", "POST", { url: "roastery.example" })))).at(-1)!.type).toBe("done");
@@ -102,7 +102,7 @@ describe("onboarding builds only from a site the owner confirmed (rule 97)", () 
     await confirm(" roastery.example ");
     expect((await onboard.POST(json("/api/onboard", "POST", { url: "attacker.example" }))).status).toBe(403);
     expect((await drain(await onboard.POST(json("/api/onboard", "POST", { url: "roastery.example" })))).at(-1)!.type).toBe("done");
-    await db.del(`brand:${u.email}`); // the owner deletes the brand
+    await db.del(`brand:${acct(u)}`); // the owner deletes the brand
     expect((await onboard.POST(json("/api/onboard", "POST", { url: "roastery.example" }))).status, "a used confirmation starts nothing").toBe(403);
   });
 
@@ -113,8 +113,8 @@ describe("onboarding builds only from a site the owner confirmed (rule 97)", () 
     await confirm("roastery.example");
     await signIn(b.email);
     expect((await onboard.POST(json("/api/onboard", "POST", { url: "roastery.example" }))).status).toBe(403);
-    expect(await getBrand(b.email)).toBeNull();
-    expect(await db.get(`onboardok:${a.email}`)).toBe("roastery.example");
+    expect(await getBrand(acct(b))).toBeNull();
+    expect(await db.get(`onboardok:${acct(a)}`)).toBe("roastery.example");
   });
 });
 
@@ -131,12 +131,12 @@ describe("the game's answers (rules 522-523)", () => {
     const u = await newUser("onb");
     await signIn(u.email);
     expect((await confirmWith("roastery.example", okAr)).status).toBe(200);
-    expect(await db.get(`onboardgame:${u.email}`)).toEqual(okAr);
+    expect(await db.get(`onboardgame:${acct(u)}`)).toEqual(okAr);
     const bad = await confirmWith("other.example", { ...okAr, words: [] });
     expect(bad.status).toBe(400);
     expect(await bad.json()).toEqual({ ok: false, error: "bad_answers" });
-    expect(await db.get(`onboardok:${u.email}`), "a refused confirm writes nothing").toBe("roastery.example");
-    expect(await db.get(`onboardgame:${u.email}`)).toEqual(okAr);
+    expect(await db.get(`onboardok:${acct(u)}`), "a refused confirm writes nothing").toBe("roastery.example");
+    expect(await db.get(`onboardgame:${acct(u)}`)).toEqual(okAr);
     const m = await newMember(u, "member");
     await signIn(m.email);
     expect((await confirmWith("roastery.example", okAr)).status).toBe(403);
@@ -147,7 +147,7 @@ describe("the game's answers (rules 522-523)", () => {
     await signIn(u.email);
     await confirmWith("roastery.example", okAr);
     await confirmWith("roastery.example");
-    expect(await db.get(`onboardgame:${u.email}`)).toBeNull();
+    expect(await db.get(`onboardgame:${acct(u)}`)).toBeNull();
   });
 
   it("rule 523: the build writes the answers over the model's name, industry and tone, read from the store", async () => {
@@ -156,12 +156,12 @@ describe("the game's answers (rules 522-523)", () => {
     await confirmWith("roastery.example", okEn);
     const body = { url: "roastery.example", hints: "x", answers: { ...okEn, brand: "Evil" } };
     expect((await drain(await onboard.POST(json("/api/onboard", "POST", body)))).at(-1)!.type).toBe("done");
-    const brand = (await getBrand(u.email))!;
+    const brand = (await getBrand(acct(u)))!;
     expect(brand.name).toBe("Morning Cup");
     expect(brand.industry).toBe("Coffee");
     expect(brand.tone).toBe("bold, warm, refined, down-to-earth, calm");
-    expect(await db.get(`onboardgame:${u.email}`), "the build clears the answers with the confirmation").toBeNull();
-    expect(await db.get(`onboardok:${u.email}`)).toBeNull();
+    expect(await db.get(`onboardgame:${acct(u)}`), "the build clears the answers with the confirmation").toBeNull();
+    expect(await db.get(`onboardok:${acct(u)}`)).toBeNull();
   });
 
   it("rule 523: answers confirmed in one workspace are not applied to another", async () => {
@@ -172,8 +172,8 @@ describe("the game's answers (rules 522-523)", () => {
     await signIn(b.email);
     await confirmWith("roastery.example");
     expect((await drain(await onboard.POST(json("/api/onboard", "POST", { url: "roastery.example" })))).at(-1)!.type).toBe("done");
-    expect((await getBrand(b.email))!.name).not.toBe("Morning Cup");
-    expect(await db.get(`onboardgame:${a.email}`)).toEqual(okEn);
+    expect((await getBrand(acct(b)))!.name).not.toBe("Morning Cup");
+    expect(await db.get(`onboardgame:${acct(a)}`)).toEqual(okEn);
   });
 
   it("rule 526: without a site the game's brand is saved through PUT /api/brand, by an owner only, under their own scope", async () => {
@@ -182,10 +182,10 @@ describe("the game's answers (rules 522-523)", () => {
     const body = noSiteBrand(okAr, "بن مختص", "موظفين");
     await signIn(m.email);
     expect((await brandRoute.PUT(json("/api/brand", "PUT", body))).status).toBe(403);
-    expect(await getBrand(u.email)).toBeNull();
+    expect(await getBrand(acct(u))).toBeNull();
     await signIn(u.email);
     expect((await brandRoute.PUT(json("/api/brand", "PUT", body))).status).toBe(200);
-    expect(await getBrand(u.email)).toMatchObject({ name: "قهوة الصباح", industry: "قهوة", tone: "جريئة، دافية، راقية، شعبية، هادية", products: "بن مختص", audience: "موظفين" });
+    expect(await getBrand(acct(u))).toMatchObject({ name: "قهوة الصباح", industry: "قهوة", tone: "جريئة، دافية، راقية، شعبية، هادية", products: "بن مختص", audience: "موظفين" });
   });
 
   it("rule 527: the no-site save only creates; a brand built meanwhile (another tab) answers 409 and stays whole", async () => {
@@ -198,21 +198,21 @@ describe("the game's answers (rules 522-523)", () => {
     const res = await brandRoute.PUT(json("/api/brand", "PUT", body));
     expect(res.status).toBe(409);
     expect(await res.json()).toMatchObject({ ok: false, error: "exists" });
-    expect(await getBrand(u.email)).toMatchObject({ name: "Roastery", website: "https://roastery.example", banned: "cheap", offers: "10% off" });
+    expect(await getBrand(acct(u))).toMatchObject({ name: "Roastery", website: "https://roastery.example", banned: "cheap", offers: "10% off" });
     // The brand form's own save (no `create`) still edits as before.
     expect((await brandRoute.PUT(json("/api/brand", "PUT", { ...built, name: "Roastery 2" }))).status).toBe(200);
-    expect(await getBrand(u.email)).toMatchObject({ name: "Roastery 2" });
+    expect(await getBrand(acct(u))).toMatchObject({ name: "Roastery 2" });
   });
 });
 
 describe("publishing needs an approval made in code (rule 3)", () => {
   it("the chat tool refuses a pending or rejected item and publishes an approved one", async () => {
     const owner = await newUser("pub");
-    await saveConnection(owner.email, { provider: "telegram", data: { token: "t", chat: "c" }, connectedAt: new Date().toISOString() });
-    await saveTask(owner.email, task("pending1", "pending"), true);
-    await saveTask(owner.email, task("rejected1", "rejected"), true);
+    await saveConnection(acct(owner), { provider: "telegram", data: { token: "t", chat: "c" }, connectedAt: new Date().toISOString() });
+    await saveTask(acct(owner), task("pending1", "pending"), true);
+    await saveTask(acct(owner), task("rejected1", "rejected"), true);
     // Approved by a person (decidedAt): an item auto-approval passed is published from the inbox only (rule 214).
-    await saveTask(owner.email, { ...task("approved1", "approved"), decidedAt: new Date().toISOString() }, true);
+    await saveTask(acct(owner), { ...task("approved1", "approved"), decidedAt: new Date().toISOString() }, true);
     // The owner as a request resolves them: publish_item is refused to a user with no actor (tests/role-gates.test.ts).
     await signIn(owner.email);
     const u = (await currentUser())!;
@@ -221,16 +221,16 @@ describe("publishing needs an approval made in code (rule 3)", () => {
     expect(await runTool(u, "publish_item", { task_id: "pending1", provider: "telegram" }, actions)).toMatch(/not approved/i);
     expect(await runTool(u, "publish_item", { task_id: "rejected1", provider: "telegram" }, actions)).toMatch(/not approved/i);
     expect(published).toEqual([]);
-    expect((await getTask(u.email, "pending1"))!.status).toBe("pending");
+    expect((await getTask(acct(u), "pending1"))!.status).toBe("pending");
     expect(await runTool(u, "publish_item", { task_id: "approved1", provider: "telegram" }, actions)).toMatch(/Published/);
     expect(published).toEqual(["approved1"]);
   });
   it("the manual route refuses a rejected item and a target that does not fit the item", async () => {
     const u = await newUser("pub");
     await signIn(u.email);
-    await saveConnection(u.email, { provider: "telegram", data: { token: "t", chat: "c" }, connectedAt: new Date().toISOString() });
-    await saveTask(u.email, task("rej", "rejected"), true);
-    await saveTask(u.email, task("ok", "pending"), true);
+    await saveConnection(acct(u), { provider: "telegram", data: { token: "t", chat: "c" }, connectedAt: new Date().toISOString() });
+    await saveTask(acct(u), task("rej", "rejected"), true);
+    await saveTask(acct(u), task("ok", "pending"), true);
     const call = async (id: string, provider: string) => publishRoute.POST(await vjson(`/api/publish/${id}`, "POST", { provider }), { params: Promise.resolve({ id }) });
     expect((await call("rej", "telegram")).status).toBe(409);
     expect((await call("ok", "wordpress")).status).toBe(400);
@@ -241,14 +241,14 @@ describe("publishing needs an approval made in code (rule 3)", () => {
 describe("account deletion (rule 13)", () => {
   it("removes platform credentials, the user record and the users index entry", async () => {
     const u = await newUser("wipe");
-    await saveConnection(u.email, { provider: "telegram", data: { token: "secret" }, connectedAt: new Date().toISOString() });
-    await saveTask(u.email, task("t1", "pending"), true);
-    expect(await db.smembers("users:all")).toContain(u.email);
-    await wipeAccount(u.email);
-    expect(await db.get(`conn:${u.email}:telegram`)).toBeNull();
-    expect(await db.smembers(`conns:${u.email}`)).toHaveLength(0);
-    expect(await getUser(u.email)).toBeNull();
-    expect(await db.smembers("users:all")).not.toContain(u.email);
-    expect(await getTask(u.email, "t1")).toBeNull();
+    await saveConnection(acct(u), { provider: "telegram", data: { token: "secret" }, connectedAt: new Date().toISOString() });
+    await saveTask(acct(u), task("t1", "pending"), true);
+    expect(await db.smembers("users:all")).toContain(acct(u));
+    await wipeAccount(acct(u));
+    expect(await db.get(`conn:${acct(u)}:telegram`)).toBeNull();
+    expect(await db.smembers(`conns:${acct(u)}`)).toHaveLength(0);
+    expect(await getUser(acct(u))).toBeNull();
+    expect(await db.smembers("users:all")).not.toContain(acct(u));
+    expect(await getTask(acct(u), "t1")).toBeNull();
   });
 });

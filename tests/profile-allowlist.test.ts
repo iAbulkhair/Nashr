@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { newMember, newUser, signIn } from "./helpers/session";
-import { getUser, saveUser, type User } from "@/lib/auth";
+import { acct, getLogin, saveUser, type User } from "@/lib/auth";
 import { db } from "@/lib/db";
 import * as profileRoute from "@/app/api/profile/route";
 
@@ -31,10 +31,12 @@ const month = new Date().toISOString().slice(0, 7);
 async function fullAccount(): Promise<Required<Omit<User, "scope" | "brandId" | "actor" | "topupsDirty">>> {
   // Pins the legacy shape (multi-org M1): the record below names an owner no person holds (`ownerPid`), which only the
   // legacy resolver reads past; no shadow membership, which sign-in would otherwise pick as the person's only live account.
-  const u = (await getUser((await newUser("allow", { legacy: true, shadow: false })).email))!;
+  const login = await getLogin((await newUser("allow", { legacy: true, shadow: false })).email);
+  if (login?.kind !== "owner") throw new Error("the fixture owner signs in as an owner");
+  const u = login.user;
   const full: Required<Omit<User, "scope" | "brandId" | "actor" | "topupsDirty">> = {
     // The account id (rule 1995): storage only, never a profile field.
-    id: u.email,
+    id: acct(u),
     // The owning person (multi-workspace membership, rule 1995): storage only, never a profile field.
     ownerPid: "p_ownerpidaaaaaaaaaaaaaaaa",
     // The name given at create (multi-workspace M2): the switcher reads it, the profile does not send it.
@@ -57,8 +59,10 @@ async function fullAccount(): Promise<Required<Omit<User, "scope" | "brandId" | 
     renewAnchor: 17,
     suspended: false,
     sessionsAfter: u.sessionsAfter!,
-    agentSpend: { month, by: { [u.email]: { noor: 12 } } },
+    agentSpend: { month, by: { [acct(u)]: { noor: 12 } } },
     seats: 7,
+    // Paid extra seats (rule 3362): billing state the billing page shows, never a profile field.
+    extraSeats: 2,
     brandCap: 12,
     deal: { credits: 5000, priceSar: 3330, setAt: iso(-3), setBy: "founder-deal@test.example" },
     grants: { video: { value: "all", until: iso(10).slice(0, 10), by: "founder-grant@test.example", at: iso(-1), note: "SECRET-GRANT-NOTE" } },
@@ -66,8 +70,8 @@ async function fullAccount(): Promise<Required<Omit<User, "scope" | "brandId" | 
     firstMonthOffer: { kind: "partner", pct: 15, at: iso(-40), usedAt: iso(-20), paymentId: "pay_7870000000000000" },
     firstPaidOn: iso(-20).slice(0, 10),
     partnerCode: "OWNCODE787",
-    onboardPaid: { [`${u.email}#b2`]: { scope: `${u.email}#b2`, agent: "noor", month, credits: 9, at: iso(0) } },
-    paidOnce: { [`weekly:${u.email}:2026-41`]: { scope: u.email, agent: "dana", month, credits: 3, at: iso(0) } },
+    onboardPaid: { [`${acct(u)}#b2`]: { scope: `${acct(u)}#b2`, agent: "noor", month, credits: 9, at: iso(0) } },
+    paidOnce: { [`weekly:${acct(u)}:2026-41`]: { scope: acct(u), agent: "dana", month, credits: 3, at: iso(0) } },
     chatAllowance: 900,
     chatOverflow: true,
     chatCarryMicro: 4321,
@@ -87,6 +91,10 @@ async function fullAccount(): Promise<Required<Omit<User, "scope" | "brandId" | 
     priceLock: { plan: "business", baseHalalas: 99900, from: iso(-20).slice(0, 10), until: iso(340).slice(0, 10), months: 12, founding: true, at: iso(-20), by: "founder-lock@test.example", paidHalalas: 114885, paymentId: "pay_7870000000000001" },
     // The founder's fair-use lift (rule 1731): a founder field, never sent to the customer.
     fairUseLift: { month, at: iso(-1), by: "founder-fairuse@test.example" },
+    // Customer roles (rules 3762, 3771): the approval policy is shown on the team page, never in the profile; the
+    // per-person spend names person ids.
+    approvalRequired: true,
+    personSpend: { month, by: { p_spendaaaaaaaaaaaaaaaaaaa: 7 } },
   };
   await saveUser(full);
   return full;
@@ -132,7 +140,7 @@ describe("GET /api/profile sends only the account fields it names (rule 787)", (
   it("a field the route does not know, added to the stored record, is not sent", async () => {
     const full = await fullAccount();
     // As a later release (or a hand edit) would leave it: a new field on `user:{email}` that this build has never heard of.
-    await db.set(`user:${full.email}`, { ...(await db.get<Record<string, unknown>>(`user:${full.email}`)), founderMemo: "SECRET-UNKNOWN-FIELD", riskScore: 87 });
+    await db.set(`user:${acct(full)}`, { ...(await db.get<Record<string, unknown>>(`user:${acct(full)}`)), founderMemo: "SECRET-UNKNOWN-FIELD", riskScore: 87 });
     await signIn(full.email);
     const { raw, body } = await read();
     expect(Object.keys(body.user).sort()).toEqual(OWNER_KEYS);

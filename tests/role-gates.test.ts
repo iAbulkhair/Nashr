@@ -3,7 +3,7 @@ import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative, sep } from "node:path";
 import { json, newMember, newUser, params, signIn, signOut, jar, type Fixture, readActiveBrand } from "./helpers/session";
 import { vjson } from "./helpers/version";
-import { currentUser, getUser, saveUser, type User } from "@/lib/auth";
+import { acct, currentUser, getUser, saveUser, type User } from "@/lib/auth";
 import { getBrand, getTask, saveBrand, saveTask, type Brand, type Task } from "@/lib/brand";
 import { db } from "@/lib/db";
 import { getGov, listGovHistory, saveGovAs } from "@/lib/governance";
@@ -57,7 +57,7 @@ import * as catalogRoute from "@/app/api/catalog/route";
 
 // ── Part one: the route-to-role map ──────────────────────────────────────────────────────────────────────────────────
 
-type Role = "owner" | "admin" | "member";
+type Role = "owner" | "admin" | "member" | "viewer";
 /**
  * public: no session (rate limited per IP when it writes). public-read: a GET, HEAD or OPTIONS with no session that
  * serves only public metadata, a static list or a CORS preflight, and writes nothing. bearer: the MCP token.
@@ -66,7 +66,7 @@ type Role = "owner" | "admin" | "member";
  * unverified-session: the email-verification routes, called by an owner who `currentUser` still reads as signed out (rule 751): the handler must read `currentUserUnverified` and be rate limited (allow).
  * admin-console: the founder console. cron: the CRON_SECRET bearer. owner / admin / member: a session, and at least
  * that role, checked with forbid()/can() for the listed actions of src/lib/roles.ts (a bare "member" needs only the
- * session).
+ * session, so a Viewer passes it too: only writes a Viewer may make are bare, rule 3752, `VIEWER_WRITES`).
  */
 type Gate = "public" | "public-read" | "cron" | "admin-console" | "bearer" | "unverified-session" | "person-session" | "member" | { role: Role; actions: Action[] };
 const g = (role: Role, ...actions: Action[]): Gate => ({ role, actions });
@@ -151,6 +151,9 @@ const ROUTE_ROLES: Record<string, Gate> = {
   "POST /api/admin/agent-scope/modes": "admin-console",
   // Customer passkeys off switch (rule 2426): the console owner only (staffMay "passkeys.switch"), second factor, reason, audit.
   "POST /api/admin/passkeys": "admin-console",
+  // One-time data conversions from the console (rules 4100-4106): the console owner only (staffMay "data.convert"); an apply also
+  // needs the second factor, a reason and a clean dry run.
+  "POST /api/admin/conversions/[name]": "admin-console",
   "POST /api/admin/agent-scope/eval": "admin-console",
 
   // Owner only.
@@ -166,7 +169,10 @@ const ROUTE_ROLES: Record<string, Gate> = {
   "POST /api/partner/code": g("owner", "billing"),
   "DELETE /api/account": g("owner", "account.delete"),
   "PUT /api/profile": g("owner", "profile.account", "brand.write", "profile.self"),
-  "PATCH /api/team/member": g("owner", "team.role"),
+  // Role (owner), brand scope and approve toggle (admin, `team.access`), monthly credit cap (owner): rules 3750-3771.
+  "PATCH /api/team/member": g("owner", "team.role", "team.access", "team.cap"),
+  // The approval policy (rule 3762): the owner only.
+  "PATCH /api/team": g("owner", "team.policy"),
   "POST /api/billing/chat-overflow": g("owner", "billing"), // how the account's credits are spent once chat runs out
   // The model picks (plan Task 6): a conversation's by any login, the active brand's by an admin, the China-hosting
   // confirmation by the owner only. One handler serves all three, like PATCH /api/tasks/[id].
@@ -175,7 +181,7 @@ const ROUTE_ROLES: Record<string, Gate> = {
   "POST /api/billing/renewal": g("owner", "billing.pay"), // the online subscription's renewal and saved card
 
   // Admin and owner (some handlers also serve a member-level action, listed with it, or member-level names such as
-  // non-core files, which need no action of their own).
+  // non-core files, which need the Editor-level `files.write`).
   "PUT /api/brand": g("admin", "brand.write"),
   "POST /api/brand/proposals/[id]": g("admin", "brand.write"),
   // Agent instructions of the brand workspace (agent skills portal, rule 949).
@@ -200,11 +206,11 @@ const ROUTE_ROLES: Record<string, Gate> = {
   "POST /api/onboard/plan": g("admin", "onboard"),
   "PUT /api/schedule": g("admin", "schedule.write"),
   "POST /api/publish/[id]": g("admin", "publish"),
-  "PATCH /api/tasks/[id]": g("admin", "publish", "drafts"),
+  "PATCH /api/tasks/[id]": g("admin", "approve", "drafts", "comment"),
   // Line notes on a draft (rule 2490): any member who may edit sends them; the item stays pending.
   "POST /api/tasks/[id]/revise": g("member", "drafts"),
-  "PUT /api/files": g("admin", "files.core.write"),
-  "DELETE /api/files": g("admin", "files.core.delete"),
+  "PUT /api/files": g("admin", "files.core.write", "files.write"),
+  "DELETE /api/files": g("admin", "files.core.delete", "files.write"),
   "POST /api/performance": g("admin", "performance.import"),
   "DELETE /api/performance": g("admin", "performance.delete"),
   "POST /api/team/invite": g("admin", "team.invite.member"),
@@ -222,17 +228,17 @@ const ROUTE_ROLES: Record<string, Gate> = {
   "PUT /api/secretary/series/[seriesId]/keep": g("admin", "todo.write", "todo.close"),
 
   // Every member of the account.
-  "PATCH /api/account": g("member", "password.change"),
+  "PATCH /api/account": g("viewer", "password.change"),
   // Sign out other devices (rule 1150): the caller's own sessions only, never while impersonating.
-  "POST /api/account/sessions": g("member", "sessions.revoke"),
+  "POST /api/account/sessions": g("viewer", "sessions.revoke"),
   // One device out of the login's own list (rule 1939).
-  "DELETE /api/account/sessions": g("member", "sessions.revoke"),
+  "DELETE /api/account/sessions": g("viewer", "sessions.revoke"),
   // The login's own two-step sign-in (rules 1930-1937).
-  "POST /api/account/2fa": g("member", "mfa.manage"),
+  "POST /api/account/2fa": g("viewer", "mfa.manage"),
   // The login's own passkeys (customer passkeys, rule 2412): member-level, refused while impersonating.
-  "POST /api/account/passkeys": g("member", "passkeys.manage"),
-  "POST /api/account/email": g("member", "email.change"),
-  "POST /api/account/google": g("member", "google.manage"),
+  "POST /api/account/passkeys": g("viewer", "passkeys.manage"),
+  "POST /api/account/email": g("viewer", "email.change"),
+  "POST /api/account/google": g("viewer", "google.manage"),
   // Notification preferences per type and channel (rule 1145): the account's settings, owner only.
   "PUT /api/notifications/prefs": g("owner", "profile.account"),
   "PUT /api/notifications/digest": g("owner", "profile.account"),
@@ -240,21 +246,22 @@ const ROUTE_ROLES: Record<string, Gate> = {
   "POST /api/push": "member",
   "DELETE /api/push": "member",
   "POST /api/push/seen": "member",
-  "POST /api/team/leave": g("member", "team.leave"),
+  "POST /api/team/leave": g("viewer", "team.leave"),
   // Multi-workspace M3 (rules 2128, 2750): the owner's own session offers or withdraws the account's ownership.
   "POST /api/team/transfer": g("owner", "team.transfer"),
   "DELETE /api/team/transfer": g("owner", "team.transfer"),
-  "POST /api/chat": "member",
-  "POST /api/chat/feedback": "member",
-  "POST /api/conversations": "member",
-  "PATCH /api/conversations": "member",
-  "DELETE /api/conversations": "member",
-  "POST /api/generate": "member",
-  "POST /api/integrations": "member",
+  // An Editor (stored "member") and up, never a Viewer (rule 3752): agent runs, credit spend and workspace writes.
+  "POST /api/chat": g("member", "chat"),
+  "POST /api/chat/feedback": g("member", "feedback"),
+  "POST /api/conversations": g("member", "conversations"),
+  "PATCH /api/conversations": g("member", "conversations"),
+  "DELETE /api/conversations": g("member", "conversations"),
+  "POST /api/generate": g("member", "generate"),
+  "POST /api/integrations": g("member", "integrations.request"),
   "POST /api/notifications": "member",
-  "POST /api/schedule": "member", // run now: an explicit request, charged like generate
-  "POST /api/tasks/[id]/image": "member",
-  "POST /api/tasks/[id]/video": "member",
+  "POST /api/schedule": g("member", "generate"), // run now: an explicit request, charged like generate
+  "POST /api/tasks/[id]/image": g("member", "images"),
+  "POST /api/tasks/[id]/video": g("member", "images"),
   "POST /api/wishlist/suggest": "member",
   "POST /api/wishlist/vote": "member",
   "POST /api/secretary": g("member", "todo.write"),
@@ -270,8 +277,8 @@ const ROUTE_ROLES: Record<string, Gate> = {
   // Saving or dismissing an absence Reem proposed in chat: the same role as marking a contact away on the page.
   "POST /api/secretary/away/proposals/[id]": g("member", "todo.write"),
   // One's own private calendar feed link: any member manages their own, refused while a founder impersonates (rule 533).
-  "POST /api/secretary/feed": g("member", "feed.manage"),
-  "DELETE /api/secretary/feed": g("member", "feed.manage"),
+  "POST /api/secretary/feed": g("viewer", "feed.manage"),
+  "DELETE /api/secretary/feed": g("viewer", "feed.manage"),
   // One's own booking links (Reem B2a): the same, with their own action (rule 596).
   "POST /api/secretary/booking": g("member", "booking.manage"),
   "DELETE /api/secretary/booking": g("member", "booking.manage"),
@@ -291,6 +298,7 @@ const ROUTE_ROLES: Record<string, Gate> = {
   "POST /api/admin/leads": "admin-console",
   "POST /api/media/hook/[provider]": "public",
   "POST /api/billing/paymob/webhook": "public", // Paymob callbacks: HMAC only, rules 700-729
+  "POST /api/billing/geidea/webhook": "public", // Geidea callbacks: the signature in the body only, rules 3903-3905
   "POST /api/shopify/compliance": "public", // Shopify compliance webhooks: HMAC only, rules 2168-2171
   // The ops agent (rules 2380-2389): no session; per-IP allow() first, then a sameSecret token (OPS_AGENT_TOKEN, or
   // Telegram's webhook secret), 401 while unset. The summary is counts only; the press runs only OPS_ACTIONS, once.
@@ -312,7 +320,7 @@ const READS: Record<string, Gate> = {
   "GET /api/referral/share": g("owner", "referral"),
   // A partner link: sets the 30-day partner cookie for a valid code, so it is a public write with a rate limit (rule 391).
   "GET /p/[code]": "public",
-  "GET /api/team": g("member", "team.view"),
+  "GET /api/team": g("viewer", "team.view"),
   // Multi-workspace M2: the person's own workspaces (handles, names and roles only).
   "GET /api/workspaces": "person-session",
   "GET /api/workspaces/invites": "person-session", // M3 inbox (rule 2753): the person's own verified address only
@@ -320,23 +328,23 @@ const READS: Record<string, Gate> = {
   "GET /api/team/log": g("admin", "team.log.view"),
   // The account's AI usage by person, brand, agent, model and day: requests only (rule 2907).
   "GET /api/usage": g("admin", "usage.view"),
-  "GET /api/profile": g("member", "read"),
+  "GET /api/profile": g("viewer", "read"),
   // The owner's own data download (rule 1320): owner only, refused while impersonating, rate limited.
   "GET /api/account/export": g("owner", "account.export"),
   // The login's own two-step status and device list (rules 1930, 1938): a session, nothing written.
   "GET /api/account/2fa": "member",
   // The passkey list (rule 2412): refused while impersonating, so no founder reads a customer's passkeys.
-  "GET /api/account/passkeys": g("member", "passkeys.manage"),
+  "GET /api/account/passkeys": g("viewer", "passkeys.manage"),
   "GET /api/auth/google/start": "public",
   "GET /api/auth/google/callback": "public",
-  "GET /api/account/email": g("member", "email.change"),
-  "GET /api/account/google": g("member", "google.manage"),
+  "GET /api/account/email": g("viewer", "email.change"),
+  "GET /api/account/google": g("viewer", "google.manage"),
   "GET /api/account/sessions": "member",
   // The Paymob return page's poll (rule 1155): the caller's own last checkout and plan, owner only.
   "GET /api/billing/status": g("owner", "billing"),
-  "GET /api/activity": g("member", "read"),
-  "GET /api/activity/export": g("member", "read"),
-  "GET /api/handoffs/[id]": g("member", "read"),
+  "GET /api/activity": g("viewer", "read"),
+  "GET /api/activity/export": g("viewer", "read"),
+  "GET /api/handoffs/[id]": g("viewer", "read"),
   "GET /api/media/[jobId]": "member",
   // Our media files (rules 1754-1758): a signed-in member of the workspace that holds the file, or a short signed link
   // minted at hand-off; both checked inside, everything else is the same 404. Rate limited per IP first, so "public".
@@ -374,6 +382,8 @@ const READS: Record<string, Gate> = {
   "GET /api/admin/payments/[email]": "admin-console",
   "GET /api/admin/users/[email]": "admin-console",
   "GET /api/admin/users/[email]/workspace": "admin-console", // rule 2077: read-only workspace view, staffMay("workspace.view") after the console gate
+  "GET /api/admin/workspaces": "admin-console", // rule 3720: customers list, one row per workspace, staffMay("workspace.view"), audit on a member-address search
+  "GET /api/admin/workspaces/[email]": "admin-console", // rule 3725: workspace page, staffMay("workspace.view"), audit row before the answer
   "GET /api/admin/people/[email]": "admin-console", // rule 2755: read-only people view (M3, MULTI_ORG), staffMay("workspace.view") after the console gate
   "GET /api/affiliates": "admin-console",
   "GET /api/waitlist": "admin-console",
@@ -402,15 +412,15 @@ const READS: Record<string, Gate> = {
   "GET /api/tasks": "member",
   "GET /api/tasks/[id]/pptx": "member",
   "GET /api/secretary": "member",
-  "GET /api/secretary/walk": g("member", "read"),
-  "GET /api/secretary/away": g("member", "read"),
-  "GET /api/secretary/calendar": g("member", "read"),
+  "GET /api/secretary/walk": g("viewer", "read"),
+  "GET /api/secretary/away": g("viewer", "read"),
+  "GET /api/secretary/calendar": g("viewer", "read"),
   "GET /api/secretary/calendar-link": g("owner", "calendar.link"),
   "GET /api/secretary/calendar-link/calendars": g("owner", "calendar.link"),
-  "GET /api/secretary/series/[seriesId]/export": g("member", "read"),
-  "GET /api/secretary/feed": g("member", "read"),
-  "GET /api/secretary/booking": g("member", "read"),
-  "GET /api/secretary/meeting/[id]": g("member", "read"),
+  "GET /api/secretary/series/[seriesId]/export": g("viewer", "read"),
+  "GET /api/secretary/feed": g("viewer", "read"),
+  "GET /api/secretary/booking": g("viewer", "read"),
+  "GET /api/secretary/meeting/[id]": g("viewer", "read"),
 
   "GET /api/mcp": "public-read",
   "GET /api/secretary/feed/[token]": "public-read", // the token in the path is the credential; rate limited per IP and per link
@@ -504,7 +514,7 @@ function parse(file: string, source: string): Handler[] {
   return found.map(({ m, end }) => ({ key: `${m[1]} ${routeOf(file)}`, method: m[1], file, body: source.slice(m.index!, end), shared }));
 }
 const handlers = (): Handler[] => walk(APP).flatMap((file) => parse(file, readFileSync(file, "utf8")));
-const RANK: Record<Role, number> = { member: 1, admin: 2, owner: 3 };
+const RANK: Record<Role, number> = { viewer: 0, member: 1, admin: 2, owner: 3 };
 /** A refusal that is RETURNED: `const no = forbid(u, …); if (no) return no;` or `if (!can(u, …)) return …`. A bare call proves nothing. */
 const RETURNED_GUARD = /const\s+(\w+)\s*=\s*forbid\([^;]*\);\s*if\s*\(\s*\1\s*\)\s*return\s+\1\b|if\s*\(\s*!can\([^;]*?\)\s*\)\s*return\b/;
 const WRITES = /\bdb\.(?:set|del|lpush|ltrim|lrem|sadd|srem|hset|hdel|incrby|lock)\(|\bsave[A-Z]\w*\(|\bcreateSession\(/;
@@ -574,6 +584,12 @@ describe("every API handler has a declared gate (fail closed)", () => {
     const hidden = walk(APP).filter((f) => new RegExp(`export\\s*\\{[^}]*\\b(?:${METHODS})\\b[^}]*\\}`).test(readFileSync(f, "utf8")));
     expect(hidden).toEqual([]);
   });
+  it("rule 3752: a write that needs only the session is one a Viewer may make; every other names an action", () => {
+    // A Viewer's own browser push subscription, the bell's read marks and the product wishlist: nothing of the workspace.
+    const VIEWER_WRITES = new Set(["POST /api/push", "DELETE /api/push", "POST /api/push/seen", "POST /api/notifications", "POST /api/wishlist/suggest", "POST /api/wishlist/vote"]);
+    const bare = Object.entries(ROUTE_ROLES).filter(([, gate]) => gate === "member").map(([k]) => k);
+    expect(bare.filter((k) => !VIEWER_WRITES.has(k))).toEqual([]);
+  });
   it("each handler checks what its declared gate needs", () => {
     const bad = all.flatMap((h) => { const gate = declared(h); return gate ? violations(h, gate).map((v) => `${h.key}: ${v}`) : []; });
     expect(bad).toEqual([]);
@@ -636,11 +652,11 @@ describe("every API handler has a declared gate (fail closed)", () => {
     ].join("\n");
     const hs = Object.fromEntries(parse(file, source).map((h) => [h.method, h]));
     expect(Object.keys(hs).sort()).toEqual(["DELETE", "GET", "PATCH", "POST", "PUT"]);
-    expect(violations(hs.GET, g("member", "read"))).toEqual([]);
+    expect(violations(hs.GET, g("viewer", "read"))).toEqual([]);
     // The wrapper's role is "read", so a gate that needs "brand.write" is not proven by it.
     expect(violations(hs.GET, g("admin", "brand.write"))).toEqual([expect.stringContaining('"brand.write"')]);
     expect(violations(hs.POST, "member")).toEqual([]);
-    expect(violations(hs.PUT, g("member", "read")), "no role option, no forbid").toEqual([expect.stringContaining("never returns the refusal"), expect.stringContaining('"read"')]);
+    expect(violations(hs.PUT, g("viewer", "read")), "no role option, no forbid").toEqual([expect.stringContaining("never returns the refusal"), expect.stringContaining('"read"')]);
     // A public handler is not a session read, whatever its body says; and it has no rate limit.
     expect(violations(hs.PATCH, "member")).toEqual(["no session read (currentUser)"]);
     expect(violations(hs.PATCH, "public")).toEqual(["public write without a rate limit (allow)"]);
@@ -693,7 +709,7 @@ const ctx = <T extends Record<string, string>>(p: T) => params(p);
 /** An account with a brand, one plain member and one admin. */
 async function team(fx: Fixture = {}) {
   const owner = await newUser("rg", fx);
-  await saveBrand(owner.email, BRAND);
+  await saveBrand(acct(owner), BRAND);
   const member = await newMember(owner, "member", "rgm", fx);
   const admin = await newMember(owner, "admin", "rga", fx);
   return { owner, member: member.email, admin: admin.email };
@@ -712,9 +728,9 @@ beforeEach(() => { signOut(); published.length = 0; });
 describe("a plain member is refused every owner and admin route, and nothing changes", () => {
   it("governance, MCP token, publish, brand, schedule and connector start answer 403", async () => {
     const { owner, member } = await team();
-    await saveTask(owner.email, task("t1", "approved"), true);
-    await saveConnection(owner.email, { provider: "telegram", data: { token: "t", chat: "c" }, connectedAt: new Date().toISOString() });
-    const [gov, sched] = await Promise.all([getGov(owner.email), getSchedule(owner.email)]);
+    await saveTask(acct(owner), task("t1", "approved"), true);
+    await saveConnection(acct(owner), { provider: "telegram", data: { token: "t", chat: "c" }, connectedAt: new Date().toISOString() });
+    const [gov, sched] = await Promise.all([getGov(acct(owner)), getSchedule(acct(owner))]);
     await as(member);
 
     expect(await status(governanceRoute.PUT(json("/api/governance", "PUT", { autoApprove: { social: true }, learning: false })))).toBe(403);
@@ -724,17 +740,17 @@ describe("a plain member is refused every owner and admin route, and nothing cha
     expect(await status(scheduleRoute.PUT(json("/api/schedule", "PUT", { weeklyPlan: false, routines: {} })))).toBe(403);
     expect(await status(startRoute.GET(new Request("https://nashr.test/api/connect/x/start?lang=en"), ctx({ provider: "x" })))).toBe(403);
 
-    expect(await getGov(owner.email)).toEqual(gov);
-    expect(await getSchedule(owner.email)).toEqual(sched);
-    expect(await Promise.all([getMcpToken(owner.email), getMcpToken(member)])).toEqual([null, null]);
+    expect(await getGov(acct(owner))).toEqual(gov);
+    expect(await getSchedule(acct(owner))).toEqual(sched);
+    expect(await Promise.all([getMcpToken(acct(owner)), getMcpToken(member)])).toEqual([null, null]);
     expect(published).toEqual([]);
-    expect((await getBrand(owner.email))!.name).toBe(BRAND.name);
+    expect((await getBrand(acct(owner)))!.name).toBe(BRAND.name);
   });
 
   it("the rest of the owner and admin surface answers 403 too", async () => {
     const { owner, member } = await team();
-    await writeFile(owner.email, "brand.md", "# brand", "user");
-    await saveConnection(owner.email, { provider: "telegram", data: { token: "t", chat: "c" }, connectedAt: new Date().toISOString() });
+    await writeFile(acct(owner), "brand.md", "# brand", "user");
+    await saveConnection(acct(owner), { provider: "telegram", data: { token: "t", chat: "c" }, connectedAt: new Date().toISOString() });
     await as(member);
     const form = (fields: Record<string, string>) => new Request("https://nashr.test/api/oauth/approve", { method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" }, body: new URLSearchParams(fields).toString() });
 
@@ -752,18 +768,18 @@ describe("a plain member is refused every owner and admin route, and nothing cha
     expect(await status(connRoute.POST(json("/api/connect/meta", "POST", { action: "select_page", pageId: "1" }), ctx({ provider: "meta" })))).toBe(403);
     expect(await status(keyRoute.POST(json("/api/connect/telegram/key", "POST", { token: "t", chatId: "c" }), ctx({ provider: "telegram" })))).toBe(403);
     expect(await status(perfRoute.DELETE())).toBe(403);
-    expect(await status(filesRoute.DELETE(new Request("https://nashr.test/api/files?name=Brand.MD", { method: "DELETE" })))).toBe(403);
+    expect(await status(filesRoute.DELETE(json("/api/files?name=Brand.MD", "DELETE")))).toBe(403);
 
-    expect(await getConnection(owner.email, "telegram")).not.toBeNull();
-    expect(await readFile(owner.email, "brand.md")).not.toBeNull();
+    expect(await getConnection(acct(owner), "telegram")).not.toBeNull();
+    expect(await readFile(acct(owner), "brand.md")).not.toBeNull();
   });
 
   it("core memory, performance data, onboarding and the share bonus data answer 403 as well, and nothing changes", async () => {
     const { owner, member } = await team();
-    await writeFile(owner.email, "brand.md", "# brand", "user");
-    await writeFile(owner.email, "products.md", "# imported catalog", "noor");
-    await db.set(`perfimport:${owner.email}`, { marker: "the admin's import" });
-    await db.set(`onboardplan:${owner.email}`, { goal: "g", plan: [{ title: "t" }] });
+    await writeFile(acct(owner), "brand.md", "# brand", "user");
+    await writeFile(acct(owner), "products.md", "# imported catalog", "noor");
+    await db.set(`perfimport:${acct(owner)}`, { marker: "the admin's import" });
+    await db.set(`onboardplan:${acct(owner)}`, { goal: "g", plan: [{ title: "t" }] });
     await as(member);
     // Writing a core file empty is deleting it (memoryBlock skips empty files), so it needs what DELETE needs.
     expect(await status(filesRoute.PUT(json("/api/files", "PUT", { name: "brand.md", content: "" })))).toBe(403);
@@ -774,57 +790,57 @@ describe("a plain member is refused every owner and admin route, and nothing cha
     expect(await status(onboardPlanRoute.POST(json("/api/onboard/plan", "POST", { index: 0, added: true })))).toBe(403);
     expect(await status(shareRoute.GET())).toBe(403);
 
-    expect((await readFile(owner.email, "brand.md"))!.content).toBe("# brand");
-    expect((await readFile(owner.email, "products.md"))!.content).toBe("# imported catalog");
-    expect(await db.get(`perfimport:${owner.email}`)).toEqual({ marker: "the admin's import" });
-    expect(await db.get(`onboardplan:${owner.email}`)).toEqual({ goal: "g", plan: [{ title: "t" }] });
+    expect((await readFile(acct(owner), "brand.md"))!.content).toBe("# brand");
+    expect((await readFile(acct(owner), "products.md"))!.content).toBe("# imported catalog");
+    expect(await db.get(`perfimport:${acct(owner)}`)).toEqual({ marker: "the admin's import" });
+    expect(await db.get(`onboardplan:${acct(owner)}`)).toEqual({ goal: "g", plan: [{ title: "t" }] });
   });
 
   it("keeps what every member may do: a draft edit, a rejection, a non-core file, a connector sync", async () => {
     const { owner, member } = await team();
-    await saveTask(owner.email, task("d1", "pending"), true);
-    await saveTask(owner.email, task("d2", "pending"), true);
-    await writeFile(owner.email, "notes.md", "mine", "user");
+    await saveTask(acct(owner), task("d1", "pending"), true);
+    await saveTask(acct(owner), task("d2", "pending"), true);
+    await writeFile(acct(owner), "notes.md", "mine", "user");
     await as(member);
     expect(await status(filesRoute.PUT(json("/api/files", "PUT", { name: "ideas.md", content: "a member's own notes" })))).toBe(200);
     expect(await status(taskRoute.PATCH(await vjson("/api/tasks/d1", "PATCH", { editedBody: "قهوة مختصة" }), ctx({ id: "d1" })))).toBe(200);
     expect(await status(taskRoute.PATCH(await vjson("/api/tasks/d2", "PATCH", { status: "rejected", note: "no" }), ctx({ id: "d2" })))).toBe(200);
-    expect(await status(filesRoute.DELETE(new Request("https://nashr.test/api/files?name=notes.md", { method: "DELETE" })))).toBe(200);
+    expect(await status(filesRoute.DELETE(json("/api/files?name=notes.md", "DELETE")))).toBe(200);
     // A sync is not refused for the role: it gets as far as looking for the connection.
     expect(await status(connRoute.POST(json("/api/connect/shopify", "POST", { action: "sync_sales" }), ctx({ provider: "shopify" })))).toBe(404);
-    expect((await getTask(owner.email, "d1"))!.editedBody).toBe("قهوة مختصة");
-    expect((await getTask(owner.email, "d2"))!.status).toBe("rejected");
-    expect(await readFile(owner.email, "notes.md")).toBeNull();
+    expect((await getTask(acct(owner), "d1"))!.editedBody).toBe("قهوة مختصة");
+    expect((await getTask(acct(owner), "d2"))!.status).toBe("rejected");
+    expect(await readFile(acct(owner), "notes.md")).toBeNull();
   });
 });
 
 describe("approval is admin and owner only, in the inbox as on the publish button", () => {
   it("a member cannot approve, nor rewrite an item that stays approved; an admin can approve", async () => {
     const { owner, member, admin } = await team();
-    await saveTask(owner.email, task("p1", "pending"), true);
-    await saveTask(owner.email, task("a1", "approved"), true);
+    await saveTask(acct(owner), task("p1", "pending"), true);
+    await saveTask(acct(owner), task("a1", "approved"), true);
     await as(member);
     expect(await status(taskRoute.PATCH(await vjson("/api/tasks/p1", "PATCH", { status: "approved" }), ctx({ id: "p1" })))).toBe(403);
     expect(await status(taskRoute.PATCH(await vjson("/api/tasks/p1", "PATCH", { editedBody: "نص آخر", status: "approved" }), ctx({ id: "p1" })))).toBe(403);
     expect(await status(taskRoute.PATCH(await vjson("/api/tasks/a1", "PATCH", { editedBody: "نص لم يوافق عليه أحد" }), ctx({ id: "a1" })))).toBe(403);
-    expect(await getTask(owner.email, "p1")).toMatchObject({ status: "pending", body: "قهوة طازجة" });
-    expect((await getTask(owner.email, "a1"))!.editedBody).toBeUndefined();
+    expect(await getTask(acct(owner), "p1")).toMatchObject({ status: "pending", body: "قهوة طازجة" });
+    expect((await getTask(acct(owner), "a1"))!.editedBody).toBeUndefined();
     // Taking an approval back is not an approval: a member may reopen it, and that puts it back in front of an admin.
     expect(await status(taskRoute.PATCH(await vjson("/api/tasks/a1", "PATCH", { status: "pending" }), ctx({ id: "a1" })))).toBe(200);
 
     await as(admin);
     expect(await status(taskRoute.PATCH(await vjson("/api/tasks/p1", "PATCH", { status: "approved" }), ctx({ id: "p1" })))).toBe(200);
-    expect((await getTask(owner.email, "p1"))!.status).toBe("approved");
+    expect((await getTask(acct(owner), "p1"))!.status).toBe("approved");
   });
 });
 
 describe("a governance restore is a governance write; the activity log is a read (rules 227 and 237)", () => {
   it("a member and an admin are refused a restore before anything is read, and nothing changes; the owner may", async () => {
     const { owner, member, admin } = await team();
-    const saved = await saveGovAs(owner.email, { reviewer: false }, { kind: "owner", email: owner.email });
+    const saved = await saveGovAs(acct(owner), { reviewer: false }, { kind: "owner", email: owner.email });
     if (!saved.ok || !saved.revision) throw new Error("not saved");
     const id = saved.revision.id;
-    const [gov, hist] = await Promise.all([getGov(owner.email), listGovHistory(owner.email)]);
+    const [gov, hist] = await Promise.all([getGov(acct(owner)), listGovHistory(acct(owner))]);
     const restore = () => rollbackRoute.POST(json("/api/governance/rollback", "POST", { id }));
     for (const login of [member, admin]) {
       await as(login);
@@ -833,16 +849,16 @@ describe("a governance restore is a governance write; the activity log is a read
       expect(lrange, "refused before the history is read").not.toHaveBeenCalled();
       lrange.mockRestore();
     }
-    expect(await getGov(owner.email)).toEqual(gov);
-    expect(await listGovHistory(owner.email)).toEqual(hist);
+    expect(await getGov(acct(owner))).toEqual(gov);
+    expect(await listGovHistory(acct(owner))).toEqual(hist);
     await as(owner.email);
     expect(await status(restore())).toBe(200);
-    expect((await getGov(owner.email)).reviewer).toBe(true);
+    expect((await getGov(acct(owner))).reviewer).toBe(true);
   });
 
   it("every member reads the account's activity log and its export, and only that account's", async () => {
     const { owner, member } = await team();
-    await recordActivity(owner.email, [{ at: new Date().toISOString(), kind: "published", by: { kind: "owner", email: owner.email }, via: "app", note: "the owner's post" }]);
+    await recordActivity(acct(owner), [{ at: new Date().toISOString(), kind: "published", by: { kind: "owner", email: owner.email }, via: "app", note: "the owner's post" }]);
     await as(member);
     const page = await activityRoute.GET(json("/api/activity", "GET"));
     expect(page.status).toBe(200);
@@ -858,28 +874,28 @@ describe("a governance restore is a governance write; the activity log is a read
 describe("an admin runs the workspace but not the account", () => {
   it("is refused governance and the MCP token, and may write the brand, the schedule and core files", async () => {
     const { owner, admin } = await team();
-    await writeFile(owner.email, "brand.md", "# brand", "user");
+    await writeFile(acct(owner), "brand.md", "# brand", "user");
     await as(admin);
     expect(await status(governanceRoute.PUT(json("/api/governance", "PUT", { learning: false })))).toBe(403);
     expect(await status(tokenRoute.POST())).toBe(403);
     expect(await status(referralRoute.GET())).toBe(403);
     expect(await status(brandRoute.PUT(json("/api/brand", "PUT", brandBody)))).toBe(200);
-    expect((await getBrand(owner.email))!.name).toBe("Changed");
+    expect((await getBrand(acct(owner)))!.name).toBe("Changed");
     expect(await status(scheduleRoute.PUT(json("/api/schedule", "PUT", { weeklyPlan: false })))).toBe(200);
-    expect((await getSchedule(owner.email)).weeklyPlan).toBe(false);
+    expect((await getSchedule(acct(owner))).weeklyPlan).toBe(false);
     expect(await status(filesRoute.PUT(json("/api/files", "PUT", { name: "brand.md", content: "# brand, rewritten" })))).toBe(200);
-    expect((await readFile(owner.email, "brand.md"))!.content).toBe("# brand, rewritten");
-    expect(await status(filesRoute.DELETE(new Request("https://nashr.test/api/files?name=brand.md", { method: "DELETE" })))).toBe(200);
-    expect(await readFile(owner.email, "brand.md")).toBeNull();
+    expect((await readFile(acct(owner), "brand.md"))!.content).toBe("# brand, rewritten");
+    expect(await status(filesRoute.DELETE(json("/api/files?name=brand.md", "DELETE")))).toBe(200);
+    expect(await readFile(acct(owner), "brand.md")).toBeNull();
   });
   it("the owner still passes the owner gates", async () => {
     const { owner } = await team();
     await as(owner.email);
     expect(await status(governanceRoute.PUT(json("/api/governance", "PUT", { learning: false })))).toBe(200);
-    expect((await getGov(owner.email)).learning).toBe(false);
+    expect((await getGov(acct(owner))).learning).toBe(false);
     const minted = (await (await tokenRoute.POST()).json()) as { token: string };
     expect(minted.token).toMatch(/^thakeen_/);
-    expect(await getMcpToken(owner.email)).toBe(tokenHash(minted.token)); // stored hashed, never raw (rules 548-555)
+    expect(await getMcpToken(acct(owner))).toBe(tokenHash(minted.token)); // stored hashed, never raw (rules 548-555)
   });
 });
 
@@ -890,29 +906,29 @@ describe("a founder impersonating an account cannot mint lasting credentials", (
     expect(await status(tokenRoute.POST())).toBe(403);
     const form = new Request("https://nashr.test/api/oauth/approve", { method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" }, body: "client_id=c&redirect_uri=https%3A%2F%2Fx.example%2Fcb&decision=allow" });
     expect(await status(approveRoute.POST(form))).toBe(403);
-    expect(await getMcpToken(owner.email)).toBeNull();
+    expect(await getMcpToken(acct(owner))).toBeNull();
   });
 });
 
 describe("asking Noor is not a way around a gate (chat runTool)", () => {
   it("a member's update_brand, publish_item and import_catalog are refused in code and change nothing", async () => {
     const { owner, member } = await team();
-    await saveConnection(owner.email, { provider: "telegram", data: { token: "t", chat: "c" }, connectedAt: new Date().toISOString() });
-    await saveTask(owner.email, task("ok1", "approved"), true);
+    await saveConnection(acct(owner), { provider: "telegram", data: { token: "t", chat: "c" }, connectedAt: new Date().toISOString() });
+    await saveTask(acct(owner), task("ok1", "approved"), true);
     const u = await as(member);
     const actions: string[] = [];
     expect(await runTool(u, "update_brand", { field: "banned", value: "" }, actions)).toMatch(/^Not done: update_brand needs the owner or an admin/);
     expect(await runTool(u, "publish_item", { task_id: "ok1", provider: "telegram" }, actions)).toMatch(/^Not done: publish_item/);
     expect(await runTool(u, "import_catalog", { url: "https://roastery.example" }, actions)).toMatch(/^Not done: import_catalog/);
-    expect((await getBrand(owner.email))!.banned).toBe("رخيص");
+    expect((await getBrand(acct(owner)))!.banned).toBe("رخيص");
     expect(published).toEqual([]);
     expect(actions).toEqual([]);
     // Core memory through the chat is the same gate as PUT /api/files: an agent write is no way around it.
-    await writeFile(owner.email, "products.md", "# imported catalog", "noor");
+    await writeFile(acct(owner), "products.md", "# imported catalog", "noor");
     expect(await runTool(u, "write_file", { name: "Products.MD", content: "" }, actions)).toMatch(/^Not done: products\.md is core memory/);
     expect(await runTool(u, "write_file", { name: "brand.md", content: "cheap is fine" }, actions)).toMatch(/^Not done: brand\.md/);
-    expect((await readFile(owner.email, "products.md"))!.content).toBe("# imported catalog");
-    expect(await readFile(owner.email, "brand.md")).toBeNull();
+    expect((await readFile(acct(owner), "products.md"))!.content).toBe("# imported catalog");
+    expect(await readFile(acct(owner), "brand.md")).toBeNull();
     expect(actions).toEqual([]);
     // The tools every member keeps still run, a non-core file included.
     expect(await runTool(u, "list_inbox", {}, actions)).toMatch(/Inbox:/);
@@ -924,10 +940,10 @@ describe("asking Noor is not a way around a gate (chat runTool)", () => {
     expect(await runTool(await as(admin), "update_brand", { field: "tone", value: "رسمي" }, [])).toMatch(/^Not saved yet: brand\.tone/);
     expect(await runTool(await as(owner.email), "update_brand", { field: "city", value: "جدة" }, [])).toMatch(/^Not saved yet: brand\.city/);
     expect(await runTool(await as(admin), "write_file", { name: "strategy.md", content: "# strategy" }, [])).toMatch(/^Saved strategy\.md/);
-    const bare = { ...owner, actor: undefined };
+    const bare = { ...(await as(owner.email)), actor: undefined };
     expect(await runTool(bare, "update_brand", { field: "tone", value: "x" }, [])).toMatch(/^Not done/);
-    expect((await getBrand(owner.email))!.tone).not.toBe("رسمي");
-    expect((await getBrand(owner.email))!.city).not.toBe("جدة");
+    expect((await getBrand(acct(owner)))!.tone).not.toBe("رسمي");
+    expect((await getBrand(acct(owner)))!.city).not.toBe("جدة");
   });
 });
 
@@ -936,8 +952,8 @@ describe("MCP dispatch uses the same table", () => {
     mcpRoute.POST(new Request("https://nashr.test/api/mcp", { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${token}` }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name, arguments: args } }) }));
   it("an owner token (actor kind token, role owner) passes; an unknown tool is refused before anything runs", async () => {
     const { owner } = await team();
-    await writeFile(owner.email, "notes.md", "hello", "user");
-    const token = await createMcpToken(owner.email);
+    await writeFile(acct(owner), "notes.md", "hello", "user");
+    const token = await createMcpToken(acct(owner));
     const listed = (await (await call(token, "list_files")).json()) as { result?: { content: { text: string }[]; isError?: boolean } };
     expect(listed.result?.isError).toBeUndefined();
     expect(listed.result?.content[0].text).toMatch(/notes\.md/);
@@ -949,7 +965,7 @@ describe("MCP dispatch uses the same table", () => {
 describe("the active brand is per login", () => {
   it("a member switching brand moves only their own active brand, and works in the owner's workspace", async () => {
     const { owner, member } = await team();
-    await saveUser({ ...(await getUser(owner.email))!, plan: "agency" });
+    await saveUser({ ...(await getUser(acct(owner)))!, plan: "agency" });
     await as(owner.email);
     const added = (await (await brandsRoute.POST(json("/api/brands", "POST", { action: "add", name: "Second" }))).json()) as { brand: { id: string } };
     await brandsRoute.POST(json("/api/brands", "POST", { action: "switch", id: "default" }));
@@ -960,12 +976,12 @@ describe("the active brand is per login", () => {
     expect(await readActiveBrand(member)).toBe(added.brand.id);
     expect(await readActiveBrand(owner.email)).toBe("default");
     expect(u.email).toBe(owner.email);
-    expect((await as(member)).scope).toBe(`${owner.email}#${added.brand.id}`);
-    expect((await as(owner.email)).scope).toBe(owner.email);
+    expect((await as(member)).scope).toBe(`${acct(owner)}#${added.brand.id}`);
+    expect((await as(owner.email)).scope).toBe(acct(owner));
   });
   it("an admin archiving the brand the owner is on sends the owner back to the default brand", async () => {
     const { owner, admin } = await team();
-    await saveUser({ ...(await getUser(owner.email))!, plan: "agency" });
+    await saveUser({ ...(await getUser(acct(owner)))!, plan: "agency" });
     await as(owner.email);
     const added = (await (await brandsRoute.POST(json("/api/brands", "POST", { action: "add", name: "Second" }))).json()) as { brand: { id: string } };
     expect(await readActiveBrand(owner.email)).toBe(added.brand.id);
@@ -979,21 +995,21 @@ describe("a connector flow is finished by the login that started it, with the ro
   const errorOf = (res: Response) => new URL(res.headers.get("location")!).searchParams.get("error");
   it("refuses a state started by another login of the same account, and a login that lost the role", async () => {
     const { owner, member, admin } = await team();
-    await saveState("rg-s1", { email: owner.email, provider: "x", lang: "en", shop: "", verifier: "v", actor: admin });
+    await saveState("rg-s1", { email: acct(owner), provider: "x", lang: "en", shop: "", verifier: "v", actor: admin });
     await signIn(owner.email);
     jar().set(OAUTH_COOKIE, "rg-s1");
     expect(errorOf(await callbackRoute.GET(new Request("https://nashr.test/api/connect/x/callback?state=rg-s1&code=c"), ctx({ provider: "x" })))).toBe("session_mismatch");
 
     // A state from before the actor was recorded names only the account: it completes for nobody but the owner.
-    await saveState("rg-s2", { email: owner.email, provider: "x", lang: "en", shop: "", verifier: "v" });
+    await saveState("rg-s2", { email: acct(owner), provider: "x", lang: "en", shop: "", verifier: "v" });
     await signIn(admin);
     jar().set(OAUTH_COOKIE, "rg-s2");
     expect(errorOf(await callbackRoute.GET(new Request("https://nashr.test/api/connect/x/callback?state=rg-s2&code=c"), ctx({ provider: "x" })))).toBe("session_mismatch");
 
-    await saveState("rg-s3", { email: owner.email, provider: "x", lang: "en", shop: "", verifier: "v", actor: member });
+    await saveState("rg-s3", { email: acct(owner), provider: "x", lang: "en", shop: "", verifier: "v", actor: member });
     await signIn(member);
     jar().set(OAUTH_COOKIE, "rg-s3");
     expect(errorOf(await callbackRoute.GET(new Request("https://nashr.test/api/connect/x/callback?state=rg-s3&code=c"), ctx({ provider: "x" })))).toBe("forbidden");
-    expect(await getConnection(owner.email, "x")).toBeNull();
+    expect(await getConnection(acct(owner), "x")).toBeNull();
   });
 });

@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { acct } from "@/lib/account-id";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { NextRequest } from "next/server";
@@ -136,30 +137,30 @@ describe("rule 1966: one bell entry can be marked read", () => {
   it("marks only that entry, answers the unread count, refuses a bad id and one the account does not hold", async () => {
     const u = await newUser("nb");
     const other = await newUser("nc");
-    const a = await pushNotif(u.email, { kind: "info", title: "A", body: "a", href: "/en/app" }, "fp-a");
-    const b = await pushNotif(u.email, { kind: "info", title: "B", body: "b", href: "/en/app" }, "fp-b");
-    const theirs = await pushNotif(other.email, { kind: "info", title: "C", body: "c", href: "/en/app" }, "fp-c");
+    const a = await pushNotif(acct(u), { kind: "info", title: "A", body: "a", href: "/en/app" }, "fp-a");
+    const b = await pushNotif(acct(u), { kind: "info", title: "B", body: "b", href: "/en/app" }, "fp-b");
+    const theirs = await pushNotif(acct(other), { kind: "info", title: "C", body: "c", href: "/en/app" }, "fp-c");
     expect(a && b && theirs).toBeTruthy();
     expect((await notifRoute.POST(json("/api/notifications", "POST", { id: a!.id }))).status).toBe(401);
     await signIn(u.email);
     const res = await notifRoute.POST(json("/api/notifications", "POST", { id: a!.id }));
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ ok: true, unread: 1 });
-    const mine = await listNotifs(u.email);
+    const mine = await listNotifs(acct(u));
     expect(mine.find((n) => n.id === a!.id)?.read).toBe(true);
     expect(mine.find((n) => n.id === b!.id)?.read).toBeFalsy();
     expect((await notifRoute.POST(json("/api/notifications", "POST", { id: "../x" }))).status).toBe(400);
     expect((await notifRoute.POST(json("/api/notifications", "POST", { id: 7 }))).status).toBe(400);
     expect((await notifRoute.POST(json("/api/notifications", "POST", { id: theirs!.id }))).status).toBe(404);
-    expect((await listNotifs(other.email))[0].read).toBeFalsy();
+    expect((await listNotifs(acct(other)))[0].read).toBeFalsy();
   });
   it("with no body it still marks everything read", async () => {
     const u = await newUser("nd");
-    await Promise.all([pushNotif(u.email, { kind: "info", title: "A", body: "a", href: "/en/app" }, "fp-1"), pushNotif(u.email, { kind: "info", title: "B", body: "b", href: "/en/app" }, "fp-2")]);
+    await Promise.all([pushNotif(acct(u), { kind: "info", title: "A", body: "a", href: "/en/app" }, "fp-1"), pushNotif(acct(u), { kind: "info", title: "B", body: "b", href: "/en/app" }, "fp-2")]);
     await signIn(u.email);
     const res = await notifRoute.POST(new Request("https://nashr.test/api/notifications", { method: "POST" }));
     expect(await res.json()).toEqual({ ok: true, unread: 0 });
-    expect((await listNotifs(u.email)).every((n) => n.read)).toBe(true);
+    expect((await listNotifs(acct(u))).every((n) => n.read)).toBe(true);
   });
   it("the bell and the notifications page send the entry's id", () => {
     expect(src("src/components/app/NotificationCenter.tsx")).toMatch(/JSON\.stringify\(\{ id \}\)/);

@@ -1,6 +1,7 @@
 import type { Invite } from "./team";
 
-const ROLE = { ar: { admin: "مدير", member: "عضو" }, en: { admin: "admin", member: "member" } } as const;
+/** The Editor role is stored as "member" until the contract release (rule 3751). */
+const ROLE = { ar: { admin: "مدير", member: "محرر", viewer: "مشاهد" }, en: { admin: "an admin", member: "an editor", viewer: "a viewer" } } as const;
 
 /**
  * The invitation email, in the invite's language. A fixed template: the only thing in it the sender chose is the
@@ -22,7 +23,7 @@ export function inviteMail(inv: Invite, inviterEmail: string, link: string) {
   }
   return {
     subject: "You are invited to join a team on Thakeen",
-    text: `Hello,\n\nThe Thakeen user ${inviterEmail} invited you to join their account on Thakeen as ${inv.role === "admin" ? "an admin" : "a member"}.\n\nOpen this link within 7 days to choose your name and password:\n\n${link}\n\nThe invitation is for this email address only. If you did not expect it, ignore this email and nothing changes.`,
+    text: `Hello,\n\nThe Thakeen user ${inviterEmail} invited you to join their account on Thakeen as ${ROLE.en[inv.role]}.\n\nOpen this link within 7 days to choose your name and password:\n\n${link}\n\nThe invitation is for this email address only. If you did not expect it, ignore this email and nothing changes.`,
     context,
   };
 }

@@ -1,6 +1,6 @@
 # Coverage: Thakeen support edits a customer workspace from the console (rules 3550-3569)
 
-Status on 2026-10-23 on branch `claude/sup-admin-workspace-edit`, not pushed. The founder approved "Admin edit organization (rename, invite and remove members)" from the supastarter gap study. `POST /api/admin/users/{email}/workspace/edit` (permissions row 265, docs/system/flows.md section 108) renames the workspace, invites a member, removes a member or cancels a pending invite, through the customer's own team functions with the owner as the acting person. Release step: expand (a new team log kind `workspace_renamed`, which older code skips; no environment variable).
+Status on 2026-10-23 on branch `claude/sup-admin-workspace-edit`, not pushed. The founder approved "Admin edit organization (rename, invite and remove members)" from the supastarter gap study. `POST /api/admin/users/{email}/workspace/edit` (permissions row 266, docs/system/flows.md section 126) renames the workspace, invites a member, removes a member or cancels a pending invite, through the customer's own team functions with the owner as the acting person. Release step: expand (a new team log kind `workspace_renamed`, which older code skips; no environment variable).
 
 | # | Rule | Verified today | First test to write |
 |---|---|---|---|

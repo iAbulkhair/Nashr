@@ -1,7 +1,7 @@
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { adminSignIn, jar, json, newUser } from "./helpers/session";
-import { getUser, saveUser, type Plan, type User } from "@/lib/auth";
+import { acct, getUser, saveUser, type Plan, type User } from "@/lib/auth";
 import { monthKey, renewIfDue, renewalDue } from "@/lib/credits";
 import { db } from "@/lib/db";
 import { ksaDay } from "@/lib/partner-rules";
@@ -28,8 +28,8 @@ const rows = async (email: string, action: string) =>
   (await db.lrange("admin:log", 0, 200)).map((l) => (typeof l === "string" ? JSON.parse(l) : l) as Row).filter((r) => r.target === email && r.action === action);
 async function account(p: Plan, extra: Partial<User> = {}): Promise<User> {
   const u = await newUser("hand");
-  await saveUser({ ...(await getUser(u.email))!, plan: p, ...extra });
-  return (await getUser(u.email))!;
+  await saveUser({ ...(await getUser(acct(u)))!, plan: p, ...extra });
+  return (await getUser(acct(u)))!;
 }
 const today = () => ksaDay();
 const paymob = (b: Partial<Billing> = {}): Billing => ({ provider: "paymob", plan: "starter", status: "active", paidThrough: today(), anchor: 1, autoRenew: false, failures: 0, txns: [], ...b });
@@ -50,7 +50,7 @@ describe("the paid-through day is checked in code (rule 1302)", () => {
     const r = await call(a.email, { plan: "pro" });
     expect(r.status).toBe(200);
     expect(((await r.json()) as { user: { paidThrough: string } }).user.paidThrough).toBe(defaultPaidThrough(today()));
-    const stored = (await getUser(a.email))!.handPlan!;
+    const stored = (await getUser(acct(a)))!.handPlan!;
     expect(stored.paidThrough).toBe(defaultPaidThrough(today()));
     expect(stored.by).toEqual(expect.any(String));
     expect(Date.parse(stored.at)).not.toBeNaN();
@@ -62,7 +62,7 @@ describe("the paid-through day is checked in code (rule 1302)", () => {
     const b = await account("trial");
     const day = addDays(today(), 90);
     expect((await call(b.email, { plan: "business", paidThrough: day })).status).toBe(200);
-    expect((await getUser(b.email))!.handPlan!.paidThrough).toBe(day);
+    expect((await getUser(acct(b)))!.handPlan!.paidThrough).toBe(day);
   });
 
   it("a bad day is refused before the account is read and writes nothing", async () => {
@@ -74,7 +74,7 @@ describe("the paid-through day is checked in code (rule 1302)", () => {
       expect(await r.json()).toMatchObject({ error: "bad_paid_through" });
     }
     expect((await call(`nobody-${Date.now()}@example.com`, { paidThrough: "soon" })).status).toBe(400);
-    const after = (await getUser(u.email))!;
+    const after = (await getUser(acct(u)))!;
     expect(after.plan).toBe("starter");
     expect(after.handPlan).toBeUndefined();
     expect((await db.lrange("admin:log", 0, -1)).length).toBe(logged);
@@ -85,9 +85,9 @@ describe("the paid-through day is checked in code (rule 1302)", () => {
     await call(u.email, { plan: "pro" });
     const later = addDays(today(), 45);
     expect((await call(u.email, { paidThrough: later })).status).toBe(200);
-    expect((await getUser(u.email))!).toMatchObject({ plan: "pro", handPlan: { paidThrough: later } });
+    expect((await getUser(acct(u)))!).toMatchObject({ plan: "pro", handPlan: { paidThrough: later } });
     expect((await call(u.email, { paidThrough: null })).status).toBe(200);
-    expect((await getUser(u.email))!.handPlan).toBeUndefined();
+    expect((await getUser(acct(u)))!.handPlan).toBeUndefined();
     expect((await rows(u.email, "plan"))[0].what).toContain("paid_through:none");
 
     const t = await account("trial");
@@ -99,16 +99,16 @@ describe("the paid-through day is checked in code (rule 1302)", () => {
     const q = await call(p.email, { paidThrough: later });
     expect(q.status).toBe(409);
     expect(await q.json()).toMatchObject({ error: "paid_through_paymob" });
-    expect((await getUser(p.email))!.billing).toMatchObject({ provider: "paymob" });
+    expect((await getUser(acct(p)))!.billing).toMatchObject({ provider: "paymob" });
   });
 
   it("back to the trial removes the day; a plan set with null keeps the old no-end refill", async () => {
     const u = await account("trial");
     await call(u.email, { plan: "pro" });
     expect((await call(u.email, { plan: "trial" })).status).toBe(200);
-    expect((await getUser(u.email))!.handPlan).toBeUndefined();
+    expect((await getUser(acct(u)))!.handPlan).toBeUndefined();
     expect((await call(u.email, { plan: "starter", paidThrough: null })).status).toBe(200);
-    expect((await getUser(u.email))!.handPlan).toBeUndefined();
+    expect((await getUser(acct(u)))!.handPlan).toBeUndefined();
   });
 });
 
@@ -126,8 +126,8 @@ describe("the monthly refill stops after the paid-through day (rule 1303)", () =
 
   it("renewIfDue gives nothing after the day and keeps the balance", async () => {
     const u = await account("pro", { renewedAt: "2000-01", credits: 7, handPlan: { paidThrough: addDays(today(), -1), by: "key", at: new Date().toISOString() } });
-    expect(await renewIfDue(u.email)).toBe(false);
-    expect((await getUser(u.email))!).toMatchObject({ credits: 7, renewedAt: "2000-01" });
+    expect(await renewIfDue(acct(u))).toBe(false);
+    expect((await getUser(acct(u)))!).toMatchObject({ credits: 7, renewedAt: "2000-01" });
     expect(await rows(u.email, "hand_refill")).toHaveLength(0);
   });
 });
@@ -136,9 +136,9 @@ describe("each refill of a hand-set plan is logged (rule 1304)", () => {
   it("a hand-set plan's refill writes one hand_refill row with the balance before and after and the day", async () => {
     const day = addDays(today(), 20);
     const u = await account("pro", { renewedAt: "2000-01", credits: 7, handPlan: { paidThrough: day, by: "key", at: new Date().toISOString() } });
-    expect(await renewIfDue(u.email)).toBe(true);
-    expect(await renewIfDue(u.email)).toBe(false);
-    expect((await getUser(u.email))!).toMatchObject({ credits: PLAN_CREDITS.pro, renewedAt: monthKey() });
+    expect(await renewIfDue(acct(u))).toBe(true);
+    expect(await renewIfDue(acct(u))).toBe(false);
+    expect((await getUser(acct(u)))!).toMatchObject({ credits: PLAN_CREDITS.pro, renewedAt: monthKey() });
     const log = await rows(u.email, "hand_refill");
     expect(log).toHaveLength(1);
     expect(log[0]).toMatchObject({ actor: "system", before: { credits: 7 }, after: { credits: PLAN_CREDITS.pro, paidThrough: day } });
@@ -147,11 +147,11 @@ describe("each refill of a hand-set plan is logged (rule 1304)", () => {
 
   it("an old hand-set plan (no day) is logged with none; a Paymob month has its payment and no row", async () => {
     const old = await account("starter", { renewedAt: "2000-01" });
-    expect(await renewIfDue(old.email)).toBe(true);
+    expect(await renewIfDue(acct(old))).toBe(true);
     expect((await rows(old.email, "hand_refill"))[0].what).toContain("paid_through:none");
 
     const paid = await account("starter", { renewedAt: "2000-01", billing: paymob({ paidThrough: addDays(today(), 3), autoRenew: true }) });
-    expect(await renewIfDue(paid.email)).toBe(true);
+    expect(await renewIfDue(acct(paid))).toBe(true);
     expect(await rows(paid.email, "hand_refill")).toHaveLength(0);
   });
 });

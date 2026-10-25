@@ -1,9 +1,8 @@
 import type { User } from "./auth";
 import type { Brand } from "./brand";
 import { agentForTask, type AgentId } from "./agents";
-import { countCost } from "./generate-batch";
+import { draftCharge } from "./task-costs";
 import { modelAllowsTask, modelById } from "./models/catalog";
-import { creditsFor } from "./models/credits";
 import { generateRouteFor } from "./models/overrides";
 import { DRAFT_TYPES, type TaskType } from "./tasks";
 
@@ -26,7 +25,7 @@ export function testQuote(u: Pick<User, "chinaHostingOk">, brand: Pick<Brand, "m
   const model = routed.model;
   const entry = modelById(model);
   const available = !!entry && (!!entry.auto || !!entry.pick) && modelAllowsTask(entry, type);
-  return { routed, model, available, cost: available ? 2 * creditsFor(countCost(type, 1), model, "generate", type) : 0 };
+  return { routed, model, available, cost: available ? 2 * draftCharge(type, 1, model) : 0 };
 }
 
 /** The credits a test of `type` takes, or `null` when the model cannot write it now. */

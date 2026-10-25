@@ -7,13 +7,14 @@
 export type InvoiceEvent = {
   email: string;
   paymentId: string;
-  kind: "plan" | "renewal" | "topup";
+  /** "seat": one extra seat for the months left of a paid year (rule 4042). */
+  kind: "plan" | "renewal" | "topup" | "seat";
   /** Halalas, before VAT. */
   baseHalalas: number;
   vatHalalas: number;
   totalHalalas: number;
   currency: "SAR";
-  provider: "paymob";
+  provider: "paymob" | "geidea";
   /** The provider's transaction id. */
   providerRef: string;
   /** Riyadh day of the payment, YYYY-MM-DD. */

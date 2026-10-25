@@ -1,7 +1,9 @@
 import Scribble from "@/components/Scribble";
 import ScribbleStatic from "@/components/ScribbleStatic";
 import { PlanList } from "@/components/PlanCard";
-import type { Dict, Lang } from "@/lib/i18n";
+import IntervalSwitch from "@/components/IntervalSwitch";
+import { yearlyPlanCards, type Dict, type Lang } from "@/lib/i18n";
+import { anyYearlyOffered } from "@/lib/pricing";
 
 /**
  * `headingLevel` exists because this section is reused on the home page and the industry pages, which have their own
@@ -19,6 +21,9 @@ import type { Dict, Lang } from "@/lib/i18n";
  * The design review of 2026-10-19: no eyebrow label over the title (rule 2317), the credit costs in the body face with
  * tabular figures instead of monospace and rows parted by space instead of ruled lines (rule 2318), and on /pricing alone
  * the plan cards rise in once (rule 2319, `plans-rise` in globals.css).
+ *
+ * Yearly billing (rules 3541-3542, flows.md section 110): only when the founder has set a yearly price in
+ * src/lib/pricing.ts does a monthly/yearly switch appear over the cards; with none set this renders exactly as before.
  */
 export default function Pricing({ t, lang, headingLevel = 2 }: { t: Dict; lang: Lang; headingLevel?: 1 | 2 }) {
   const p = t.pricing;
@@ -42,7 +47,15 @@ export default function Pricing({ t, lang, headingLevel = 2 }: { t: Dict; lang: 
         </div>
 
         <div className={headingLevel === 1 ? "plans-rise mt-12" : "mt-12"}>
-          <PlanList plans={p.plans} lang={lang} level={headingLevel === 1 ? 2 : 3} />
+          {anyYearlyOffered() ? (
+            <IntervalSwitch
+              lang={lang}
+              monthly={<PlanList plans={p.plans} lang={lang} level={headingLevel === 1 ? 2 : 3} />}
+              yearly={<PlanList plans={yearlyPlanCards(lang, p.plans)} lang={lang} level={headingLevel === 1 ? 2 : 3} />}
+            />
+          ) : (
+            <PlanList plans={p.plans} lang={lang} level={headingLevel === 1 ? 2 : 3} />
+          )}
         </div>
 
         <div className="mt-14 max-w-lg">

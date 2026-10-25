@@ -4,7 +4,8 @@ import { generate, type Generated } from "./noor";
 import { scoreItems, type Quality } from "./judge";
 import { AGENTS, agentForTask, type AgentId } from "./agents";
 import { TASK_COUNT, type Brand, type TaskType } from "./brand";
-import { adminEmails } from "./auth";
+import { accountByLogin, adminEmails, type User } from "./auth";
+import { acct } from "./account-id";
 import { notifyItem } from "./notifications";
 import { getUsage } from "./usage";
 import { CUSTOMER_FACING, brandRules, checkText } from "./brand-rules";
@@ -352,7 +353,9 @@ export async function runGolden(trigger: "cron" | "manual", opts: { agent?: Agen
 
     if (run.regressions.length) {
       const title = `المجموعة الذهبية: ${run.regressions.length} تنبيه، المتوسط ${run.overall ?? "—"}`;
-      for (const e of adminEmails()) await notifyItem(e, "ar", { kind: "quality", agent: "dana", title, body: run.regressions.slice(0, 3).join(" · "), href: "/ar/admin/quality" }, `golden:${run.id}:${run.regressions.length}`, 7);
+      // Each founder's bell is on their account, found through the login (rule 3816), and in one round of calls.
+      const founders = (await Promise.all(adminEmails().map((e) => accountByLogin(e)))).filter((f): f is User => !!f);
+      await Promise.all(founders.map((f) => notifyItem(acct(f), "ar", { kind: "quality", agent: "dana", title, body: run.regressions.slice(0, 3).join(" · "), href: "/ar/admin/quality" }, `golden:${run.id}:${run.regressions.length}`, 7)));
     }
     return run;
   } finally {

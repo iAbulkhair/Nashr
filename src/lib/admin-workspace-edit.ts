@@ -12,7 +12,7 @@ import { logTeam } from "./teamlog";
 import { log } from "./log";
 
 /**
- * The founder console's workspace edit (rules 3550-3569, docs/system/flows.md section 108), after supastarter's admin
+ * The founder console's workspace edit (rules 3550-3569, docs/system/flows.md section 126), after supastarter's admin
  * organization edit: Thakeen support renames a customer workspace, invites a member, removes a member or cancels a
  * pending invite, on the customer's behalf. The route (POST /api/admin/users/{email}/workspace/edit) gates it: the
  * console owner only, a second factor, a reason, rate limits. This file only carries the change out.
@@ -150,7 +150,7 @@ async function invite(owner: User, a: Actor, input: EditInput): Promise<EditDone
   if (!mailReady()) return fail(409, "mail_unavailable");
   if (isSuspended(owner)) return fail(409, "suspended");
   const lang = input.lang ?? owner.lang;
-  const res = await createInvite(owner, a, email, input.role ?? "", lang, { via: "console" });
+  const res = await createInvite(owner, a, email, input.role ?? "", lang, {}, { via: "console" });
   if (!res.ok) return { ok: false, team: res };
   const inv = res.invite;
   const link = `${appOrigin()}/${inv.lang}/app/join#t=${res.token}`;

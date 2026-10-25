@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { newUser, signIn } from "./helpers/session";
+import { sc } from "@/lib/auth";
 import { vjson } from "./helpers/version";
 import { PROVIDERS } from "@/lib/connectors/registry";
 import { copyOnlyNote, targetsFor } from "@/lib/connectors/targets";
@@ -45,15 +46,15 @@ describe("Salla articles (rule 628)", () => {
     const { POST } = await import("@/app/api/publish/[id]/route");
     const u = await newUser("salla");
     await signIn(u.email);
-    await saveConnection(u.email, { provider: "salla", data: { access_token: "x" }, meta: {}, connectedAt: new Date().toISOString() });
+    await saveConnection(sc(u), { provider: "salla", data: { access_token: "x" }, meta: {}, connectedAt: new Date().toISOString() });
     const t: Task = { id: "art1", type: "article", channel: "blog", title: "مقال", body: "نص المقال", status: "pending", createdAt: new Date().toISOString(), lang: "ar" };
-    await saveTask(u.email, t);
+    await saveTask(sc(u), t);
     const fetchSpy = vi.fn(async () => new Response("{}"));
     globalThis.fetch = fetchSpy as never;
     const r = await POST(await vjson(`/api/publish/${t.id}`, "POST", { provider: "salla" }), { params: Promise.resolve({ id: t.id }) });
     expect(r.status).toBe(400);
     expect((await r.json()).error).toBe("wrong_target");
     expect(fetchSpy).not.toHaveBeenCalled();
-    expect((await getTask(u.email, t.id))?.published ?? []).toEqual([]);
+    expect((await getTask(sc(u), t.id))?.published ?? []).toEqual([]);
   });
 });

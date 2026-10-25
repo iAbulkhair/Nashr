@@ -1,8 +1,9 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { isLang } from "@/lib/i18n";
-import { consoleIdentity } from "@/lib/auth";
+import { consoleIdentity, sessionAccountForConsole } from "@/lib/auth";
 import { ownerExists } from "@/lib/staff";
+import { founderFactors } from "@/lib/staff-founder";
 import ConsoleBanners from "@/components/admin/ConsoleBanners";
 import AdminNav from "@/components/admin/AdminNav";
 import SecondFactor from "@/components/admin/SecondFactor";
@@ -26,6 +27,10 @@ export default async function AdminLayout({ children, params }: { children: Reac
   if (!who.staff && !who.keySession && !who.founder) return <div className="min-h-dvh bg-background"><a href="#main" className="skip-link">{SKIP_TO_CONTENT[lang]}</a><main id="main" tabIndex={-1} className="mx-auto max-w-6xl px-4 py-10 sm:px-6">{children}</main></div>;
   const [sf, owner] = await Promise.all([secondFactorStatus(), ownerExists()]);
   const keySession = !who.staff && who.keySession;
+  // Rule 3700: which fresh proofs the founder can make to create the first staff login from their own session.
+  const founderUser = !who.staff && !keySession && who.founder && !owner ? await sessionAccountForConsole() : null;
+  const factors = founderUser ? await founderFactors(founderUser) : null;
+  const founderProof = founderUser?.actor && factors ? { email: founderUser.actor.email, code: factors.console || factors.mfa, passkey: factors.passkey } : null;
   return (
     <div className="flex min-h-dvh flex-col bg-background lg:flex-row">
       {/* Rule 968: past the console's links straight to the section. */}
@@ -33,8 +38,8 @@ export default async function AdminLayout({ children, params }: { children: Reac
       <AdminNav lang={lang} keySession={keySession} founder={!who.staff && who.founder} staff={who.staff} />
       <main id="main" tabIndex={-1} className="min-w-0 flex-1 px-4 py-6 sm:px-6 lg:px-8">
         {/* Rules 1377-1379: the second factor's banner or status line, and the code prompt every console write can open. */}
-        {/* Rules 1639, 1645, 1649: break-glass key session, the expand-only customer path, the first staff login. */}
-        <ConsoleBanners lang={lang} keySession={keySession} founder={!who.staff && who.founder} staff={!!who.staff} ownerExists={owner} consoleCode={sf.enrolled} />
+        {/* Rules 1639, 1645, 1649, 3700, 3704: break-glass key session, the founder's one path to a staff login. */}
+        <ConsoleBanners lang={lang} keySession={keySession} founder={!who.staff && who.founder} staff={!!who.staff} ownerExists={owner} consoleCode={sf.enrolled} founderProof={founderProof} />
         <SecondFactor lang={lang} enrolled={!!who.staff || sf.enrolled} staff={!!who.staff} />
         {children}
       </main>

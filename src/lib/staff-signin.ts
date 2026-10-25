@@ -23,6 +23,8 @@ export const STAFF_STEP_PER_IP = 30, STAFF_STEP_WINDOW = 15 * 60;
 
 /** The one refusal of the sign-in: unknown address, wrong password, disabled, locked, all alike (rule 1631). */
 export const invalid = () => NextResponse.json({ ok: false, error: "invalid" }, { status: 401 });
+/** The same refusal for a locked address (rule 3702): the form then offers the authenticator code field. */
+export const lockedInvalid = () => NextResponse.json({ ok: false, error: "invalid", locked: true }, { status: 401 });
 /** The pre-auth step is missing, expired or at another stage: start from the password again. */
 export const startAgain = () => NextResponse.json({ ok: false, error: "start_again" }, { status: 401 });
 

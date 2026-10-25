@@ -181,8 +181,9 @@ describe("staff identity banners in the shell (rules 1645, 1649)", () => {
     const f = await newUser("banner-founder");
     vi.stubEnv("ADMIN_EMAILS", f.email);
     await signIn(f.email);
-    expect(await render("ar")).toContain("انقل دخولك إلى حساب الموظف");
-    expect(await render("en")).toContain("Move to your staff login");
+    // Rule 3704 (replacing the «انقل دخولك إلى حساب الموظف» wording): one banner that names what is missing.
+    expect(await render("ar")).toContain("لوحة المؤسس تحتاج دخول موظف خاصًا بك");
+    expect(await render("en")).toContain("The founder console needs your own staff login");
     signOut();
     const { enrolledStaff } = await import("./helpers/staff");
     const { openStaffSession } = await import("@/lib/staff-session");
@@ -215,7 +216,7 @@ describe("staff pages: every word in Arabic and English (rules 1631, 1638, 1652)
       const sign = renderToStaticMarkup(createElement(StaffSignIn, { lang }));
       expect(sign).toContain(S.signInTitle);
       expect(sign).toContain(`href="/${lang}/admin/login/setup"`);
-      expect(sign).toContain(`href="/${lang}/admin?login=1"`);
+      expect(sign).not.toContain("login=1"); // rule 3705: the key form is reached only by its direct address
       expect(sign).toMatch(/autocomplete="current-password"/i);
       const setup = renderToStaticMarkup(createElement(StaffSignIn, { lang, mode: "setup" }));
       expect(setup).toContain(S.setupTitle);

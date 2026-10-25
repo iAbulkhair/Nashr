@@ -33,8 +33,12 @@ export { acct, accountOfScope } from "./account-id";
 export { PLANS, PLAN_CREDITS, PLAN_SEATS, brandCapFor, isPlan, seatLimit } from "./pricing";
 export type { AgencyDeal, Plan } from "./pricing";
 
-/** Who may do what inside an account (src/lib/roles.ts). The owner role belongs to the `user:` record only. */
-export type Role = "owner" | "admin" | "member";
+/**
+ * Who may do what inside an account (src/lib/roles.ts). The owner role belongs to the `user:` record only. "member" is
+ * the role the product calls Editor (customer roles M3, rules 3750-3789): stored and named "member" until the contract
+ * release; "viewer" reads, comments and, with the approve toggle, approves.
+ */
+export type Role = "owner" | "admin" | "member" | "viewer";
 /**
  * Who is acting on this request. Runtime only: set by `currentUser` / `userFromBearer`, stripped by `saveUser`, never
  * read from a request body. A `User` with no actor is denied by every role check (fail closed).
@@ -66,6 +70,15 @@ export type Actor = {
    */
   since?: number;
   until?: number;
+  /**
+   * Kind "member" only (rule 3756): the brand ids of this account the membership may act in. Absent = every brand. Set
+   * from the membership row on every request, never from input; the owner, a token and the founder have none.
+   */
+  brands?: readonly string[];
+  /** Kind "member" only (rule 3760): the owner or an admin let this editor or viewer approve drafts. */
+  approves?: true;
+  /** Kind "member" only (rule 3770): the owner's monthly credit cap for this person; absent = no cap of their own. */
+  creditCap?: number;
 };
 
 /**
@@ -80,7 +93,8 @@ export type Grant<T> = { value: T; until: string; by: string; at: string; note?:
  * agent's counter), the credits it took, and when a run last charged or reused it (the daily sweep refunds a hold nobody
  * used for a day, src/lib/credits.ts `resolveOnboardHolds`).
  */
-export type OnboardHold = { scope: string; agent: AgentId; month: string; credits: number; at: string; from?: Receipt };
+/** `person`: the member whose charge it is (rule 3771), so a refund lowers their monthly counter too. */
+export type OnboardHold = { scope: string; agent: AgentId; month: string; credits: number; at: string; from?: Receipt; person?: string };
 
 export type User = {
   /**
@@ -151,6 +165,13 @@ export type User = {
    * here too: one seat source for every plan (`seatLimit`).
    */
   seats?: number;
+  /**
+   * Paid extra seats for the current period, above the included seats (`includedSeats`), at EXTRA_SEAT_MONTHLY_SAR each
+   * (rules 3360-3379). The one source of "seats paid for". Expand: absent reads as 0 (`paidExtraSeats`). Raised only by
+   * `createInvite` with the owner's confirmation; lowered only at renewal by `settleExtraSeats`; cleared when the plan
+   * ends on a refund. Written under lock:team:{aid} then lock:user, never from a request value.
+   */
+  extraSeats?: number;
   /**
    * Founder-console override of the plan's active-brand count (`PLAN_BRANDS` in src/lib/pricing.ts, `brandCapFor`), a
    * whole number from 1 to 200. Written only by POST /api/admin/brand-cap under `withUserLock`. Optional and new
@@ -257,6 +278,17 @@ export type User = {
   topupsDirty?: boolean;
   /** ISO time: every MEMBER session issued before it is dead (founder reset, owner reset). The owner's own sessions follow `sessionsAfter`. */
   teamSessionsAfter?: string;
+  /**
+   * The owner's approval policy (rule 3762): true and nothing publishes until a person who may approve (`approvedBy`
+   * names the owner, an admin, or a member with the approve toggle, still in scope for the brand) approved the item.
+   * Written only by PATCH /api/team (`team.policy`) under `withUserLock`. Absent reads as off (expand: older code ignores it).
+   */
+  approvalRequired?: boolean;
+  /**
+   * Credits each person spent this UTC month (rule 3771), keyed by person id, for the per-member cap. Written only by
+   * `debit` and `giveBack` under `withUserLock`; a month other than the current one reads as empty.
+   */
+  personSpend?: { month: string; by: Record<string, number> };
   /**
    * ISO time the owner proved the address with an emailed code (rules 751-766). Written only by the verify routes. An owner
    * without a stamp reads as signed out everywhere (`currentUser`): older accounts are not grandfathered, they verify on
@@ -420,11 +452,14 @@ export async function createUser(input: { email: string; name: string; phone: st
   const [{ createPersonRecord, withPersonLock }, { newPersonId }, { addressBlocked }] = await Promise.all([import("./person"), import("./multi-org"), import("./email-hold")]);
   // Tests may pick the shape (`"p"`, or `"legacy"` for a legacy owner while `MULTI_ORG` is mocked on); a route never does.
   const split = opts.person ? opts.person === "p" : MULTI_ORG;
+  // A test may also ask for `opaque: false`, an account made before R2 enable (its id is its address, as every account
+  // production holds from then); a route never does (rule 3815).
+  const opaque = opts.opaque ?? (OPAQUE_IDS || (split && MULTI_ORG));
   // L3 (account-id R2, rule 2740): an account that moved in place keeps `user:{old}` holding its new address. An id
   // derived from this address would overwrite it, so such an address gets an opaque id whatever `OPAQUE_IDS` says.
-  const moved = !(opts.opaque || OPAQUE_IDS || (split && MULTI_ORG)) && (await addressBlocked(email)) === "moved";
+  const moved = !opaque && (await addressBlocked(email)) === "moved";
   const account: User = {
-    id: idForNewAccount(email, opts.opaque || OPAQUE_IDS || (split && MULTI_ORG) || moved),
+    id: idForNewAccount(email, opaque || moved),
     email,
     name: input.name.trim().slice(0, 80),
     phone: input.phone.trim() ? normalizePhone(input.phone) : "",
@@ -858,7 +893,7 @@ async function resolveIds(s: Session, rawPid: string, rawAcct: string, opts: Res
   const email = normalizeEmail(s.email);
   const pid = storedPersonId(rawPid);
   const aid = storedAccountId(rawAcct);
-  const [{ personFromRaw }, { membershipFromRaw, roleIn, membershipHolds, legacyHomeFrom }, { brandsFromRaw, activeBrandFrom, scopeFor }] = await Promise.all([import("./person"), import("./membership"), import("./brands")]);
+  const [{ personFromRaw }, { membershipFromRaw, roleIn, membershipHolds, legacyHomeFrom, memberExtras, scopedBrand }, { brandsFromRaw, activeBrandFrom, scopeFor }] = await Promise.all([import("./person"), import("./membership"), import("./brands")]);
   const same = (aid as string) === (pid as string);
   const [rawPerson, rawUser, rawMember, idx, account, rawMbr, listed, rawBrands, rawActive, rawLegacyActive] = await Promise.all([
     db.get<unknown>(personKey.person(pid)),
@@ -914,12 +949,24 @@ async function resolveIds(s: Session, rawPid: string, rawAcct: string, opts: Res
     const chosen = activeBrandFrom(rawActive, rawLegacyActive, home);
     bid = rawBrands === BRANDS_UNREAD || brandsFromRaw(rawBrands).some((b) => b.id === chosen && b.status === "active") ? chosen : "default";
   }
+  // Rule 3757: a member scoped to some brands acts only in them. A link outside the scope is a 404 like a foreign one;
+  // a stored choice outside it falls back to the first allowed active brand; none allowed reads as signed out.
+  const extras = role === "owner" ? {} : memberExtras(membership);
+  if (extras.brands) {
+    const active = rawBrands === BRANDS_UNREAD ? ["default"] : brandsFromRaw(rawBrands).filter((b) => b.status === "active").map((b) => b.id);
+    const scoped = scopedBrand(extras.brands, bid, active, opts.brand !== undefined);
+    if (scoped === null) {
+      if (opts.brand !== undefined) notFound();
+      return null;
+    }
+    bid = scoped;
+  }
   account.brandId = bid;
   account.scope = scopeFor(acct(account), bid);
   const base = { pid, home, email: person.email, name: person.name, lang: person.lang === "en" ? ("en" as const) : ("ar" as const), role };
   account.actor =
     role !== "owner"
-      ? { ...base, kind: "member" }
+      ? { ...base, ...extras, kind: "member" }
       : s.imp
         ? { ...base, kind: "founder", impersonating: s.imp, since: s.at, until: typeof s.exp === "number" ? s.exp : s.at + IMPERSONATION_LEGACY_MS }
         : { ...base, kind: "owner" };
@@ -937,7 +984,7 @@ async function resolveIds(s: Session, rawPid: string, rawAcct: string, opts: Res
  */
 async function resolveLegacy(s: Session, opts: ResolveOpts): Promise<User | null> {
   const email = normalizeEmail(s.email);
-  const [{ getMember, onRoster, memberPid }, { activeBrandId, listBrands, scopeFor }, { ownerOf }] = await Promise.all([import("./team"), import("./brands"), import("./membership")]);
+  const [{ getMember, onRoster, memberPid }, { activeBrandId, listBrands, scopeFor }, { ownerOf, membershipFromRaw, memberExtras, scopedBrand }] = await Promise.all([import("./team"), import("./brands"), import("./membership")]);
   // The active brand is per login (`activebrand:{login}`), so it is read in the same round as the login records, and so
   // is the login index (rule 1984): one more command, no more rounds. A session without `acct` (written before R1) reads
   // the account at its own address, exactly the record it read before. So is the person row of the session's person (its
@@ -987,7 +1034,9 @@ async function resolveLegacy(s: Session, opts: ResolveOpts): Promise<User | null
   }
   // Member login. Impersonation sessions are only ever issued for owner accounts.
   if (!m || s.imp || m.disabled) return null;
-  if (m.role !== "admin" && m.role !== "member") return null;
+  // "editor" is the contract release's name for "member" (rule 3751), read here so a rollback to this build keeps it.
+  const legacyRole = (m.role as string) === "editor" ? "member" : m.role;
+  if (legacyRole !== "admin" && legacyRole !== "member" && legacyRole !== "viewer") return null;
   if (typeof m.memberOf !== "string" || !m.memberOf || m.memberOf === email) return null;
   // The member record must be this login's (its own address, its frozen person id matching the index), and a session
   // that names an account names this member's team (multi-org forced change 3: `pid` is on the roster of `acct`).
@@ -999,8 +1048,12 @@ async function resolveLegacy(s: Session, opts: ResolveOpts): Promise<User | null
   // The roster entry too, in the same round: removal deletes both under `lock:member`, and a record that outlived its
   // entry anyway (restored by a racing write, left by a deleted account) is off the owner's Members page, so it must
   // not sign in either.
-  const [owner, brands, listed] = await Promise.all([getAccount(m.memberOf), listBrands(m.memberOf), onRoster(m.memberOf, email)]);
+  // The membership row too (rules 3752-3770): its role, when stricter, and the brand scope, approve toggle and cap.
+  const mAid = storedAccountId(m.memberOf);
+  const [owner, brands, listed, rawMbr] = await Promise.all([getAccount(m.memberOf), listBrands(m.memberOf), onRoster(m.memberOf, email), db.get<unknown>(accountKey.membership(mAid, mPid))]);
   if (!owner || isSuspended(owner) || !listed) return null;
+  const ms = membershipFromRaw(mAid, mPid, rawMbr, m, true);
+  if (!ms || ms.disabled) return null;
   // Rule 767: while the owner has not proved the address, the account spends nothing, so its members are signed out too,
   // in both resolvers. A member has no address of the owner's to prove, so `currentUserUnverified` never hands one to the
   // verify page: they read as signed out, and login answers `owner_unverified`. (Impersonation never reaches this branch.)
@@ -1016,10 +1069,20 @@ async function resolveLegacy(s: Session, opts: ResolveOpts): Promise<User | null
     if (picked === undefined) notFound();
     bid = picked;
   } else bid = brands.some((b) => b.id === brandId && b.status === "active") ? brandId : "default";
+  // Rule 3757, as in `resolveIds`.
+  const extras = memberExtras(ms);
+  if (extras.brands) {
+    const scoped = scopedBrand(extras.brands, bid, brands.filter((b) => b.status === "active").map((b) => b.id), opts.brand !== undefined);
+    if (scoped === null) {
+      if (opts.brand !== undefined) notFound();
+      return null;
+    }
+    bid = scoped;
+  }
   owner.brandId = bid;
   owner.scope = scopeFor(acct(owner), bid);
   // A legacy member's person id is its frozen address (`memberPid`), and `memberOf` is its home account.
-  owner.actor = { kind: "member", pid: mPid, home: true, email: m.email, name: m.name, lang: m.lang === "en" ? "en" : "ar", role: m.role };
+  owner.actor = { kind: "member", pid: mPid, home: true, email: m.email, name: m.name, lang: m.lang === "en" ? "en" : "ar", role: ms.role, ...extras };
   return owner;
 }
 
@@ -1311,7 +1374,7 @@ export function markFreshCode(req: Request): void {
  * request (a wrong value is Next's 404 in `currentUser`) must not turn a staff, key or founder session away. The brand
  * is not read from the result: only `isFounderActor` is.
  */
-async function sessionAccountForConsole(): Promise<User | null> {
+export async function sessionAccountForConsole(): Promise<User | null> {
   const s = await readSession();
   return s ? resolveSession(s) : null;
 }

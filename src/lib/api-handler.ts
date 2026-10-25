@@ -132,10 +132,8 @@ export function handler<A extends ApiAuth, I extends Schema = undefined, Q exten
     // 1. Who is calling. Nothing of the request is parsed before this answers.
     let u: User | null = null;
     if (opts.auth === "user") {
-      // Multi-workspace M2 (rule 2113): a state-changing request that names no workspace writes nothing; the proxy
-      // answers it first, this is the same check again for a route the proxy did not see. A foreign handle (or a brand
-      // that is not the account's) is a JSON 404 with the switch on; with it off the route throws Next's 404 as on main.
-      if (MULTI_ORG && workspaceMissing(req.method, new URL(req.url).pathname, true, req.headers.get(WS_HEADER))) return fail("workspace_missing", 409);
+      // A foreign handle (or a brand that is not the account's) is a JSON 404 with the switch on; with it off the route
+      // throws Next's 404 as on main.
       try {
         u = await currentUser();
       } catch (e) {
@@ -143,6 +141,10 @@ export function handler<A extends ApiAuth, I extends Schema = undefined, Q exten
         throw e;
       }
       if (!u) return fail(opts.unauthorized, 401);
+      // Multi-workspace M2 (rule 2113): a state-changing request that names no workspace writes nothing; the proxy
+      // answers it first, this is the same check again for a route the proxy did not see. After the session (rule 3812),
+      // as the proxy only answers it for a request with a session: a signed-out caller keeps the route's own 401.
+      if (MULTI_ORG && workspaceMissing(req.method, new URL(req.url).pathname, true, req.headers.get(WS_HEADER))) return fail("workspace_missing", 409);
     } else if (opts.auth === "admin") {
       if (!(await isAdmin(req))) return fail(opts.unauthorized, 401);
     } else if (opts.auth === "cron") {

@@ -44,7 +44,7 @@ const TOOLS: Anthropic.Tool[] = [
   },
   {
     name: "draft_items",
-    description: "Small ask: write 1-3 items of one type right now (social post/caption, whatsapp message, ad copy, gbp post). 1 credit per item. Items land in the inbox AND you show them in your reply. Use this whenever the owner asks for a few captions, one post, two messages, etc. Never refuse a small ask because batches are bigger.",
+    description: "Small ask: write 1-3 items of one type right now (social post/caption, whatsapp message, ad copy, gbp post). 1 credit per item, social/ads min 2. Items land in the inbox AND you show them in your reply. Use this whenever the owner asks for a few captions, one post, two messages, etc. Never refuse a small ask because batches are bigger.",
     input_schema: { type: "object", additionalProperties: false, required: ["type", "count", "brief"], properties: { type: { type: "string", enum: [...DRAFT_TYPES] }, count: { type: "integer", description: "1, 2 or 3" }, brief: { type: "string", description: "What the owner asked for: occasion, product, angle, channel, language." } } },
   },
   {

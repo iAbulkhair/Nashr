@@ -33,7 +33,7 @@ import * as edit from "@/app/api/admin/users/[email]/workspace/edit/route";
 import * as view from "@/app/api/admin/users/[email]/workspace/route";
 
 /**
- * Rules 3550-3569: the founder console edits a customer workspace (docs/system/flows.md section 108,
+ * Rules 3550-3569: the founder console edits a customer workspace (docs/system/flows.md section 126,
  * docs/system/tests/3550-admin-workspace-edit.md). POST /api/admin/users/{email}/workspace/edit renames it, invites a
  * member, removes a member or cancels a pending invite, through the customer's own team functions, as the account owner,
  * with an audit row, a team log row "by Thakeen support" and a notice to the owner.

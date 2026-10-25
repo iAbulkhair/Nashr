@@ -8,7 +8,9 @@ import { safeNext } from "@/lib/safe-next";
 import { SW, staffError, type Lang } from "@/lib/staff-words";
 
 type Stage = "password" | "setup" | "code" | "enrol" | "codes";
-type Answer = { ok?: boolean; next?: string; error?: string; secret?: string; uri?: string; codes?: string[] };
+type Answer = { ok?: boolean; next?: string; error?: string; locked?: boolean; secret?: string; uri?: string; codes?: string[] };
+/** An invite link carries its code in the fragment (rule 3706): browsers never send it to the server or put it in logs. */
+const INVITE = /^#invite=([A-Za-z0-9 -]{16,40})$/;
 
 async function send(url: string, body: Record<string, unknown>): Promise<{ status: number; j: Answer }> {
   try {
@@ -20,12 +22,15 @@ async function send(url: string, body: Record<string, unknown>): Promise<{ statu
 }
 
 /**
- * The staff sign-in (rules 1631, 1632, 1639, 1640): email and password, then the authenticator code or a recovery code,
- * or the enrolment with the QR code when the person has none yet (no skip). `mode: "setup"` starts from the setup or
- * reset code instead (typed into the form, never taken from a URL). Every step answers through fetch, so nothing secret
- * ever lands in the address bar; the recovery codes are shown once and kept only in this component's state.
+ * The one staff door (rules 1631, 1632, 1639, 1640, 3702-3704, 3706): email and password, then the authenticator code or
+ * a recovery code, or the enrolment with the QR code when the person has none yet (no skip). The locked-address code
+ * field appears only after the server answers `locked: true`. `mode: "setup"` starts from a setup, reset or invite code
+ * instead: typed, read from an invite link's fragment (then removed from the address bar), or, with `handoffEmail`,
+ * held in the HttpOnly hand-off cookie the founder's bootstrap set, so only the password is asked. Every step answers
+ * through fetch, so nothing secret ever lands in a request URL; the recovery codes are shown once and kept only in
+ * this component's state. No link to the break-glass key form: it is reached by its direct address only (rule 3705).
  */
-export default function StaffSignIn({ lang, next, mode = "signin" }: { lang: Lang; next?: string; mode?: "signin" | "setup" }) {
+export default function StaffSignIn({ lang, next, mode = "signin", handoffEmail }: { lang: Lang; next?: string; mode?: "signin" | "setup"; handoffEmail?: string }) {
   const S = SW[lang];
   const router = useRouter();
   const first: Stage = mode === "setup" ? "setup" : "password";
@@ -33,8 +38,9 @@ export default function StaffSignIn({ lang, next, mode = "signin" }: { lang: Lan
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
   const [afterRecovery, setAfterRecovery] = useState(false);
-  // After a refused password, offer the code field too: a locked address opens only with the password and a code together.
+  // Only once the server says the address is locked (rule 3702): then it opens with the password and a code together.
   const [withCode, setWithCode] = useState(false);
+  const [invite, setInvite] = useState("");
   const [enrol, setEnrol] = useState<{ secret: string; uri: string } | null>(null);
   const [codes, setCodes] = useState<string[]>([]);
   const home = safeNext(next).startsWith(`/${lang}/admin`) ? safeNext(next) : `/${lang}/admin`;
@@ -50,6 +56,17 @@ export default function StaffSignIn({ lang, next, mode = "signin" }: { lang: Lan
     router.push(home);
     router.refresh();
   }
+
+  useEffect(() => {
+    if (mode !== "setup" || handoffEmail) return;
+    const m = INVITE.exec(window.location.hash);
+    if (!m) return;
+    // Out of the address bar and history at once, so the code is not left on screen or in a shared tab.
+    window.history.replaceState(null, "", window.location.pathname);
+    // The fragment exists only in the browser, so the first render matches the server's and the code arrives after it.
+    const code = m[1].replace(/[\s-]/g, "");
+    queueMicrotask(() => setInvite(code));
+  }, [mode, handoffEmail]);
 
   useEffect(() => {
     if (stage !== "enrol" || enrol) return;
@@ -76,9 +93,11 @@ export default function StaffSignIn({ lang, next, mode = "signin" }: { lang: Lan
         const code = v("lockedCode").replace(/\s+/g, "");
         const { status, j } = await send("/api/admin/staff/login", { email: v("email"), password: v("password"), ...(code ? { code } : {}) });
         if (j.ok) go(j.next);
-        else { refused(status, j); if (j.error === "invalid") setWithCode(true); }
+        else { refused(status, j); if (j.locked === true) setWithCode(true); }
       } else if (stage === "setup") {
-        const { status, j } = await send("/api/admin/staff/setup", { email: v("email"), code: v("setupCode").trim(), password: v("password") });
+        // The hand-off sends no code: the server reads it from its HttpOnly cookie (rule 3701).
+        const code = handoffEmail ? undefined : invite || v("setupCode").trim();
+        const { status, j } = await send("/api/admin/staff/setup", { email: handoffEmail ?? v("email"), ...(code ? { code } : {}), password: v("password") });
         if (j.ok) go(j.next); else refused(status, j);
       } else if (stage === "code") {
         const { status, j } = await send("/api/admin/staff/login/code", { code: v("code").trim() });
@@ -112,7 +131,7 @@ export default function StaffSignIn({ lang, next, mode = "signin" }: { lang: Lan
       ) : (
         <form onSubmit={submit} className="grid gap-3" noValidate>
           {stage === "password" && <p className="text-sm text-foreground-muted">{S.signInNote}</p>}
-          {stage === "setup" && <p className="text-sm text-foreground-muted">{S.setupNote}</p>}
+          {stage === "setup" && <p className="text-sm text-foreground-muted">{handoffEmail ? S.handoffNote : invite ? S.inviteOpenNote : S.setupNote}</p>}
           {stage === "code" && <p className="text-sm text-foreground-muted">{S.codeNote}</p>}
           {stage === "enrol" && (
             <>
@@ -128,7 +147,8 @@ export default function StaffSignIn({ lang, next, mode = "signin" }: { lang: Lan
               )}
             </>
           )}
-          {(stage === "password" || stage === "setup") && (
+          {stage === "setup" && handoffEmail && <p dir="ltr" className="rounded-lg bg-background-muted/60 px-3 py-2 text-sm font-medium" data-testid="staff-handoff-email">{handoffEmail}</p>}
+          {(stage === "password" || (stage === "setup" && !handoffEmail)) && (
             <Field label={S.email}><Input name="email" type="email" autoComplete="username" dir="ltr" required /></Field>
           )}
           {stage === "password" && <Field label={S.password}><Input name="password" type="password" autoComplete="current-password" dir="ltr" required /></Field>}
@@ -137,7 +157,7 @@ export default function StaffSignIn({ lang, next, mode = "signin" }: { lang: Lan
           )}
           {stage === "setup" && (
             <>
-              <Field label={S.setupCode}><Input name="setupCode" autoComplete="one-time-code" dir="ltr" maxLength={40} required /></Field>
+              {!handoffEmail && !invite && <Field label={S.setupCode}><Input name="setupCode" autoComplete="one-time-code" dir="ltr" maxLength={40} required /></Field>}
               <Field label={S.newPassword} hint={S.passwordHint}><Input name="password" type="password" autoComplete="new-password" dir="ltr" minLength={12} maxLength={72} required /></Field>
               <Field label={S.repeat}><Input name="repeat" type="password" autoComplete="new-password" dir="ltr" maxLength={72} required /></Field>
             </>
@@ -149,14 +169,16 @@ export default function StaffSignIn({ lang, next, mode = "signin" }: { lang: Lan
           <Button type="submit" loading={busy} loadingText={S.busy} disabled={stage === "enrol" && !enrol}>{stage === "enrol" ? S.confirm : S.next}</Button>
         </form>
       )}
-      {(stage === "password" || stage === "setup") && (
-        <ul className="grid gap-1 text-sm">
-          <li>{stage === "password" ? <a className="underline" href={`/${lang}/admin/login/setup`}>{S.toSetup}</a> : <a className="underline" href={`/${lang}/admin/login`}>{S.toSignIn}</a>}</li>
-          <li><a className="underline" href={`/${lang}/admin?login=1`}>{S.breakGlass}</a></li>
-          {/* Expand only (rule 1649): the founder's customer sign-in still opens the console until the path is closed. */}
-          <li><a className="text-foreground-muted underline" href={`/${lang}/app/login?next=${encodeURIComponent(`/${lang}/admin`)}`}>{S.founderPath}</a></li>
-        </ul>
+      {stage === "password" && (
+        <div className="grid gap-2 text-sm">
+          <a className="underline" href={`/${lang}/admin/login/setup`}>{S.toSetup}</a>
+          <div className="rounded-lg border border-border p-3" data-testid="staff-first-help">
+            <p className="font-semibold text-foreground">{S.firstTitle}</p>
+            <p className="text-foreground-muted">{S.firstHelp}</p>
+          </div>
+        </div>
       )}
+      {stage === "setup" && !handoffEmail && <a className="text-sm underline" href={`/${lang}/admin/login`}>{S.toSignIn}</a>}
     </div>
   );
 }

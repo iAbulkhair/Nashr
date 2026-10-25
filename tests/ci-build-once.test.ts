@@ -42,7 +42,7 @@ describe("rule 1207: in CI the end-to-end server starts the Build step's build i
     expect(cfg).toMatch(/const isCI = !!process\.env\.CI;/);
     expect(cfg).toMatch(/command: webServerCommand\(PORT, \{ ci: isCI, prebuilt: hasBuild\(\) \}\),/);
     // CONNECT_SECRET joined the server's env in rule 3008 (a per-run random secret, like the admin key).
-    expect(cfg).toMatch(/env: \{ APP_ENV: "test", WAITLIST_ADMIN_KEY: E2E_ADMIN_KEY, CONNECT_SECRET: E2E_CONNECT_SECRET, E2E_SEED_KV: e2eSeed\(OWNER\.email\) \},/);
+    expect(cfg).toMatch(/env: \{ APP_ENV: "test", WAITLIST_ADMIN_KEY: E2E_ADMIN_KEY, CONNECT_SECRET: E2E_CONNECT_SECRET, E2E_SEED_KV: e2eSeed\(OWNER\) \},/);
     expect(cfg).toMatch(/reuseExistingServer: false,/);
   });
 

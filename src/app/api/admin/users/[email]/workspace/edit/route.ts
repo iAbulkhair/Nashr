@@ -22,7 +22,7 @@ const PER_ADDRESS_DAY = 5;
 const sha = (s: string) => createHash("sha256").update(s).digest("hex");
 
 /**
- * POST /api/admin/users/{email}/workspace/edit (rules 3550-3569, docs/system/flows.md section 108): Thakeen support
+ * POST /api/admin/users/{email}/workspace/edit (rules 3550-3569, docs/system/flows.md section 126): Thakeen support
  * changes one customer workspace on the customer's behalf. Body `{ action, owner, reason, ...fields }`:
  * `rename {name}`, `invite {email, role, lang?}`, `remove {email}`, `cancel_invite {email}`.
  *

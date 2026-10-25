@@ -7,7 +7,8 @@ import { accountOfScope, acct } from "./account-id";
 import { listBrands, scopeFor } from "./brands";
 import { linkIds, type FeedRecord, type LinkOwner } from "./feed-token";
 import type { AccountId, PersonId } from "./keys";
-import { aidOf, getMembership, membershipHolds, roleIn } from "./membership";
+import { aidOf, getMembership, memberExtras, membershipHolds, roleIn, type Membership } from "./membership";
+import { memberPid, pidFrom } from "./team";
 import { getPerson } from "./person";
 import { fill } from "./fill";
 import { listOpenItems } from "./secretary";
@@ -120,8 +121,8 @@ export async function loginHolds(rec: Pick<FeedRecord, "login" | "scope" | "crea
  * `ownerOf`, else a live membership that `membershipHolds`: admin or member, not paused, accepted no earlier than the
  * account was made); the record is not older than the person's `sessionsAfter` and birth, than the account's `createdAt`
  * for the owner, or than the membership's `acceptedAt` and the account's `teamSessionsAfter` for a member; and the scope
- * is one of the account's active brands. Removing the membership therefore ends the link at read time even when the
- * revoke never ran (rule 2119). A missing or unparsable date on either side of a "not older than" is not a reason to
+ * is one of the account's active brands, and, for a member narrowed to some brands, one of them (rule 3772). Removing the
+ * membership, or the brand from its scope, therefore ends the link at read time even when the revoke never ran (rule 2119). A missing or unparsable date on either side of a "not older than" is not a reason to
  * refuse. "Sign out other devices" never ends a link (rule 1170: its stamp is not read here).
  */
 async function personHolds(rec: Pick<FeedRecord, "scope" | "createdAt">, pid: PersonId, aid: AccountId): Promise<boolean> {
@@ -139,15 +140,23 @@ async function personHolds(rec: Pick<FeedRecord, "scope" | "createdAt">, pid: Pe
     if (olderThan(rec.createdAt, membership.acceptedAt) || olderThan(rec.createdAt, account.teamSessionsAfter)) return false;
   }
   const id = brandIdOf(rec.scope, aid);
-  return !!id && brands.some((b) => b.id === id && b.status === "active");
+  return !!id && brands.some((b) => b.id === id && b.status === "active") && (role === "owner" || inScope(membership, id));
 }
+
+/** Whether a membership's brand scope (rule 3756) allows brand `id`: no scope is every brand. */
+const inScope = (m: Pick<Membership, "brands"> | null, id: string): boolean => {
+  const brands = memberExtras(m).brands;
+  return brands === undefined || brands.includes(id);
+};
 
 /**
  * A record made before M1 (no `pid`), R1's check plus the person suspension (rule 2131): the login exists and is active,
  * its person is not suspended, and `rec.scope` is one of its account's active brands. An owner must not be suspended
  * and must have verified the address (rule 756), and the same holds for the owner behind a member.
- * A member must be on the owner's roster (`getLogin` checks it), not disabled, an admin or member, joined after the owner
- * record was made, and the owner must exist and not be suspended. The scope is compared with the owner's stored email
+ * A member must be on the owner's roster (`getLogin` checks it), not disabled, an admin, member (or its contract name
+ * "editor") or viewer as `resolveLegacy` reads the record (rule 3772: a Viewer's link holds), joined after the owner
+ * record was made, and, when the membership (`getMembership`) narrows them to some brands, hold the scope's brand; the
+ * owner must exist and not be suspended. The scope is compared with the owner's stored email
  * exactly, as `sc(u)` builds it: a member's own address, another account or an archived brand is never a scope here.
  * A record made before the login's current life began (a member's `acceptedAt`, an owner's `createdAt`) is stale: the
  * login was removed or deleted and the address taken again, so a link that outlived its revoke does not carry over. A
@@ -164,26 +173,33 @@ async function legacyHolds(rec: Pick<FeedRecord, "login" | "scope" | "createdAt"
   // Rule 2131: a person suspension ends every link, a link made before M1 too (`getLogin` already read the person).
   if (isPersonSuspended(login.person)) return false;
   let owner: string;
+  let membership: Promise<Membership | null> = Promise.resolve(null);
   if (login.kind === "owner") {
     if (isSuspended(login.user) || !emailVerified(login.user)) return false;
     if (olderThan(rec.createdAt, login.user.createdAt)) return false;
     if (olderThan(rec.createdAt, login.user.sessionsAfter)) return false;
-    owner = login.user.email;
+    // The account id, not the address: an owner whose address moved in place keeps the id (rule 3817).
+    owner = acct(login.user);
   } else {
     const { member: m, owner: u } = login;
     // A person known only through membership rows (multi-workspace M1, test persons only) holds no legacy link.
     if (!m || !u || isSuspended(u) || !emailVerified(u) || m.disabled) return false;
-    if (m.role !== "admin" && m.role !== "member") return false;
+    // The record's own role, read as `resolveLegacy` reads it (rule 3751: "editor" is the contract release's "member").
+    const legacyRole = (m.role as string) === "editor" ? "member" : m.role;
+    if (legacyRole !== "admin" && legacyRole !== "member" && legacyRole !== "viewer") return false;
     if (typeof m.memberOf !== "string" || !m.memberOf || m.memberOf === normalizeEmail(rec.login)) return false;
     // NaN on either side (a malformed date) refuses too.
     if (!(new Date(m.acceptedAt).getTime() >= new Date(u.createdAt).getTime())) return false;
     if (olderThan(rec.createdAt, m.acceptedAt)) return false;
     if (olderThan(rec.createdAt, m.sessionsAfter) || olderThan(rec.createdAt, u.teamSessionsAfter)) return false;
-    owner = u.email;
+    owner = acct(u);
+    membership = getMembership(aidOf(u), pidFrom(memberPid(m)));
   }
   const id = brandIdOf(rec.scope, owner);
   if (!id) return false;
-  return (await listBrands(owner)).some((b) => b.id === id && b.status === "active");
+  const [brands, ms] = await Promise.all([listBrands(owner), membership]);
+  if (login.kind !== "owner" && !inScope(ms, id)) return false;
+  return brands.some((b) => b.id === id && b.status === "active");
 }
 
 /** The calendar feed's validity check; `loginHolds` under its B1 name. */

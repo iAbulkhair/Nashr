@@ -1,4 +1,4 @@
-import { AGENCY_MIN, CHAT_ALLOWANCE, ONBOARD_EXTRA_BRAND_COST, PLAN_BRANDS, PLAN_CREDITS, PLAN_PRICE_SAR, PLAN_SEATS, chatOverflowHold, formatCount, type PublicTier } from "./pricing";
+import { AGENCY_MIN, CHAT_ALLOWANCE, ONBOARD_EXTRA_BRAND_COST, PLAN_BRANDS, PLAN_CREDITS, PLAN_PRICE_SAR, PLAN_SEATS, chatOverflowHold, formatCount, yearlyPerMonthSar, yearlyPriceSar, type PublicTier } from "./pricing";
 import { TASK_COST, TASK_COUNT, type TaskType } from "./tasks";
 import { MEDIA_MODELS } from "./media-catalog";
 
@@ -158,7 +158,30 @@ export type PlanCard = {
   features: string[];
   cta: string;
   highlight?: boolean;
+  /** A line under the price; only the yearly cards set it (the per-month equivalent, rule 3541). */
+  note?: string;
 };
+
+/**
+ * The pricing cards with yearly billing (rules 3541-3542): each self-serve plan the founder priced yearly shows its yearly
+ * total (`yearlyPriceSar`) per year and, under it, the same price per month (`yearlyPerMonthSar`), both before VAT like
+ * every price here; a plan without a yearly price and the Agency card stay as they are. Read at call time, not when the
+ * dictionary is built, so it always follows src/lib/pricing.ts. Empty-handed callers check `anyYearlyOffered()` first: with
+ * no yearly price set the pricing page never calls this.
+ */
+export function yearlyPlanCards(lang: Lang, plans: readonly PlanCard[]): PlanCard[] {
+  return plans.map((p) => {
+    if (p.id === "agency") return p;
+    const total = yearlyPriceSar(p.id);
+    const perMonth = yearlyPerMonthSar(p.id);
+    if (total === null || perMonth === null) return p;
+    // Halalas always shown as two digits (200.50, not 200.5); a whole amount has none.
+    const pm = Number.isInteger(perMonth) ? formatCount(perMonth) : `${formatCount(Math.trunc(perMonth))}.${perMonth.toFixed(2).split(".")[1]}`;
+    return lang === "ar"
+      ? { ...p, price: formatCount(total), period: "ريال / سنة", note: `أي ${pm} ريال شهرياً، تُدفع مرة واحدة في السنة` }
+      : { ...p, price: formatCount(total), period: "SAR / year", note: `That is ${pm} SAR a month, paid once a year` };
+  });
+}
 
 export type Dict = {
   dir: "rtl" | "ltr";
