@@ -179,7 +179,8 @@ export async function resumeRoutines(s: Scope, ids: RoutineId[]): Promise<void> 
  */
 async function railAfter(user: User, r: Routine, rail: RoutineRail | null, outcome: string): Promise<void> {
   try {
-    const key = railKey(sc(user), r.id);
+    const scope = sc(user);
+    const key = railKey(scope, r.id);
     if (outcome.startsWith("ok:")) {
       if (rail) await db.del(key);
       return;
@@ -200,7 +201,7 @@ async function railAfter(user: User, r: Routine, rail: RoutineRail | null, outco
         ? `فشل التشغيل ${ROUTINE_FAILS_PAUSE} مرات متتالية، فأوقفناه حتى لا يتكرر. فعّله من جديد من المهام المجدولة حين تريد.`
         : `It failed ${ROUTINE_FAILS_PAUSE} times in a row, so we paused it to stop the retries. Switch it back on in Scheduled tasks when you want it.`,
       href: "tasks",
-      brandScope: sc(user),
+      brandScope: scope,
     });
   } catch (err) {
     log.error("routine rail write failed", err);

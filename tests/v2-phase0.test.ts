@@ -421,10 +421,10 @@ describe("rule 4515: deleting the account deletes its runs and audit list", () =
 describe("rule 4516: the entry points open a run and the tool paths go through the gateway", () => {
   it("chat, generateBatch, the tool call in chat and publishOnce are wired", () => {
     expect(src("src/lib/chat.ts")).toMatch(
-      /return withRun\(\{ scope: sc\(user\), kind: "chat", agent: agentId, via: opts\.via \?\? "app" \}, \(\) => chatTurn\(/,
+      /return withRun\(\{ scope: sc\(user\), kind: "chat", agent: agentId, via: opts\.via \?\? "app"[^}]*\}, \(\) => chatTurn\(/,
     );
     expect(src("src/lib/generate-batch.ts")).toMatch(
-      /withRun\(\{ scope: sc\(user\), kind: "batch", label: opts\.type \}, \(\) => runBatch\(/,
+      /withRun\(\{ scope: sc\(user\), kind: "batch", label: opts\.type[^}]*\}, \(\) => runBatch\(/,
     );
     // runTool's one caller in src is the chat turn, and it calls it through the gateway; phase 1's `remember` (rule 4555),
     // phase 2's `make_plan` (rule 4626) and phase 3's `propose_teammate` (rule 4738) run from the same call, inside the same

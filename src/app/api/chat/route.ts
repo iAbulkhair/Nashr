@@ -17,6 +17,7 @@ import { customerModelError } from "@/lib/provider-fault-note";
 import { acct } from "@/lib/account-id";
 import { teamRoute } from "@/lib/team-chat";
 import { TEAM_CHAT } from "@/lib/v2-flags";
+import { workStep } from "@/lib/work-view";
 
 export const maxDuration = 300;
 
@@ -33,6 +34,7 @@ export async function GET(req: Request) {
 /**
  * POST {text, conv?, agent?, stream?} → JSON reply, or with stream=true a text/event-stream:
  *   data: {"type":"status","text":"…"}  (one per working step)
+ *   data: {"type":"step","step":WorkStep}  (one per run-log step while RUN_LOG is on: the work view, v2 C9, rule 4774)
  *   data: {"type":"message","message":…,"credits":n,"limit":"credits"|"trial"|"agent_cap"|null,"chat":ChatStatus,"charged":n}
  * Refused before anything is saved, counted or streamed, always as JSON: 403 `agent_not_included` (an agent the plan does not
  * include, rule 782), 402 `trial_over` (an ended trial, rule 330: limit
@@ -113,7 +115,7 @@ export async function POST(req: Request) {
       // Mobile carriers and proxies drop connections that stay silent for 30-60 s, and a batch takes longer than that.
       const beat = setInterval(() => { try { controller.enqueue(enc.encode(": ping\n\n")); } catch { /* closed */ } }, 10000);
       try {
-        const { message: m, chat: status, charged } = await runChatTurn(u, gate, () => chat(u, text, b.conv, agent, { lang, deadline, model: gate.model, agentScope: pre.modes, modelRejected, ...teamOpt, onStatus: (s) => send({ type: "status", text: s }) }));
+        const { message: m, chat: status, charged } = await runChatTurn(u, gate, () => chat(u, text, b.conv, agent, { lang, deadline, model: gate.model, agentScope: pre.modes, modelRejected, ...teamOpt, onStatus: (s) => send({ type: "status", text: s }), onStep: (e) => send({ type: "step", step: workStep(e) }) }));
         await track(acct(u), "chat");
         if (b.conv && b.conv !== "default") await touchConversation(sc(u), b.conv, text, TEAM_CHAT ? agent : undefined);
         send({ type: "message", message: m, credits: u.credits, limit: m.limit ?? null, chat: status, charged });

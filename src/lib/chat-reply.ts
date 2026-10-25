@@ -19,6 +19,7 @@ import type { TeamTurn } from "./team-chat";
 import type { ChatMsg } from "./chat-history";
 import { AWAY_CARDS_PER_REPLY, BRAND_CARDS_PER_REPLY, FILE_CARDS_PER_REPLY, INSTRUCTION_CARDS_PER_REPLY } from "./chat-gates";
 import { appHref } from "@/lib/ws-path";
+import type { RunEvent } from "./runs";
 
 /**
  * The `maxDuration` of the two routes that call chat(), `/api/chat` and `/api/mcp` (route config must be a literal, so
@@ -41,7 +42,7 @@ export const CHAT_RENDER_MIN_MS = 60_000;
  * `agentScope`: the founder's agent-scope modes, which the route already read with the refusal ceiling
  * (`agentScopePreflight`, src/lib/agent-scope.ts), so they are read once per request. Left out, `chat()` reads them itself.
  */
-export type ChatOpts = { onStatus?: (text: string) => void; lang?: "ar" | "en"; deadline?: number; by?: By; via?: "app" | "mcp"; model?: string; modelRejected?: Rejected; agentScope?: AgentScopeModes; /** the turn's place in a team thread (v2 C4 + C12), set by the chat route while TEAM_CHAT is on */ team?: TeamTurn };
+export type ChatOpts = { onStatus?: (text: string) => void; lang?: "ar" | "en"; deadline?: number; by?: By; via?: "app" | "mcp"; model?: string; modelRejected?: Rejected; agentScope?: AgentScopeModes; /** the turn's place in a team thread (v2 C4 + C12), set by the chat route while TEAM_CHAT is on */ team?: TeamTurn; /** hears each step of the turn's run as it happens (v2 C9, rule 4774); only while RUN_LOG is on */ onStep?: (e: RunEvent) => void };
 /** Why a tool could not spend: the app raises the matching limit dialog. `agent_cap` is the owner's monthly cap for one agent. */
 export type ChatLimit = "credits" | "trial" | "agent_cap" | "fair_use";
 

@@ -108,8 +108,9 @@ describe("rule 4580: the switch ships off, and off changes nothing", () => {
   it("off: the chat turn reads no summary and makes no summary call", () => {
     const chat = src("src/lib/chat.ts");
     expect(chat).toMatch(/COMPACTION \? readSummary\(sc\(user\), conv\)/);
-    expect(chat).toMatch(/: \(null as ThreadSummary \| null\)\]\);/);
-    expect(chat).toMatch(/if \(COMPACTION\) \{\n\s+const c = await compactThread\(/);
+    expect(chat).toMatch(/: \(null as ThreadSummary \| null\), COMPACTION && RUN_LOG \? readMeters\(/);
+    // The context meter (C13, rule 4763) picks how many of the kept messages stay out of the summary; off, all of them.
+    expect(chat).toMatch(/if \(COMPACTION\) \{\n\s+const kept = keptFor\(underPressure\(meters, agentId\), trimmed\.length\);\n\s+const c = await compactThread\(/);
     expect(chat.match(/compactThread\(|proposeSummaryFacts\(|summaryBlock\(/g)).toHaveLength(3);
   });
 });
@@ -408,13 +409,14 @@ describe("rule 4588: deleting a thread deletes its summary, and the wipe deletes
 describe("rule 4589: compaction runs after the history guard and before the first call is fitted", () => {
   it("in the chat turn source, in that order, in the uncached block", () => {
     const chat = src("src/lib/chat.ts");
-    const trim = chat.indexOf("const trimmed = trimHistory(thread);");
+    const trim = chat.indexOf("let trimmed = trimHistory(thread);");
     const compact = chat.indexOf("await compactThread(");
     const fit = chat.indexOf("const fit = fitFirstCall(");
     expect(trim).toBeGreaterThan(0);
     expect(compact).toBeGreaterThan(trim);
     expect(fit).toBeGreaterThan(compact);
-    expect(chat).toMatch(/droppedTurns\(thread, trimmed\.length\)/);
+    // `kept` is `trimmed.length` unless the context meter is at its pressure mark (C13, tests/v2-context-meter.test.ts).
+    expect(chat).toMatch(/droppedTurns\(thread, kept\)/);
     expect(chat).toMatch(/if \(block\) sys\[2\] = \{ \.\.\.sys\[2\], text: sys\[2\]\.text \+ block \};/);
   });
 });

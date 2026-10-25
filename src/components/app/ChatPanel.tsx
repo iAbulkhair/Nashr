@@ -32,6 +32,9 @@ import type { Journey } from "@/lib/journey";
 import JourneyCard from "./JourneyCard";
 import AgentAvatar from "@/components/app/AgentAvatar";
 import { ChatModelPicker } from "./ModelPicker";
+import RunTimeline from "./RunTimeline";
+import WorkPanel from "./WorkPanel";
+import type { WorkStep } from "@/lib/work-view";
 import { nextMadePicks, storedPick, type MadePicks } from "@/lib/model-picker";
 
 /** A conversation as GET /api/conversations lists it. `model`: its chat pick (absent: automatic), shown by the header's picker. */
@@ -621,7 +624,7 @@ function actionLabels(actions: string[] | undefined, lang: "ar" | "en"): string[
   return [...out];
 }
 
-export default function ChatPanel({ t, initial, credits: c0, lang, initialConv, initialPrompt = "", plan, firstStep, initialAgent, pending = [], pendingCount = 0, brief, onboardUrl, starter, needPhone = false, journey, canApprove = true, canBrand = true, canInstructions = true, canRun = true, canDecline = true, handoffs, chat: chat0, canConfirmChina = false, active = null }: { t: AppDict; initial: ChatMsg[]; credits: number; lang: "ar" | "en"; initialConv?: string; initialPrompt?: string; plan?: string; firstStep?: string; initialAgent?: string; pending?: ChatItem[]; pendingCount?: number; brief?: string | null; /** first run: build the workspace from this URL inside the thread */ onboardUrl?: string; /** goal and first task from onboarding, shown to trial accounts */ starter?: { goal: string; first?: string } | null; needPhone?: boolean; /** launch path, shown at the top of the thread until it is complete */ journey?: Journey; /** `can(u, "publish")`: approve buttons on item cards */ canApprove?: boolean; /** `can(u, "brand.write")`: Save and Dismiss on brand-change cards */ canBrand?: boolean; /** `can(u, "instructions.write")`: a plain member sees a proposed instruction but cannot decide it */ canInstructions?: boolean; /** `can(u, "generate")` and `can(u, "drafts")`: Run and Decline on Majed's handoff cards */ canRun?: boolean; canDecline?: boolean; /** the handoffs this thread names, read on the server (`handoffViews`): null for one whose record is gone */ handoffs?: Record<string, HandoffView | null>; /** the account's chat messages now (`chatStatus`, read on the server); each answer brings the next */ chat?: ChatStatus; /** the owner, not a founder impersonating (`can(u, "profile.account")`): may allow China-hosted models in the model picker */ canConfirmChina?: boolean; /** the open conversation's record as the page read it (`getConversation`): its id and chat pick, for the model picker */ active?: { id: string; model?: string } | null }) {
+export default function ChatPanel({ t, initial, credits: c0, lang, initialConv, initialPrompt = "", plan, firstStep, initialAgent, pending = [], pendingCount = 0, brief, onboardUrl, starter, needPhone = false, journey, canApprove = true, canBrand = true, canInstructions = true, canRun = true, canDecline = true, handoffs, chat: chat0, canConfirmChina = false, active = null, workView = false }: { t: AppDict; initial: ChatMsg[]; credits: number; lang: "ar" | "en"; initialConv?: string; initialPrompt?: string; plan?: string; firstStep?: string; initialAgent?: string; pending?: ChatItem[]; pendingCount?: number; brief?: string | null; /** first run: build the workspace from this URL inside the thread */ onboardUrl?: string; /** goal and first task from onboarding, shown to trial accounts */ starter?: { goal: string; first?: string } | null; needPhone?: boolean; /** launch path, shown at the top of the thread until it is complete */ journey?: Journey; /** `can(u, "publish")`: approve buttons on item cards */ canApprove?: boolean; /** `can(u, "brand.write")`: Save and Dismiss on brand-change cards */ canBrand?: boolean; /** `can(u, "instructions.write")`: a plain member sees a proposed instruction but cannot decide it */ canInstructions?: boolean; /** `can(u, "generate")` and `can(u, "drafts")`: Run and Decline on Majed's handoff cards */ canRun?: boolean; canDecline?: boolean; /** the handoffs this thread names, read on the server (`handoffViews`): null for one whose record is gone */ handoffs?: Record<string, HandoffView | null>; /** the account's chat messages now (`chatStatus`, read on the server); each answer brings the next */ chat?: ChatStatus; /** the owner, not a founder impersonating (`can(u, "profile.account")`): may allow China-hosted models in the model picker */ canConfirmChina?: boolean; /** the open conversation's record as the page read it (`getConversation`): its id and chat pick, for the model picker */ active?: { id: string; model?: string } | null; /** RUN_LOG is on: the thread's work view and context meter (v2 C9 + C13), read on open */ workView?: boolean }) {
   const href = useAppLink(lang);
   const [msgs, setMsgs] = useState<ChatMsg[]>(initial);
   const [text, setText] = useState(initialPrompt);
@@ -637,6 +640,8 @@ export default function ChatPanel({ t, initial, credits: c0, lang, initialConv, 
   const [reasonFor, setReasonFor] = useState<string | null>(null);
   const [reason, setReason] = useState("");
   const [steps, setSteps] = useState<string[]>([]);
+  // The turn's run-log steps as they happen (v2 C9, rule 4774): sent only while RUN_LOG is on, so empty otherwise.
+  const [work, setWork] = useState<WorkStep[]>([]);
   const [left, setLeft] = useState(pendingCount);
   const list = useRef<HTMLDivElement>(null);
   const router = useRouter();
@@ -770,7 +775,7 @@ export default function ChatPanel({ t, initial, credits: c0, lang, initialConv, 
     // Kept by identity: a message the server refuses before saving it leaves the thread and goes back into the box.
     const mine: ChatMsg = { role: "user", content: m, at: new Date().toISOString() };
     setMsgs((p) => [...p, mine]);
-    setBusy(true); setSteps([]);
+    setBusy(true); setSteps([]); setWork([]);
     type Answer = { ok?: boolean; message?: ChatMsg; credits?: number; limit?: string | null; error?: string; chat?: ChatStatus };
     const done = (j: Answer) => {
       if (j.chat) setChatNow(j.chat);
@@ -806,6 +811,7 @@ export default function ChatPanel({ t, initial, credits: c0, lang, initialConv, 
           if (!line.startsWith("data:")) continue;
           const ev = JSON.parse(line.slice(5));
           if (ev.type === "status") setSteps((p) => [...p, ev.text]);
+          else if (ev.type === "step") setWork((p) => [...p, ev.step]);
           else if (ev.type === "message") { got = true; done({ ok: true, ...ev }); }
           else if (ev.type === "error") { got = true; done({ ok: false, error: ev.error }); }
         }
@@ -835,7 +841,7 @@ export default function ChatPanel({ t, initial, credits: c0, lang, initialConv, 
       // No saved reply: the typed text goes back into the box, unless something new was typed.
       if (found) done({ ok: true, message: found }); else { done({ ok: false, error: "network" }); setText((cur) => cur || m); }
     }
-    finally { ctl.current = null; setBusy(false); setSteps([]); }
+    finally { ctl.current = null; setBusy(false); setSteps([]); setWork([]); }
   }
   /** Stop waiting for the answer in flight (rule 1126). */
   function stop() {
@@ -962,9 +968,11 @@ export default function ChatPanel({ t, initial, credits: c0, lang, initialConv, 
           <div className="text-sm text-foreground-muted">
             {steps.map((s, i) => <p key={i} className={`flex items-center gap-2 ${i < steps.length - 1 ? "opacity-70" : ""}`}><span className={`h-2 w-2 rounded-full ${i < steps.length - 1 ? "bg-foreground" : "animate-pulse bg-lemon"}`} />{A[agent].name}: {s}</p>)}
             {steps.length === 0 && <p>{agent === "noor" ? t.chat.thinking : `${A[agent].name}…`}</p>}
+            {work.length > 0 && <div className="mt-2"><RunTimeline steps={work} t={t} /></div>}
           </div>
         )}
       </div>
+      {workView && !onboardUrl && <WorkPanel key={conv} t={t} lang={lang} conv={conv === "default" ? undefined : conv} />}
 
       {plan === "trial" && goal?.goal && <ActivationBar lang={lang} goal={goal.goal} first={goal.first} />}
       <p role="status" className="sr-only">{busy ? (agent === "noor" ? t.chat.thinking : `${A[agent].name}…`) : ""}</p>

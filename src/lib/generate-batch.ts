@@ -310,7 +310,7 @@ export async function generateBatch(user: User, scope: string, opts: BatchOpts):
   const late: Promise<unknown>[] = [];
   try {
     // One run of the run log (rules 4510-4519), or a part of the chat turn or MCP call it runs in.
-    return await withRun({ scope: sc(user), kind: "batch", label: opts.type }, () => runBatch(user, scope, opts, late));
+    return await withRun({ scope: sc(user), kind: "batch", label: opts.type, agent: agentForTask(opts.type).id }, () => runBatch(user, scope, opts, late));
   } finally {
     await Promise.allSettled(late);
   }

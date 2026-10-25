@@ -136,6 +136,13 @@ export const arPages = {
     chatOffTitle: "الدردشة غير متاحة في هذا الحساب", chatOffBody: "لا يشمل هذا الحساب رسائل دردشة حالياً. تواصل مع الدعم لتفعيلها. كل ما في صندوقك محفوظ، ولم تُرسل رسالتك ولم يُخصم شيء.", askOwnerChatOff: "لا يشمل هذا الحساب رسائل دردشة حالياً. اطلب من مالك الحساب التواصل مع الدعم. كل ما في صندوقك محفوظ، ولم تُرسل رسالتك.",
     fairUseTitle: "توقف الاستخدام مؤقتاً حتى الشهر القادم", fairUseBody: "بلغ استخدام حسابك للذكاء الاصطناعي هذا الشهر حد الاستخدام العادل لباقتك، فتوقفت المحادثات والتوليد والمهام المجدولة والوسائط. لم يُرسل شيء ولم يُخصم شيء. يعود الاستخدام في أول الشهر القادم، أو قبل ذلك عند شراء باقة شحن من صفحة الاشتراك.", askOwnerFairUse: "بلغ استخدام الحساب للذكاء الاصطناعي هذا الشهر حد الاستخدام العادل لباقته، فتوقفت المحادثات والتوليد والمهام المجدولة والوسائط حتى أول الشهر القادم. لم يُرسل شيء ولم يُخصم شيء. اطلب من مالك الحساب شراء باقة شحن إن احتجت إليه قبل ذلك.",
     billing: "افتح صفحة الاشتراك", hireTitle: "وظّف فريقك التسويقي اليوم.", hire: "وظّف نور", hireSub: "تجربة مجانية 3 أيام.", firstUp: "أول خطوة", firstSteps: { catalog: "استورد منتجاتك من متجرك لتكتب نور بأسماء وأسعار حقيقية", offer: "أضف عرضك الحالي في ملف العلامة لتُنسج في المحتوى", connect: "اربط ووردبريس (كمسودات) أو تيليجرام من التكاملات، ثم انشر ما تعتمده من صندوق الموافقة", batch: "اطلب أول دفعة: 10 منشورات لهذا الأسبوع" } },
+  work: {
+    title: "سير العمل", open: "اعرض سير العمل", empty: "لا خطوات مسجّلة بعد.", loading: "جارٍ التحميل…", failed: "تعذّر التحميل، حاول مرة أخرى.",
+    model: "يفكّر", tool: "أداة: {name}", publish: "نشر: {name}", check: "فحص ذاتي: {n} من 100", rewritten: "أُعيدت كتابته",
+    state: { ok: "تم", refused: "رُفض", error: "تعذّر" }, tokens: "{n} توكن", ms: "{n} ث",
+    kind: { chat: "محادثة", batch: "دفعة", mcp: "مساعدك الخاص" },
+    meter: "امتلاء السياق", meterRow: "{name}: {pct}%", meterHot: "سيُلخَّص أول المحادثة قبل الرد القادم.",
+  },
 };
 
 export const enPages: typeof arPages = {
@@ -269,4 +276,11 @@ export const enPages: typeof arPages = {
     chatOffTitle: "Chat is not available on this account", chatOffBody: "This account has no chat messages at the moment. Contact support to turn them on. Everything in your inbox is kept; your message was not sent and nothing was charged.", askOwnerChatOff: "This account has no chat messages at the moment. Ask the account owner to contact support. Everything in your inbox is kept, and your message was not sent.",
     fairUseTitle: "Usage paused until next month", fairUseBody: "Your account's AI usage this month reached your plan's fair-use limit, so chat, generation, scheduled tasks and media are paused. Nothing was sent and nothing was charged. Usage resumes on the 1st of next month, or sooner when you buy a top-up pack on the Subscription page.", askOwnerFairUse: "This account's AI usage this month reached its plan's fair-use limit, so chat, generation, scheduled tasks and media are paused until the 1st of next month. Nothing was sent and nothing was charged. Ask the account owner to buy a top-up pack if you need it sooner.",
     billing: "Open Subscription", hireTitle: "Hire your marketing team today.", hire: "Hire Noor", hireSub: "3-day free trial.", firstUp: "First up", firstSteps: { catalog: "Import your products from your store so Noor writes with real names and prices", offer: "Add your current offer to the brand file so it is woven into content", connect: "Connect WordPress (as drafts) or Telegram from Integrations, then publish what you approve from the inbox", batch: "Ask for the first batch: 10 posts for this week" } },
+  work: {
+    title: "Work view", open: "Show the work", empty: "No steps recorded yet.", loading: "Loading…", failed: "Could not load, try again.",
+    model: "Thinking", tool: "Tool: {name}", publish: "Publish: {name}", check: "Self-check: {n} of 100", rewritten: "rewritten",
+    state: { ok: "done", refused: "refused", error: "failed" }, tokens: "{n} tokens", ms: "{n} s",
+    kind: { chat: "Chat", batch: "Batch", mcp: "Your own assistant" },
+    meter: "Context used", meterRow: "{name}: {pct}%", meterHot: "The start of this thread is summarised before the next reply.",
+  },
 };
