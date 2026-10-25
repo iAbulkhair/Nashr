@@ -2,6 +2,8 @@
  * Reem B3: the provider side of the calendar link (spec 2026-10-05-secretary-reem-b3-calendar-read-design.md §3, §4, §5).
  * This part: the proof read at connection time and the connect step the OAuth callback calls. Nashr never calls a
  * provider's revoke endpoint (ruling R7): Google grants are shared per user and client with the publishing connection.
+ * A link made through Composio (rules 4260-4266, `via: "composio"`, secretary-gcal-via.ts) holds no token: Composio refreshes Google's,
+ * and the account it holds is revoked there when the link ends (`dropLinkFor`).
  * Also here: the token refresh (`freshAccess`), the list of the account's own calendars, the lost-link step the calendar-link
  * routes and the sync share (`loseLink`), the event fetch, and the sync itself (`sweepCalendars`, `syncOne`; spec §7).
  *
@@ -20,7 +22,8 @@ import { db } from "./db";
 import { notifyItem } from "./notifications";
 import { pmap } from "./parallel";
 import { SEC_KEYS, audit } from "./secretary";
-import { dropLink, getLink, openTokens, putEvents, putLink, scheduleSync, sealTokens, type CalLink } from "./secretary-cal-link";
+import { dropLink, getLink, openAccount, openTokens, putEvents, putLink, scheduleSync, sealTokens, type CalLink } from "./secretary-cal-link";
+import { fetchEventsVia, listCalendarsVia, releaseVia, viaFields } from "./secretary-gcal-via";
 import { decodeIdToken, googleAccount, microsoftDomain, MS_CONSUMER_TENANT, proofOf } from "./secretary-cal-proof";
 import { keepGoogle, keepGraph, limitMeetings, type GEvent, type GraphEvent, type Meeting } from "./secretary-meetings";
 import { zoneOf } from "./zones";
@@ -124,7 +127,7 @@ export async function connectCalendar(scope: string, login: string, p: CalProvid
     const proof = await connectProof(p, data, access);
     const earlier = await getLink(scope);
     // Only our side: the sealed tokens go with the record. Nashr never calls Google's revoke endpoint (ruling R7).
-    if (earlier) await dropLink(scope);
+    if (earlier) await dropLinkFor(scope, earlier);
     const expires = Number(data.expires_in);
     const link: CalLink = {
       v: 1,
@@ -146,8 +149,54 @@ export async function connectCalendar(scope: string, login: string, p: CalProvid
   return "code" in r || r.ok ? r : { ok: false, code: "provider_error" };
 }
 
+/**
+ * `dropLink`, and for a Composio link the connected account at Composio goes first (`releaseVia`; a failure there is logged and
+ * the link is dropped anyway). `known` is the link the caller already read; without it the record is read here.
+ */
+export async function dropLinkFor(scope: string, known?: CalLink | null): Promise<void> {
+  const link = known === undefined ? await getLink(scope) : known;
+  if (link?.via === "composio") await releaseVia(scope, link);
+  await dropLink(scope);
+}
+
+/**
+ * Rule 4260: the connect step of a Composio flow, the counterpart of `connectCalendar` for a calendar read through Composio.
+ * The callback has already checked the account is ACTIVE and this workspace's (`composioVerify`). Under the same lock: the
+ * brand must still be active, the account's own calendar proves the address (Google makes the primary calendar's id the account's
+ * address), an earlier link is dropped and released, and the new one is written in state `choose`. Composio gives no `id_token`,
+ * so no domain is ever proven and the owner declares the calendar is the brand's (spec §4, the declaration path). The Composio
+ * account is deleted again when nothing was stored, so it does not stay ACTIVE there. Throws on a provider failure.
+ */
+export async function connectCalendarVia(scope: string, login: string, accountId: string, now: number): Promise<ConnectResult> {
+  const r = await withCalLock(scope, async (): Promise<ConnectResult> => {
+    const owner = accountOfScope(scope);
+    const active = (await listBrands(owner)).some((b) => b.status === "active" && scopeFor(owner, b.id) === scope);
+    if (!active) return { ok: false, code: "brand_inactive" };
+    const mine = await listCalendarsVia(scope, accountId);
+    const account = (mine.find((c) => c.primary) ?? mine[0])?.id;
+    if (!account) throw new Error("no_account");
+    const earlier = await getLink(scope);
+    if (earlier) await dropLinkFor(scope, earlier);
+    const link: CalLink = { v: 1, provider: "gcal", login, account, proof: null, ...viaFields(accountId), state: "choose", connectedAt: now, rev: 1 };
+    await putLink(scope, link);
+    await audit(scope, { actor: "owner", via: "web", login }, "cal_link", "-", "provider=gcal via=composio");
+    return { ok: true };
+  });
+  return "code" in r || r.ok ? r : { ok: false, code: "provider_error" };
+}
+
+/** The calendars the link's account owns, from whichever side holds it: Google with the token, or Composio with the account id. */
+export async function listCalendars(scope: string, link: CalLink, access: string, account: string): Promise<{ id: string; name: string }[]> {
+  if (link.via !== "composio") return listOwnCalendars(link.provider, access, account);
+  const id = openAccount(link);
+  if (!id) throw Object.assign(new Error("calendar_list_401"), { status: 401 });
+  return (await listCalendarsVia(scope, id)).map(({ id: cid, name }) => ({ id: cid, name }));
+}
+
 /** The proof of a link being saved (spec §4, ruling R3): Google keeps what the code exchange proved unless the refresh answered with an `id_token`; Microsoft asks Graph every time. */
 export async function reproof(link: CalLink, data: Record<string, string>, access: string): Promise<{ account: string; accountDomain: string | null }> {
+  // A Composio link has no id_token to read: it never proves a domain, so a save needs the owner's declaration.
+  if (link.via === "composio") return { account: link.account, accountDomain: null };
   if (link.provider === "gcal") {
     if (!data.id_token) return { account: link.account, accountDomain: link.accountDomain ?? null };
     return connectProof("gcal", data, access);
@@ -175,6 +224,8 @@ export type Fresh =
  * text never leaves this function: the error's name is all that is logged.
  */
 export async function freshAccess(scope: string, link: CalLink, now: number): Promise<Fresh> {
+  // Composio refreshes Google's token itself: nothing to open or renew here, only an account id that must still open.
+  if (link.via === "composio") return openAccount(link) ? { ok: true, access: "", link, data: {} } : { ok: false, lost: "token" };
   const t = openTokens(link);
   if (!t) return { ok: false, lost: "token" };
   if (t.expiresAt - now >= REFRESH_SKEW_MS) return { ok: true, access: t.access, link, data: {} };
@@ -365,7 +416,7 @@ async function syncLocked(scope: string, now: number): Promise<Outcome> {
   const meta = brands.find((b) => scopeFor(owner, b.id) === scope);
   // An archived brand ends its link; Nashr holds no token afterwards and calls no provider (ruling R7).
   if (meta?.status === "archived") {
-    await dropLink(scope);
+    await dropLinkFor(scope, link);
     return "dropped";
   }
   if (!user || isSuspended(user) || link.login !== user.email) return loseSync(scope, link, "owner");
@@ -387,7 +438,7 @@ async function syncLocked(scope: string, now: number): Promise<Outcome> {
     }
   }
 
-  const res = await fetchEvents(cur, fresh.access, now, now + CAL_WINDOW_MS);
+  const res = cur.via === "composio" ? await fetchEventsVia(scope, cur, now, now + CAL_WINDOW_MS) : await fetchEvents(cur, fresh.access, now, now + CAL_WINDOW_MS);
   if (!res.ok) {
     if (res.kind === "gone") return loseSync(scope, cur, "calendar");
     if (res.kind === "auth") return loseSync(scope, cur, "token");
@@ -461,8 +512,8 @@ export async function revokeCalendarLinks(email: string): Promise<void> {
     const scope = scopeFor(email, b.id);
     // Under the brand's calendar lock, so a sync that holds it finishes first; a lock that stays busy never keeps a link alive
     // (ruling R15): it is dropped anyway, and the run in flight finds the link gone before it writes anything.
-    const r = await withCalLock(scope, () => dropLink(scope));
-    if (r) await dropLink(scope);
+    const r = await withCalLock(scope, () => dropLinkFor(scope));
+    if (r) await dropLinkFor(scope);
   });
 }
 

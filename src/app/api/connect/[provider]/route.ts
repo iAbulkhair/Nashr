@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server";
 import { currentUser, sc } from "@/lib/auth";
 import { deleteConnection, getConnection } from "@/lib/connectors/store";
-import { isComposio, liOrgName, postAsVia, revokeAll, selectOrgVia, selectPageVia, selectPropertyVia } from "@/lib/connectors/via-composio";
+import { isComposio, liOrgName, postAsVia, revokeAll, selectOrgVia, selectPageVia, selectProjectVia, selectPropertyVia } from "@/lib/connectors/via-composio";
 import { recordActivity } from "@/lib/activity";
 import { PartlyRead, holdsSocial, isSocialProvider, readSocialSoon, syncSocialIfDue } from "@/lib/social-stats";
 import { holdsSite, readSiteSoon, syncSiteIfDue } from "@/lib/site-stats";
+import { holdsProduct, readProductSoon, syncProductIfDue } from "@/lib/product-stats";
 import { X_RETRY_DEFAULT_S, dropXStats, refreshX, xForPage } from "@/lib/x-stats";
 import { markOwnerSync } from "@/lib/routines";
 import { CATALOG_IMPORTS_PER_HOUR, STORE_SYNCS_PER_HOUR, WINDOW, allow, retryAfter, retryLater } from "@/lib/rate";
@@ -77,7 +78,7 @@ export async function DELETE(_req: Request, ctx: { params: Promise<{ provider: s
  * spends a credit of the account (rule 744), so it needs what any spending needs, `generate` (any member). An action not
  * listed here is refused.
  */
-const ACTION_ROLE: Record<string, Action> = { select_page: "connectors", select_org: "connectors", post_as: "connectors", select_ad_account: "connectors", select_property: "connectors", import_products: "catalog.import", sync_ads: "read", sync_sales: "read", sync_site: "read", sync_social: "read", sync_x: "generate" };
+const ACTION_ROLE: Record<string, Action> = { select_page: "connectors", select_org: "connectors", post_as: "connectors", select_ad_account: "connectors", select_property: "connectors", select_project: "connectors", import_products: "catalog.import", sync_ads: "read", sync_sales: "read", sync_site: "read", sync_product: "read", sync_social: "read", sync_x: "generate" };
 
 /** Refreshes of the site, the social results, the ad results or X one workspace may ask for in an hour, the team together (rule 735). */
 const OWNER_SYNCS_PER_HOUR = 6;
@@ -176,6 +177,16 @@ export async function POST(req: Request, ctx: { params: Promise<{ provider: stri
       if (read) readSiteSoon(sc(u));
       return NextResponse.json({ ok: true, account: next.meta?.account, read });
     }
+    // The PostHog project whose figures are read (rules 4230-4259): only one listed at connect time. Saved always; read at
+    // once only while the workspace's six product reads an hour last (the sync_product bucket).
+    if (b.action === "select_project" && provider === "posthog" && isComposio(c)) {
+      const next = selectProjectVia(c, String(b.id ?? ""));
+      if (!next) return NextResponse.json({ ok: false, error: "unknown_project" }, { status: 400 });
+      await saveConnection(sc(u), next);
+      const read = await allow(wsKey.productSyncBucket(sc(u)), OWNER_SYNCS_PER_HOUR, WINDOW.hour);
+      if (read) readProductSoon(sc(u));
+      return NextResponse.json({ ok: true, account: next.meta?.account, read });
+    }
     if (b.action === "select_ad_account" && isAdProvider(provider)) {
       const next = selectAdAccount(c, String(b.accountId ?? ""));
       if (!next) return NextResponse.json({ ok: false, error: "unknown_account" }, { status: 400 });
@@ -200,6 +211,11 @@ export async function POST(req: Request, ctx: { params: Promise<{ provider: stri
       if (!holdsSite(c)) return NextResponse.json({ ok: false, error: "not_connected" }, { status: 404 });
       if (!(await allow(`sitesync:${sc(u)}`, OWNER_SYNCS_PER_HOUR, WINDOW.hour))) return retryLater({ ok: false, error: "slow_down" }, WINDOW.hour);
       return await ownerRefresh(sc(u), () => syncSiteIfDue(sc(u), new Date(), true));
+    }
+    if (b.action === "sync_product" && provider === "posthog") {
+      if (!holdsProduct(c)) return NextResponse.json({ ok: false, error: "not_connected" }, { status: 404 });
+      if (!(await allow(wsKey.productSyncBucket(sc(u)), OWNER_SYNCS_PER_HOUR, WINDOW.hour))) return retryLater({ ok: false, error: "slow_down" }, WINDOW.hour);
+      return await ownerRefresh(sc(u), () => syncProductIfDue(sc(u), new Date(), true));
     }
     if (b.action === "sync_social" && isSocialProvider(provider)) {
       if (!holdsSocial(provider, c)) return NextResponse.json({ ok: false, error: "not_connected" }, { status: 404 });

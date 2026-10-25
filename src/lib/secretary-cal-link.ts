@@ -24,8 +24,15 @@ export type CalLink = {
   calendarName?: string;
   /** The calendars the owner may pick from, as the callback listed them; `until` is the ms the list expires. */
   choices?: { ids: string[]; names: string[]; until: number };
-  /** `sealTokens` output: the AES-256-GCM blob of `{ access, refresh, expiresAt }`. Nothing else in the record is secret. */
+  /** `sealTokens` output: the AES-256-GCM blob of `{ access, refresh, expiresAt }`. Empty for a Composio link, which holds no token. */
   tokens: string;
+  /**
+   * Rule 4260: `"composio"` when the calendar is read through Composio (secretary-gcal-via.ts) instead of Thakeen's own Google app.
+   * Absent on every earlier link, which keeps reading as a direct one (expand: old code ignores both fields). `cid` is the
+   * Composio connected-account id sealed with `sealAccount`; the only secret such a record holds.
+   */
+  via?: "composio";
+  cid?: string;
   state: "choose" | "ok" | "reconnect";
   lostReason?: "token" | "calendar" | "domain" | "brand" | "owner";
   connectedAt: number;
@@ -50,6 +57,18 @@ export function openTokens(link: Pick<CalLink, "tokens">): CalTokens | null {
     const t = JSON.parse(decrypt(link.tokens)) as Partial<CalTokens>;
     if (typeof t.access !== "string" || typeof t.refresh !== "string" || typeof t.expiresAt !== "number") return null;
     return { access: t.access, refresh: t.refresh, expiresAt: t.expiresAt };
+  } catch {
+    return null;
+  }
+}
+
+export const sealAccount = (id: string): string => encrypt(id);
+/** The Composio account id of a Composio link, or null for a direct link, a missing id or a blob that does not decrypt. */
+export function openAccount(link: Pick<CalLink, "via" | "cid">): string | null {
+  if (link.via !== "composio" || !link.cid) return null;
+  try {
+    const id = decrypt(link.cid);
+    return id ? id : null;
   } catch {
     return null;
   }

@@ -75,7 +75,7 @@ export function refreshNote(lang: Lang, kind: RefreshKind, status: number, j: An
 export function selectNote(lang: Lang, status: number, j: Answer): string {
   const S = STR[lang];
   if (j.ok) return j.read === false ? S.savedLater : S.saved;
-  if (j.error === "unknown_property" || j.error === "bad_value") return S.notListed;
+  if (j.error === "unknown_property" || j.error === "unknown_project" || j.error === "bad_value") return S.notListed;
   if (j.error === "forbidden" || status === 403) return S.ownerOnly;
   if (j.error === "not_connected") return S.notConnected;
   if (j.error === "reconnect_required") return S.reconnect;

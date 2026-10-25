@@ -56,6 +56,9 @@ export type StagedFile = { name: string; mimetype: string; s3key: string };
  * until the founder's own developer apps exist (no Composio managed auth); re-read them then. Before changing a pin or
  * adding a provider to COMPOSIO_PROVIDERS, run scripts/check-composio-pins.ts (rule 2166): it reads each allowlisted
  * tool at the pinned version, which `composio tools info` (latest only) cannot.
+ * posthog (rules 4230-4259) is pinned to the version docs.composio.dev/toolkits/posthog listed on 2026-10-25
+ * (20261018_00), with its two allowlisted tools' arguments read from that page; scripts/check-composio-pins.ts has not
+ * run on it yet (founder step in the pull request).
  */
 export const TOOLKIT_VERSION: Readonly<Record<Toolkit, string>> = {
   facebook: "20261008_00",
@@ -72,11 +75,15 @@ export const TOOLKIT_VERSION: Readonly<Record<Toolkit, string>> = {
   linkedin_ads: "20260826_00",
   google_analytics: "20260924_00",
   google_search_console: "20260806_00",
+  posthog: "20261018_00",
   googledocs: "20261008_00",
   googlesheets: "20261001_00",
   googledrive: "20261001_00",
   dropbox: "20261001_00",
   one_drive: "20261013_00",
+  // The newest version `composio dev toolkits version googlecalendar` lists (2026-10-25); its schema is the one the
+  // allowlisted argument names were read from. Run scripts/check-composio-pins.ts before naming gcal in COMPOSIO_PROVIDERS.
+  googlecalendar: "20260331_00",
   calendly: "20261018_00",
 };
 
@@ -278,10 +285,21 @@ export async function composioDiscard(accountId: string): Promise<void> {
   if (c) await quietDelete(c, accountId);
 }
 
-/** Revoke at the platform, then delete at Composio. Rejects on either failure so the caller keeps its record. */
+/** The platform has no revoke for this toolkit, or the (expired) connection can no longer be revoked: deleting at Composio is all that is left to do. */
+function revokeNotPossible(e: unknown): boolean {
+  const o = (e && typeof e === "object" ? e : {}) as { code?: unknown; name?: unknown; message?: unknown };
+  const text = `${String(o.code ?? "")} ${String(o.name ?? "")} ${String(o.message ?? e)}`;
+  return /REVOCATION_NOT_SUPPORTED|NOT_REVOKABLE|RevocationNotSupported|NotRevokable/i.test(text);
+}
+
+/** Revoke at the platform, then delete at Composio. Rejects on a real failure so the caller keeps its record; a revoke the platform cannot do (rule 4270) goes straight to the delete. */
 export async function composioRevoke(scope: string, accountId: string): Promise<void> {
   const c = await getClient();
   await count(scope);
-  await c.connectedAccounts.revoke(accountId);
+  try {
+    await c.connectedAccounts.revoke(accountId);
+  } catch (e) {
+    if (!revokeNotPossible(e)) throw e;
+  }
   await c.connectedAccounts.delete(accountId);
 }

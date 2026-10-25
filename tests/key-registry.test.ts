@@ -54,6 +54,7 @@ describe("rule 2030: each builder returns the bytes of its old template", () => 
     [wsKey.decisions(S), `decisions:${S}`],
     [wsKey.feedbackLog(S), `fblog:${S}`],
     [wsKey.siteStats(S), `sitestats:${S}`],
+    [wsKey.productStats(S), `productstats:${S}`],
     [wsKey.socialStats(S), `socialstats:${S}`],
     [wsKey.socialPublished(S), `socialpub:${S}`],
     [wsKey.storeSales(S), `storesales:${S}`],
@@ -71,6 +72,7 @@ describe("rule 2030: each builder returns the bytes of its old template", () => 
     [wsKey.keyCheckBucket(D, "hour"), `keycheck:hour:${E}`],
     [wsKey.connectStartBucket(D), `connectstart:${E}`],
     [wsKey.storeSyncBucket(D), `storesync:${E}`],
+    [wsKey.productSyncBucket(D), `productsync:${E}`],
     [wsKey.catalogImportBucket(D), `catalogimport:${E}`],
   ];
   const account: [string, string][] = [
