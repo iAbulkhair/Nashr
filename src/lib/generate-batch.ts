@@ -97,6 +97,8 @@ export type BatchOpts = {
   parent?: TaskParent;
   /** The plan step the batch is run for (v2 C3, rule 4632): kept on every task it makes (`Task.plan`). Set by the step's run, in code. */
   plan?: TaskPlan;
+  /** The team thread's owner agent (v2 C12, rule 4743): kept on every task it makes (`Task.owner`). Set from the turn, in code. */
+  owner?: AgentId;
   /**
    * Self-check before the save (v2 C6, rules 4670-4689, src/lib/self-check.ts): each item is scored first and one below the
    * bar is rewritten once with the judge's notes, inside the batch's price. Read only while `SELF_CHECK` is on; the
@@ -247,6 +249,8 @@ export type ItemContext = {
   parent?: TaskParent;
   /** The plan step the batch was run for (`Task.plan`). */
   plan?: TaskPlan;
+  /** The team thread's owner agent (`Task.owner`). */
+  owner?: AgentId;
   /** The hashes of the platform and owner instruction blocks the batch carried (`instructionBlocks(...).stamp`), recorded in `pb`; left out, the stamp has neither field. */
   ins?: { plat: string; ins: string };
 };
@@ -277,6 +281,7 @@ export function taskFromItem(it: Generated, c: ItemContext): Task {
     ...(verdicts ? { crossReview: verdicts } : {}),
     ...(c.parent ? { parent: { handoff: c.parent.handoff, item: c.parent.item, ...(c.parent.conv ? { conv: c.parent.conv } : {}), ...(c.parent.auto === true ? { auto: true as const } : {}) } } : {}),
     ...(c.plan ? { plan: { id: c.plan.id, step: c.plan.step } } : {}),
+    ...(c.owner ? { owner: c.owner } : {}),
   };
 }
 
@@ -434,7 +439,7 @@ async function runBatch(user: User, scope: string, opts: BatchOpts, late: Promis
     const brief = opts.brief ?? briefOf(opts.notes);
     // One stamp for the batch: the blocks are the same for every item (they hash the layers, not the item).
     const ins = instructionBlocks(layers, agent).stamp;
-    tasks = items.map((it) => taskFromItem(it, { type, brand, autoApprove: gov.autoApprove[type], source: opts.source, brief, forcePending: opts.forcePending, createdAt, parent: opts.parent, plan: opts.plan, ins }));
+    tasks = items.map((it) => taskFromItem(it, { type, brand, autoApprove: gov.autoApprove[type], source: opts.source, brief, forcePending: opts.forcePending, createdAt, parent: opts.parent, plan: opts.plan, owner: opts.owner, ins }));
     made = tasks.length;
     // The self-check (v2 C6, rule 4675): before the output check, so a rewritten item is checked like any other. It never
     // throws and never changes the count, so the refund shares below are what they were.

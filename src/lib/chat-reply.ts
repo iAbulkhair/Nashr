@@ -15,6 +15,7 @@ import { DEFAULTS, type Rejected } from "./models/route";
 import { SPEND_CARDS_PER_REPLY, spendCard, type SpendProposal } from "./spend-proposals";
 import { fileProposalCard, type FileProposal } from "./file-proposals";
 import type { AgentScopeModes } from "./agent-scope";
+import type { TeamTurn } from "./team-chat";
 import type { ChatMsg } from "./chat-history";
 import { AWAY_CARDS_PER_REPLY, BRAND_CARDS_PER_REPLY, FILE_CARDS_PER_REPLY, INSTRUCTION_CARDS_PER_REPLY } from "./chat-gates";
 import { appHref } from "@/lib/ws-path";
@@ -40,7 +41,7 @@ export const CHAT_RENDER_MIN_MS = 60_000;
  * `agentScope`: the founder's agent-scope modes, which the route already read with the refusal ceiling
  * (`agentScopePreflight`, src/lib/agent-scope.ts), so they are read once per request. Left out, `chat()` reads them itself.
  */
-export type ChatOpts = { onStatus?: (text: string) => void; lang?: "ar" | "en"; deadline?: number; by?: By; via?: "app" | "mcp"; model?: string; modelRejected?: Rejected; agentScope?: AgentScopeModes };
+export type ChatOpts = { onStatus?: (text: string) => void; lang?: "ar" | "en"; deadline?: number; by?: By; via?: "app" | "mcp"; model?: string; modelRejected?: Rejected; agentScope?: AgentScopeModes; /** the turn's place in a team thread (v2 C4 + C12), set by the chat route while TEAM_CHAT is on */ team?: TeamTurn };
 /** Why a tool could not spend: the app raises the matching limit dialog. `agent_cap` is the owner's monthly cap for one agent. */
 export type ChatLimit = "credits" | "trial" | "agent_cap" | "fair_use";
 
@@ -76,8 +77,8 @@ export const cleanName = (v: unknown) => (typeof v === "string" ? cleanLine(v).s
 /** The text blocks of a model response, joined. */
 export const textOf = (content: Anthropic.ContentBlock[]) => content.filter((b): b is Anthropic.TextBlock => b.type === "text").map((b) => b.text).join("\n").trim();
 /** What every reply of a turn carries: its actions (without the `limit:*` tags), the items made, the handoff card, the switch card, brand proposals, away proposals, instruction proposals and spend proposals (as cards: without who proposed). */
-export function turnParts(actions: string[], made: Task[], proposed: BrandProposal[], awayProposed: AwayProposal[] = [], instructionProposed: InstructionProposal[] = [], spendProposed: SpendProposal[] = [], fileProposed: FileProposal[] = [], memoryProposed: MemoryProposal[] = []): Pick<ChatMsg, "actions" | "items" | "handoff" | "goalPlan" | "switchTo" | "proposals" | "awayProposals" | "instructionProposals" | "spendProposals" | "fileProposals" | "memoryProposals"> {
-  return { actions: actions.filter((a) => !a.startsWith("limit:")), ...(made.length ? { items: made.slice(0, 10).map(chatItemOf) } : {}), ...handoffOf(actions), ...goalPlanOf(actions), ...switchOf(actions), ...(proposed.length ? { proposals: proposed.slice(0, BRAND_CARDS_PER_REPLY) } : {}), ...(awayProposed.length ? { awayProposals: awayProposed.slice(0, AWAY_CARDS_PER_REPLY) } : {}), ...(instructionProposed.length ? { instructionProposals: instructionProposed.slice(0, INSTRUCTION_CARDS_PER_REPLY).map(proposalCard) } : {}), ...(spendProposed.length ? { spendProposals: spendProposed.slice(0, SPEND_CARDS_PER_REPLY).map(spendCard) } : {}), ...(fileProposed.length ? { fileProposals: fileProposed.slice(0, FILE_CARDS_PER_REPLY).map(fileProposalCard) } : {}), ...(memoryProposed.length ? { memoryProposals: memoryProposed.slice(0, MEMORY_CARDS_PER_REPLY).map(memoryCard) } : {}) };
+export function turnParts(actions: string[], made: Task[], proposed: BrandProposal[], awayProposed: AwayProposal[] = [], instructionProposed: InstructionProposal[] = [], spendProposed: SpendProposal[] = [], fileProposed: FileProposal[] = [], memoryProposed: MemoryProposal[] = []): Pick<ChatMsg, "actions" | "items" | "handoff" | "goalPlan" | "teamCard" | "switchTo" | "proposals" | "awayProposals" | "instructionProposals" | "spendProposals" | "fileProposals" | "memoryProposals"> {
+  return { actions: actions.filter((a) => !a.startsWith("limit:")), ...(made.length ? { items: made.slice(0, 10).map(chatItemOf) } : {}), ...handoffOf(actions), ...goalPlanOf(actions), ...teamCardOf(actions), ...switchOf(actions), ...(proposed.length ? { proposals: proposed.slice(0, BRAND_CARDS_PER_REPLY) } : {}), ...(awayProposed.length ? { awayProposals: awayProposed.slice(0, AWAY_CARDS_PER_REPLY) } : {}), ...(instructionProposed.length ? { instructionProposals: instructionProposed.slice(0, INSTRUCTION_CARDS_PER_REPLY).map(proposalCard) } : {}), ...(spendProposed.length ? { spendProposals: spendProposed.slice(0, SPEND_CARDS_PER_REPLY).map(spendCard) } : {}), ...(fileProposed.length ? { fileProposals: fileProposed.slice(0, FILE_CARDS_PER_REPLY).map(fileProposalCard) } : {}), ...(memoryProposed.length ? { memoryProposals: memoryProposed.slice(0, MEMORY_CARDS_PER_REPLY).map(memoryCard) } : {}) };
 }
 /** After the reply is saved: the first limit a tool hit (the app raises its dialog) and the turn's model cost, neither saved. */
 export function withLimit(m: ChatTurn, actions: string[], spent: number): ChatTurn {
@@ -124,6 +125,13 @@ function handoffOf(actions: string[]): Pick<ChatMsg, "handoff"> {
 function goalPlanOf(actions: string[]): Pick<ChatMsg, "goalPlan"> {
   const id = actions.find((a) => a.startsWith("goalplan:"))?.slice(9);
   return id && /^[0-9a-f]{16}$/.test(id) ? { goalPlan: { id } } : {};
+}
+
+/** The teammate card `propose_teammate` put on this turn (`team:ask:{id}` or `team:owner:{id}`, v2 C4 + C12): one a reply. */
+function teamCardOf(actions: string[]): Pick<ChatMsg, "teamCard"> {
+  const a = actions.find((x) => x.startsWith("team:"));
+  const [, kind, id] = a?.split(":") ?? [];
+  return (kind === "ask" || kind === "owner") && isAgentId(id) ? { teamCard: { agent: id, kind } } : {};
 }
 
 /**

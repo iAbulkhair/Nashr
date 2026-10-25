@@ -12,6 +12,7 @@ import type { FileProposalCard as FileProposalCardData } from "@/lib/file-propos
 import type { SpendProposalCard as SpendProposalCardData } from "@/lib/spend-proposals";
 import { MemoryProposalCard } from "./MemoryProposalCard";
 import { GoalPlanCard } from "./GoalPlanCard";
+import { TeamCard } from "./TeamCard";
 import { endOfZoneDay, formatWhen } from "@/lib/secretary-agenda";
 // Type only: chat-allowance.ts reads the store. The numbers arrive from the server in each answer's `chat`.
 import type { ChatStatus } from "@/lib/chat-allowance";
@@ -932,6 +933,9 @@ export default function ChatPanel({ t, initial, credits: c0, lang, initialConv, 
             {m.role === "assistant" && m.switchTo && isAgentId(m.switchTo) && m.switchTo !== agent && (
               <button onClick={() => pick(m.switchTo!)} className="btn btn-secondary btn-xs mt-1.5">{t.chat.switchTo.replace("{name}", A[m.switchTo].name)}</button>
             )}
+            {/* Team chat (v2 C4 + C12): a note-taker's reply names the owner of the request; the teammate card acts only on a press. */}
+            {m.role === "assistant" && m.owner && m.agent && m.owner !== m.agent && isAgentId(m.owner) && <p className="mt-1 text-xs text-foreground-muted" data-team-note>{t.chat.teamNoteOn.replace("{name}", A[m.owner].name)}</p>}
+            {m.role === "assistant" && m.teamCard && isAgentId(m.teamCard.agent) && <TeamCard card={m.teamCard} conv={conv} names={Object.fromEntries(AGENTS.map((x) => [x.id, A[x.id].name])) as Record<AgentId, string>} t={t} canAct={canRun} onAsk={(s) => { setText((cur) => s + cur); input.current?.focus(); }} />}
             {m.role === "assistant" && m.large && <p className="mt-1 text-xs text-foreground-muted" data-workspace-large>{lang === "ar" ? "ملفات مساحة العمل كبيرة، فكان لهذا الرد مساحة أقل: ربما تركتُ رسائل سابقة من المحادثة أو اختصرتُ الجواب. " : "Your workspace files are large, so this reply had less room: I may have left out earlier messages or kept the answer short. "}<Link href={href("/files")} className="underline">{lang === "ar" ? "اختصر ملفاتك الطويلة" : "Shorten your long files"}</Link>{lang === "ar" ? " أو ابدأ محادثة جديدة." : " or start a new conversation."}</p>}
             {m.role === "assistant" && (
               <div className="mt-1.5 flex flex-wrap items-center gap-1 text-xs">

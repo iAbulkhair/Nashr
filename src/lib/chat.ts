@@ -41,6 +41,7 @@ import { runTool } from "./chat-run-tool";
 import type { MemoryProposal } from "./memory";
 import { REMEMBER_TOOL, runRemember } from "./memory-tool";
 import { PLAN_TOOL, runMakePlan } from "./plan-tool";
+import { TEAMMATE_TOOL, noteRefusal, ownerOf, runTeammate, teamAllows, teamNote, teamTools } from "./team-chat";
 import { recall, recallBlock } from "./recall";
 import { COMPACTION, MEMORY_V2 } from "./v2-flags";
 import { compactThread, droppedTurns, proposeSummaryFacts, readSummary, summaryBlock, type ThreadSummary } from "./compaction";
@@ -135,11 +136,14 @@ async function chatTurn(user: User, text: string, conv: string | undefined, agen
     // The owner's tool authority, in the workspace block (the brand file's block): one line naming what is off or ask-first.
     const authority = policyNote(gov.toolPolicy, agentId);
     if (authority) sys[1] = { ...sys[1], text: sys[1].text + authority };
+    // Team chat (v2 C4 + C12, rule 4736): the turn's place in the thread, a guide only; the tool gates below hold.
+    const teamLine = teamNote(opts.team, lang);
+    if (teamLine) sys[1] = { ...sys[1], text: sys[1].text + teamLine };
     // Scoped memory (v2 phase 1, rule 4562): the facts recalled for this message, in the uncached block, fenced as data.
     const remembered = recallBlock(recalled);
     if (remembered) sys[2] = { ...sys[2], text: sys[2].text + remembered };
     // The owner's tool authority (rule 2431): a capability switched off for this agent is not offered in this turn.
-    const tools = toolsFor(agentId, gov.toolPolicy);
+    const tools = teamTools(toolsFor(agentId, gov.toolPolicy), opts.team);
     // The per-message ceiling (CHAT_TURN_MAX_USD), checked in code before every call (src/lib/chat-budget.ts). The first
     // call: the thread, already cut by the history guard, is shortened from its oldest end until the call has room for a
     // full answer. Every later call: estimated from the previous call's metered input (its cached prefix as a cache read)
@@ -212,7 +216,7 @@ async function chatTurn(user: User, text: string, conv: string | undefined, agen
             shown = out.block ? out.reply : said;
           } else late.push(check);
         }
-        const m: ChatTurn = { role: "assistant", content: notice + (shown || "…"), at: new Date().toISOString(), ...turnParts(actions, made, proposed, awayProposed, instructionProposed, spendProposed, fileProposed, memoryProposed), agent: agentId };
+        const m: ChatTurn = { role: "assistant", content: notice + (shown || "…"), at: new Date().toISOString(), ...turnParts(actions, made, proposed, awayProposed, instructionProposed, spendProposed, fileProposed, memoryProposed), agent: agentId, ...ownerOf(opts.team) };
         await deliver(email, m, conv);
         return withLimit(m, actions, spent);
       }
@@ -224,8 +228,9 @@ async function chatTurn(user: User, text: string, conv: string | undefined, agen
         try {
           // Through the action gateway (rules 4500-4509, src/lib/gateway.ts): off in this release; in log mode it records the
           // call and its verdict and never changes the answer. Every gate in runTool still decides.
-          const ctx: ToolCtx = { lang, agent: agentId, by, via, proposed, awayProposed, instructionProposed, memoryProposed, spendProposed, fileProposed, ownerMsg: text, conv, modes: scopeModes };
-          out = await gatedTool(user, u.name, ctx, () => (u.name === REMEMBER_TOOL.name ? runRemember(user, u.input as Record<string, unknown>, ctx) : u.name === PLAN_TOOL.name ? runMakePlan(user, u.input as Record<string, unknown>, ctx, actions) : runTool(user, u.name, u.input as Record<string, unknown>, actions, made, deadline, ctx)));
+          const ctx: ToolCtx = { lang, agent: agentId, by, via, proposed, awayProposed, instructionProposed, memoryProposed, spendProposed, fileProposed, ownerMsg: text, conv, modes: scopeModes, ...(opts.team ? { team: opts.team } : {}) };
+          // A note-taker in a team thread (rule 4735) is refused any tool it was not offered, whatever the model names.
+          out = !teamAllows(opts.team, u.name) ? noteRefusal(opts.team!.owner) : await gatedTool(user, u.name, ctx, () => (u.name === TEAMMATE_TOOL.name ? Promise.resolve(runTeammate(user, u.input as Record<string, unknown>, ctx, actions)) : u.name === REMEMBER_TOOL.name ? runRemember(user, u.input as Record<string, unknown>, ctx) : u.name === PLAN_TOOL.name ? runMakePlan(user, u.input as Record<string, unknown>, ctx, actions) : runTool(user, u.name, u.input as Record<string, unknown>, actions, made, deadline, ctx)));
         } catch (e) {
           isError = true;
           out = e instanceof Error ? e.message : "tool_failed";
@@ -250,7 +255,7 @@ async function chatTurn(user: User, text: string, conv: string | undefined, agen
       } else late.push(check);
     }
     const content = outOfTime ? OUT_OF_TIME_REPLY[lang] : ended === "refused" ? REFUSED_REPLY[lang] : ended === "large" ? LARGE_REPLY[lang] : ended === "cut" ? cut : ended === "capped" ? CAPPED_REPLY[lang] : DONE_REPLY[lang];
-    const m: ChatTurn = { role: "assistant", content: notice + content, at: new Date().toISOString(), ...turnParts(actions, made, proposed, awayProposed, instructionProposed, spendProposed, fileProposed, memoryProposed), ...(spent > 0 || outOfTime ? { agent: agentId } : {}), ...(large && ended !== "large" && !outOfTime ? { large: true as const } : {}) };
+    const m: ChatTurn = { role: "assistant", content: notice + content, at: new Date().toISOString(), ...turnParts(actions, made, proposed, awayProposed, instructionProposed, spendProposed, fileProposed, memoryProposed), ...(spent > 0 || outOfTime ? { agent: agentId } : {}), ...ownerOf(opts.team), ...(large && ended !== "large" && !outOfTime ? { large: true as const } : {}) };
     await deliver(email, m, conv);
     return withLimit(m, actions, spent);
   } finally {

@@ -51,3 +51,11 @@ export const QUEUE: boolean = false;
  * is saved, and a weak item is rewritten once with the judge's notes, inside the credits already charged. Release step: EXPAND.
  */
 export const SELF_CHECK: boolean = false;
+
+/**
+ * Team chat and one task owner (phase 3, C4 + C12, rules 4730-4759; src/lib/team-chat.ts). `false`: a turn is answered by
+ * the agent the page names, exactly as before. `true`: the person can write @Name to bring an agent into the thread; the
+ * thread's owner drafts, an agent named beside it only adds notes, and ownership moves only when a person presses the card.
+ * Release step: EXPAND.
+ */
+export const TEAM_CHAT: boolean = false;
