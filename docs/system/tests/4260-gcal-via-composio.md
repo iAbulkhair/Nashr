@@ -1,4 +1,4 @@
-# Coverage: Reem's Google Calendar through Composio (rules 4260-4279)
+# Coverage: Reem's Google Calendar through Composio (rules 4260-4269)
 
 Status on 2026-10-25 on branch `claude/gcal-composio-d68e0d` (cut from main 7d4119e7). A second way to connect the secretary's calendar next to the direct Google OAuth app: Composio holds the Google tokens, the `CalLink` holds only the sealed connected-account id (`via: "composio"`, `cid`). Read only: the catalog lists `GOOGLECALENDAR_LIST_CALENDARS` and `GOOGLECALENDAR_EVENTS_LIST` and no write tool. Default off: it needs `gcal` in `COMPOSIO_PROVIDERS` and `COMPOSIO_AUTH_GOOGLECALENDAR`. Expand step under rule 679: the two optional `CalLink` fields are read by old code as an empty token (a lost link, safe) and ignored otherwise. All tests are in `tests/gcal-composio.test.ts` with a fake Composio client.
 
@@ -13,6 +13,6 @@ Status on 2026-10-25 on branch `claude/gcal-composio-d68e0d` (cut from main 7d41
 | 4266 | Every Composio call names the workspace's opaque Composio user and the link's own account id; two workspaces never share either | yes | `tests/gcal-composio.test.ts` (rule 4266 block) |
 | 4267 | The scopes Composio's managed Google app asks (read only, or the full `calendar` scope) | no | read the consent screen on staging once and record it here; the code is read only whatever the scope |
 | 4268 | The pinned toolkit version `20260331_00` still returns the argument names of the two tools | no | run `scripts/check-composio-pins.ts` with `COMPOSIO_API_KEY` before switching on |
-| 4269-4279 | Reserved and unused | | |
+| 4269 | Reserved and unused | | |
 
 Known gaps: not connected against a real Google account (no `COMPOSIO_AUTH_GOOGLECALENDAR` exists yet); a calendar deleted at Google is not detected (it retries every 15 minutes); the consent screen shows Composio's app name, not Thakeen's; Composio still carries the events it returns (the `fields` selector asks for no description, attendee names, place or meeting link).
