@@ -33,7 +33,7 @@
  */
 export type Toolkit =
   | "facebook" | "instagram" | "twitter" | "linkedin" | "tiktok" | "whatsapp" | "youtube"
-  | "metaads" | "snapchat" | "googleads" | "tiktok_ads" | "linkedin_ads" | "google_analytics" | "google_search_console"
+  | "metaads" | "snapchat" | "googleads" | "tiktok_ads" | "linkedin_ads" | "google_analytics" | "google_search_console" | "posthog"
   | "googledocs" | "googlesheets" | "googledrive" | "dropbox" | "one_drive";
 
 type Tools = Readonly<Record<string, readonly string[]>>;
@@ -180,6 +180,18 @@ export const TOOLKITS: Readonly<Record<Toolkit, ToolkitEntry>> = {
     read: { GOOGLE_SEARCH_CONSOLE_LIST_SITES: [], GOOGLE_SEARCH_CONSOLE_SEARCH_ANALYTICS_QUERY: ["site_url", "start_date", "end_date", "dimensions", "row_limit"] },
     write: {},
   },
+  // ---------- read only: the customer's own PostHog (src/lib/product-stats.ts, rules 4230-4259) ----------
+  // PostHog has no OAuth at Composio (auth scheme API_KEY): the customer pastes a personal API key and picks US or EU on
+  // Composio's own page, so Thakeen never receives the key. Composio lists 520 PostHog tools, many of them writes (capture
+  // events, create flags, delete persons); only these two are named here. The query tool is PostHog's /query endpoint, which
+  // runs a read; the one HogQL text it is sent is a constant in product-stats.ts, so a model, a crawl or a request cannot
+  // choose what is asked. `refresh` is never sent (PostHog's cache default).
+  posthog: {
+    provider: "posthog",
+    authEnv: "COMPOSIO_AUTH_POSTHOG",
+    read: { POSTHOG_LIST_ALL_PROJECTS_ACROSS_ORGANIZATIONS: [], POSTHOG_CREATE_QUERY_IN_PROJECT_BY_ID: ["project_id", "query"] },
+    write: {},
+  },
   // ---------- read only: reference files for the agent instructions (src/lib/instruction-refs.ts) ----------
   googledocs: {
     provider: "google_workspace",
@@ -232,6 +244,7 @@ export const PROVIDER_TOOLKITS: Readonly<Record<string, readonly Toolkit[]>> = {
   tiktok_ads: ["tiktok_ads"],
   linkedin_ads: ["linkedin_ads"],
   google: ["google_analytics", "google_search_console"],
+  posthog: ["posthog"],
   google_workspace: ["googledocs", "googlesheets"],
   google_drive: ["googledrive"],
   dropbox: ["dropbox"],

@@ -8,6 +8,7 @@ import { accountOf as account, isComposio, listOf, pick } from "./composio-shape
 import { accountMeta } from "./ads";
 import { adAccountsVia } from "./ads-via-composio";
 import { clean } from "../perf-import";
+import { PROJECT_ID } from "../product-stats";
 import { CHANNEL_ID } from "../social-read/youtube";
 import { PAGE_ID } from "../social-read/facebook";
 import { log } from "../log";
@@ -197,6 +198,36 @@ async function gscSites(scope: string, acc: string): Promise<string[]> {
     .filter((u) => /^(sc-domain:[a-z0-9.-]+|https?:\/\/[^\s]+)$/i.test(u) && u.length <= 200);
 }
 
+/**
+ * PostHog: the projects the personal API key can read (rules 4230-4259), at most 50, each a digit id and one clean line of
+ * 80. Composio nests the list differently per answer (organizations holding projects, or a flat list), so every object
+ * that carries a numeric `id` and a `name` is taken; an organization's own id is a UUID and never matches.
+ */
+export function projectsOf(r: unknown): Page[] {
+  const out: Page[] = [];
+  const seen = new Set<unknown>();
+  let level: unknown[] = [r];
+  for (let depth = 0; depth < 6 && level.length && out.length < 50; depth++) {
+    const next: unknown[] = [];
+    for (const v of level) {
+      if (!v || typeof v !== "object" || seen.has(v)) continue;
+      seen.add(v);
+      if (!Array.isArray(v)) {
+        const o = v as Record<string, unknown>;
+        const id = typeof o.id === "number" ? String(o.id) : typeof o.id === "string" ? o.id : "";
+        if (out.length < 50 && PROJECT_ID.test(id) && typeof o.name === "string" && !out.some((p) => p.id === id)) out.push({ id, name: clean(o.name, 80) || id });
+      }
+      next.push(...(Array.isArray(v) ? v : Object.values(v as Record<string, unknown>)));
+    }
+    level = next;
+  }
+  return out;
+}
+
+async function posthogProjects(scope: string, acc: string): Promise<Page[]> {
+  return projectsOf(await composioRead(scope, "posthog", "POSTHOG_LIST_ALL_PROJECTS_ACROSS_ORGANIZATIONS", {}, acc));
+}
+
 type Org = { urn: string; name: string };
 const ORG_URN = /^urn:li:organization:\d+$/;
 
@@ -313,6 +344,16 @@ export async function connectViaComposio(scope: string, provider: string, toolki
     else delete meta.gscSites;
   }
   if (provider === "google") meta.account = googleLabel(meta);
+  if (toolkit === "posthog") {
+    // Read only: the projects this key can read, the first chosen until the owner picks another (select_project).
+    const projects = await posthogProjects(scope, accountId);
+    if (!projects.length) throw new Error("no_posthog_project");
+    meta.phProject = projects[0].id;
+    meta.phName = projects[0].name;
+    meta.account = projects[0].name;
+    if (projects.length > 1) meta.phProjects = JSON.stringify(projects);
+    else delete meta.phProjects;
+  }
   // Reference files (rules 955-956): no call at connect time, reading is the only use. The flags let the card show which
   // of the two Google logins is in.
   if (toolkit === "googledocs") meta.docs = "1";
@@ -374,6 +415,19 @@ export function selectPropertyVia(c: Connection, kind: "ga4" | "gsc", id: string
   }
   meta.account = googleLabel(meta);
   return { ...c, meta };
+}
+
+/** Choose the PostHog project whose figures are read (rules 4230-4259). The id must be one listed at connect time (`meta.phProjects`, stored only when there were two or more). */
+export function selectProjectVia(c: Connection, id: string): Connection | null {
+  try {
+    const projects = JSON.parse(c.meta?.phProjects ?? "[]") as Page[];
+    const p = Array.isArray(projects) ? projects.find((x) => x?.id === id && PROJECT_ID.test(id)) : undefined;
+    if (!p) return null;
+    const name = (typeof p.name === "string" ? clean(p.name, 80) : "") || p.id;
+    return { ...c, meta: { ...c.meta, phProject: p.id, phName: name, account: name } };
+  } catch {
+    return null;
+  }
 }
 
 /** The chosen company page's name, as listed at connect time; "" when it is not listed. */

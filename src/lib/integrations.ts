@@ -37,6 +37,7 @@ export const INTEGRATIONS: Integration[] = [
   { id: "webflow", name: "Webflow", group: "publishing", status: "planned" },
   { id: "ga4", name: "Google Analytics 4", group: "data", status: "soon", note: "Visits, channels and landing pages for Dana's reports, read only" },
   { id: "gsc", name: "Google Search Console", group: "data", status: "soon", note: "Search clicks and top queries for Dana's reports, read only" },
+  { id: "posthog", name: "PostHog", group: "data", status: "soon", note: "Page views, visitors, sessions and top pages from your own PostHog project for Dana's reports, read only; no person-level data" },
   { id: "meta_pixel", name: "Meta Pixel / CAPI", group: "data", status: "planned" },
   { id: "hubspot", name: "HubSpot", group: "data", status: "planned" },
   { id: "zoho", name: "Zoho CRM", group: "data", status: "planned" },
