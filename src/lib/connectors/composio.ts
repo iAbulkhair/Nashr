@@ -77,6 +77,7 @@ export const TOOLKIT_VERSION: Readonly<Record<Toolkit, string>> = {
   googledrive: "20261001_00",
   dropbox: "20261001_00",
   one_drive: "20261013_00",
+  calendly: "20261018_00",
 };
 
 const CALL_TIMEOUT_MS = 20_000;

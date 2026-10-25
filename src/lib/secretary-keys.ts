@@ -43,6 +43,10 @@ export const SEC_KEYS = {
   calLink: (scope: string) => `sec:cal:link:${scope}`,
   calEvents: (scope: string) => `sec:cal:events:${scope}`,
   calDue: "sec:cal:due",
+  /** Calendly through Composio (rules 4300-4329): the scopes whose next poll has come, score = the time in ms. */
+  clyDue: "sec:cly:due",
+  /** Which Calendly events the poll has applied: hash of event uuid to `a` (active) or `c` (cancelled). 45 days, renewed by each poll. */
+  clyMemo: (scope: string) => `sec:cly:memo:${scope}`,
   /** When the QStash tick last ran (ms, TTL 2 h): `timedReminders()` reads it. */
   tick: "sec:tick:last",
   /** "Walk me through": the cards skipped for 3 hours, one JSON `{key: untilMs}` (TTL 1 day). */
