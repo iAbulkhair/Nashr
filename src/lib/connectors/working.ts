@@ -19,6 +19,8 @@ export const IMPORTS_PRODUCTS: readonly string[] = ["shopify", "woocommerce", "o
 export const READS_ADS: readonly string[] = ["meta_ads", "snapchat", "google_ads", "tiktok_ads", "linkedin_ads"];
 /** Google Analytics 4 and Search Console, read into the reports' site block (syncSite in src/lib/site-stats.ts). */
 export const READS_SITE: readonly string[] = ["google"];
+/** The owner's own PostHog, read into the reports' product block (syncProduct in src/lib/product-stats.ts, rules 4230-4259). Not in READS_METRICS: the report tiles stay Google's and the stores'. */
+export const READS_PRODUCT: readonly string[] = ["posthog"];
 /**
  * The social records read into the reports' social block (src/lib/social-stats.ts): Meta (Instagram, Facebook Page),
  * LinkedIn, YouTube and TikTok through Composio, X directly. A record counts only once its part exists

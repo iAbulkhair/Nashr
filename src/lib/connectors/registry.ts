@@ -121,6 +121,8 @@ export const PROVIDERS: Provider[] = [
   // Drafts only, and only through Composio: a template for Meta's review, a private upload.
   { id: "whatsapp", name: "WhatsApp Business (templates)", kind: "oauth", capabilities: ["messaging"] },
   { id: "youtube", name: "YouTube (private uploads)", kind: "oauth", capabilities: ["publish_post"] },
+  // The customer's own PostHog, read only (rules 4230-4259): Composio holds the API key the customer pastes on its page.
+  { id: "posthog", name: "PostHog (product analytics)", kind: "oauth", capabilities: ["analytics"] },
   { id: "google_workspace", name: "Google Docs and Sheets (reference files)", kind: "oauth", capabilities: [] },
   // The customer's cloud drives (rules 1775-1789): import brand files and media, export finished media. Composio only.
   { id: "google_drive", name: "Google Drive", kind: "oauth", capabilities: [] },
@@ -138,7 +140,7 @@ export function getProvider(id: string) {
   return PROVIDERS.find((p) => p.id === id) ?? null;
 }
 /** Providers with no direct publishing code: they connect through Composio or not at all. */
-export const COMPOSIO_ONLY = ["linkedin", "tiktok", "google_ads", "tiktok_ads", "linkedin_ads", "google", "whatsapp", "youtube", "google_workspace", "calendly", "google_drive", "dropbox", "onedrive"];
+export const COMPOSIO_ONLY = ["linkedin", "tiktok", "google_ads", "tiktok_ads", "linkedin_ads", "google", "posthog", "whatsapp", "youtube", "google_workspace", "calendly", "google_drive", "dropbox", "onedrive"];
 
 /**
  * Rule 2175: the OAuth providers a platform app of ours can connect (the start route refuses the others). Only these

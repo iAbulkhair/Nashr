@@ -153,6 +153,7 @@ Read in `src/lib/connectors/composio.ts` (`composioEnabled`, `composioReady`, `g
 | `COMPOSIO_AUTH_LINKEDIN_ADS` | Composio auth config id for the LinkedIn Ads toolkit (read only, rule 743), set up with Thakeen's own LinkedIn app that has the Advertising API product, separate from the page toolkit's app | No, keep internal |
 | `COMPOSIO_AUTH_GOOGLE_ANALYTICS` | Composio auth config id for the Google Analytics 4 toolkit (read only) | No, keep internal |
 | `COMPOSIO_AUTH_GOOGLE_SEARCH_CONSOLE` | Composio auth config id for the Search Console toolkit (read only) | No, keep internal |
+| `COMPOSIO_AUTH_POSTHOG` | Composio auth config id for the PostHog toolkit (read only: a HogQL query for the owner's own page-view totals; the customer's personal API key is typed on Composio's page, never in Thakeen; rules 4230-4259) | No, keep internal |
 | `COMPOSIO_AUTH_GOOGLEDOCS` | Composio auth config id for the Google Docs toolkit (read only: search and read a document as a reference file for the agent instructions, rule 955) | No, keep internal |
 | `COMPOSIO_AUTH_GOOGLESHEETS` | Composio auth config id for the Google Sheets toolkit (read only: search and read a sheet as a reference file, rule 955) | No, keep internal |
 | `COMPOSIO_AUTH_GOOGLEDRIVE` | Composio auth config id for the Google Drive toolkit (cloud drives, rules 1775-1789: search and download a file into the workspace, upload a finished image or clip; 2026-10-13, branch only) | No, keep internal |

@@ -283,6 +283,7 @@ const SCOPE_PARAM: Record<string, number> = {
   "src/lib/handoffs.ts": 1,
   "src/lib/onboard-confirm.ts": 2,
   "src/lib/perf-store.ts": 3,
+  "src/lib/product-stats.ts": 1, // KEY: the PostHog totals of a lib helper's string scope, as site-stats.ts does (rule 4232)
   "src/lib/push.ts": 1, // pushForActivity: the activity log's string scope, as recordActivity passes it (rule 2566)
   "src/lib/routines.ts": 1,
   "src/lib/schedule.ts": 5,
