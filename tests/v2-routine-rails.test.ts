@@ -76,7 +76,15 @@ function sdk(opts: { genFails: { on: boolean } }) {
     usage: { input_tokens: 100, output_tokens: 100 },
     content: [{ type: "text", text }],
   });
-  const verdict = { completeness: 90, brand: 90, honesty: 90, language: 90, format: 90, autofail: null, notes: "ready" };
+  const verdict = {
+    completeness: 90,
+    brand: 90,
+    honesty: 90,
+    language: 90,
+    format: 90,
+    autofail: null,
+    notes: "ready",
+  };
   vi.doMock("@anthropic-ai/sdk", () => ({
     default: class {
       static BadRequestError = class extends Error {};

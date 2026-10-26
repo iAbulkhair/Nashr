@@ -874,3 +874,10 @@ What each agent may do from a conversation, set by the owner and checked in code
 - A note-taker in a team thread is refused every tool outside `NOTE_TOOLS` in code, whatever the model names.
 - `GET /api/runs?conv=`: any login of the account (read-only, a viewer too), 404 while `RUN_LOG` is off. It reads only the caller's own run log under `sc(u)`; `conv` is a selector checked as a conversation id and never part of a key. The answer carries no model id, gateway rule id or error text.
 - The routine rails pause a routine in code after three failed runs in a row; only the owner's switch on the Scheduled tasks page resumes it.
+
+## Research tool (2026-10-26, branch `claude/thakeen-v2-p4-research`, rules 4790-4808)
+
+- `GET /api/chat/research/{id}`: any login of the account (`read`, a viewer too), rate-limited per scope, 404 while `RESEARCH` is off. The id is format-checked before a key is built and read only under `sc(u)`; another workspace's id is 404. The card carries no author and no thread.
+- `POST /api/chat/research/{id}` `{action: "approve" | "dismiss"}`: `generate` (member), rate-limited per scope, 404 while off, 409 once answered. The body names no scope, query, agent or price. Approve runs nothing; the agent's next turn runs the stored query and charges for it.
+- `web_search` and `read_page` carry `generate` in `TOOL_ACTION` (gateway and tool), are offered only to Faris, Noor and Layan, are refused over MCP, for an API token, and to a team note-taker.
+- A search spends credits only after a person's Approve, checked in code (`takeApproved`), never on the model's say-so; `read_page` opens only an address from an approved search in the same thread or one the person wrote.

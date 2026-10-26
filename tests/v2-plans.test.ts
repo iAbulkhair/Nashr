@@ -24,6 +24,7 @@ vi.mock("@/lib/v2-flags", () => ({
   },
   SELF_CHECK: false,
   TEAM_CHAT: false,
+  RESEARCH: false,
 }));
 const g = vi.hoisted(() => ({ n: 0, calls: [] as Record<string, unknown>[], refuse: null as null | string }));
 vi.mock("@/lib/generate-batch", async (orig) => {

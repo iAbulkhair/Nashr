@@ -305,6 +305,7 @@ const ROUTE_ROLES: Record<string, Gate> = {
   "POST /api/handoffs/[id]/run": g("member", "generate"),
   "POST /api/handoffs/[id]/decline": g("member", "drafts"),
   "POST /api/plans/[id]": g("member", "generate"), // rule 4630: Approve spends credits, like Run on a handoff; 404 while PLANS is off
+  "POST /api/chat/research/[id]": g("member", "generate"), // rule 4801: Approve lets the agent run one paid web search; 404 while RESEARCH is off
   // Run on a chat spend card (rule 1512): it spends credits like a generation (a render also checks `images`, also member).
   "POST /api/chat/spend/[id]": g("member", "generate"),
   "POST /api/admin/wishlist": "admin-console",
@@ -361,6 +362,7 @@ const READS: Record<string, Gate> = {
   "GET /api/activity/export": g("viewer", "read"),
   "GET /api/handoffs/[id]": g("viewer", "read"),
   "GET /api/plans/[id]": g("viewer", "read"), // rule 4631: the plan card; 404 while PLANS is off
+  "GET /api/chat/research/[id]": g("viewer", "read"), // rule 4801: the search card; 404 while RESEARCH is off
   "GET /api/media/[jobId]": "member",
   // Our media files (rules 1754-1758): a signed-in member of the workspace that holds the file, or a short signed link
   // minted at hand-off; both checked inside, everything else is the same 404. Rate limited per IP first, so "public".
@@ -486,6 +488,8 @@ const SESSION_RATE_LIMITED = ["POST /api/account/logo", "DELETE /api/account/log
   "POST /api/memory/proposals/[id]", "DELETE /api/memory",
   // Plan cards (rules 4630-4631).
   "POST /api/plans/[id]",
+  // Web search cards (rule 4801).
+  "POST /api/chat/research/[id]",
   // UI/UX phase 3 (rules 1145, 1150, 1155); the status poll is a read, limited all the same.
   "POST /api/account/sessions", "PUT /api/notifications/prefs", "GET /api/billing/status",
   // The digest email choice (rule 2355).
@@ -712,9 +716,11 @@ describe("request users never stand in for the acting login", () => {
 
 describe("the gates that live outside the route table", () => {
   it("the chat tools that change the brand, publish or import the catalog carry the route's own action", () => {
-    expect(CHAT_TOOL_ACTION).toEqual({ update_brand: "brand.write", publish_item: "publish", import_catalog: "catalog.import", propose_meeting_tasks: "todo.write" });
-    // The brand, publish and import tools are the owner's and an admin's; Reem's meeting follow-up (rule 607) is the to-do list's, open to every login.
-    for (const [t, a] of Object.entries(CHAT_TOOL_ACTION)) expect(MIN_ROLE[a], t).toBe(t === "propose_meeting_tasks" ? "member" : "admin");
+    expect(CHAT_TOOL_ACTION).toEqual({ update_brand: "brand.write", publish_item: "publish", import_catalog: "catalog.import", propose_meeting_tasks: "todo.write", web_search: "generate", read_page: "generate" });
+    // The brand, publish and import tools are the owner's and an admin's; Reem's meeting follow-up (rule 607) is the to-do
+    // list's, open to every login; the research tools (rule 4797) spend credits, so they need what Run needs.
+    const member = new Set(["propose_meeting_tasks", "web_search", "read_page"]);
+    for (const [t, a] of Object.entries(CHAT_TOOL_ACTION)) expect(MIN_ROLE[a], t).toBe(member.has(t) ? "member" : "admin");
   });
   it("every MCP tool is mapped to an action, and nothing else is", async () => {
     const listed = ((await (await mcpRoute.GET()).json()) as { tools: string[] }).tools;

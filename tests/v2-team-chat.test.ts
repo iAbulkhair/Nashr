@@ -18,6 +18,7 @@ vi.mock("@/lib/v2-flags", () => ({
   get TEAM_CHAT() {
     return flag.on;
   },
+  RESEARCH: false,
 }));
 
 import { json, newMember, newUser, signIn, signOut } from "./helpers/session";

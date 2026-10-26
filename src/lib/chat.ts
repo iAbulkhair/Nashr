@@ -42,6 +42,8 @@ import { runTool } from "./chat-run-tool";
 import type { MemoryProposal } from "./memory";
 import { REMEMBER_TOOL, runRemember } from "./memory-tool";
 import { PLAN_TOOL, runMakePlan } from "./plan-tool";
+import { isResearchTool } from "./research";
+import { runResearch } from "./research-tool";
 import { TEAMMATE_TOOL, noteRefusal, ownerOf, runTeammate, teamAllows, teamNote, teamTools } from "./team-chat";
 import { recall, recallBlock } from "./recall";
 import { COMPACTION, MEMORY_V2, RUN_LOG } from "./v2-flags";
@@ -83,6 +85,7 @@ async function chatTurn(user: User, text: string, conv: string | undefined, agen
   const awayProposed: AwayProposal[] = [];
   const instructionProposed: InstructionProposal[] = [];
   const memoryProposed: MemoryProposal[] = [];
+  const research = { searches: 0, pages: 0 };
   const spendProposed: SpendProposal[] = [];
   const fileProposed: FileProposal[] = [];
   const via = opts.via ?? "app";
@@ -236,9 +239,9 @@ async function chatTurn(user: User, text: string, conv: string | undefined, agen
         try {
           // Through the action gateway (rules 4500-4509, src/lib/gateway.ts): off in this release; in log mode it records the
           // call and its verdict and never changes the answer. Every gate in runTool still decides.
-          const ctx: ToolCtx = { lang, agent: agentId, by, via, proposed, awayProposed, instructionProposed, memoryProposed, spendProposed, fileProposed, ownerMsg: text, conv, modes: scopeModes, ...(opts.team ? { team: opts.team } : {}) };
+          const ctx: ToolCtx = { lang, agent: agentId, by, via, proposed, awayProposed, instructionProposed, memoryProposed, spendProposed, fileProposed, research, ownerMsg: text, conv, modes: scopeModes, ...(opts.team ? { team: opts.team } : {}) };
           // A note-taker in a team thread (rule 4735) is refused any tool it was not offered, whatever the model names.
-          out = !teamAllows(opts.team, u.name) ? noteRefusal(opts.team!.owner) : await gatedTool(user, u.name, ctx, () => (u.name === TEAMMATE_TOOL.name ? Promise.resolve(runTeammate(user, u.input as Record<string, unknown>, ctx, actions)) : u.name === REMEMBER_TOOL.name ? runRemember(user, u.input as Record<string, unknown>, ctx) : u.name === PLAN_TOOL.name ? runMakePlan(user, u.input as Record<string, unknown>, ctx, actions) : runTool(user, u.name, u.input as Record<string, unknown>, actions, made, deadline, ctx)));
+          out = !teamAllows(opts.team, u.name) ? noteRefusal(opts.team!.owner) : await gatedTool(user, u.name, ctx, () => (u.name === TEAMMATE_TOOL.name ? Promise.resolve(runTeammate(user, u.input as Record<string, unknown>, ctx, actions)) : u.name === REMEMBER_TOOL.name ? runRemember(user, u.input as Record<string, unknown>, ctx) : u.name === PLAN_TOOL.name ? runMakePlan(user, u.input as Record<string, unknown>, ctx, actions) : isResearchTool(u.name) ? runResearch(user, u.name, u.input as Record<string, unknown>, ctx, actions) : runTool(user, u.name, u.input as Record<string, unknown>, actions, made, deadline, ctx)));
         } catch (e) {
           isError = true;
           out = e instanceof Error ? e.message : "tool_failed";

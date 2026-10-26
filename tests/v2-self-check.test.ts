@@ -21,6 +21,7 @@ vi.mock("@/lib/v2-flags", () => ({
     return flag.on;
   },
   TEAM_CHAT: false,
+  RESEARCH: false,
 }));
 const m = vi.hoisted(() => ({
   scores: [] as (Quality | null)[],
