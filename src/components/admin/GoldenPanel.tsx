@@ -5,15 +5,15 @@ import { adminFetch } from "@/lib/admin-fetch";
 import EmptyState from "@/components/ui/EmptyState";
 
 type Check = { name: string; pass: boolean; detail?: string };
-type Result = { id: string; agent: string; type: string; brand: string; ok: boolean; error?: string; score: number | null; dims: Record<string, number> | null; notes: string[]; checks: Check[]; items: { channel: string; title: string; body: string }[]; ms: number; delta: number | null; carried?: string; pb?: { skills: string; review: string; industry?: string; code: string } };
+type Result = { id: string; agent: string; type: string; brand: string; ok: boolean; error?: string; score: number | null; dims: Record<string, number> | null; notes: string[]; checks: Check[]; items: { channel: string; title: string; body: string }[]; ms: number; delta: number | null; carried?: string; pb?: { skills: string; review: string; industry?: string; code: string }; selfCheck?: { first: number | null; rewritten: number; skipped: number } };
 type AgentRow = { agent: string; cases: number; score: number | null; delta: number | null; checksRun?: number; failedChecks: number; promptChanged?: boolean | null };
-type Run = { id: string; version: number; trigger: string; startedAt: string; finishedAt: string; status: "complete" | "partial"; overall: number | null; usd: number; agents: AgentRow[]; results: Result[]; regressions: string[]; playbooks?: Record<string, string> };
-type Hist = { id: string; version: number; trigger: string; startedAt: string; status: string; overall: number | null; usd: number; regressions: number; agents: AgentRow[] };
-type Data = { version: number; cases: number; modelKey: boolean; paused?: boolean; hashes?: Record<string, string>; latest: Run | null; history: Hist[] };
+type Run = { id: string; version: number; trigger: string; startedAt: string; finishedAt: string; status: "complete" | "partial"; overall: number | null; usd: number; agents: AgentRow[]; results: Result[]; regressions: string[]; playbooks?: Record<string, string>; selfCheck?: true };
+type Hist = { id: string; version: number; trigger: string; startedAt: string; status: string; overall: number | null; usd: number; regressions: number; agents: AgentRow[]; selfCheck?: boolean };
+type Data = { version: number; cases: number; modelKey: boolean; paused?: boolean; selfCheck?: boolean; hashes?: Record<string, string>; latest: Run | null; history: Hist[] };
 
 const STR = {
-  en: { title: "Golden set · weekly", note: "Fixed cases on fictional brands, run through the real pipeline (agent → reviewer → judge) every Saturday 04:00 Riyadh. Scores compare to the previous run of the same version. The judge is an LLM: moves under ±5 are noise. Checks are deterministic code, not the judge.", run: "Run now", running: "Running… up to 5 minutes, keep this tab open", resume: "Finish missing cases", none: "No run yet. The first one happens on Saturday, or run it now.", noKey: "No model key is set here for the configured provider (ANTHROPIC_API_KEY; with LLM_PROVIDER=straitly, STRAITLY_API_KEY or ANTHROPIC_API_KEY), so the set cannot run.", paused: "Claude is paused in code (src/lib/model.ts), so the set cannot run.", overall: "Overall", cost: "Model cost $", alerts: "Alerts", noAlerts: "No regressions.", agent: "Agent / case", score: "Score", delta: "Δ", checks: "Checks", secs: "Sec", history: "History", partial: "partial", complete: "complete", show: "output", hide: "hide", busy: "Another run is in progress.", failed: "Run failed", carried: "carried from", promptChanged: "prompt changed", promptChangedTip: "This agent's playbook, review.md, persona and rules, task spec, reviewer checks, judge rubric or industry playbook differs from what the previous run measured the same cases with, so a move in its score may come from the prompt." },
-  ar: { title: "المجموعة الذهبية · أسبوعياً", note: "حالات ثابتة على علامات وهمية تمر بخط الإنتاج الحقيقي (الوكيل ← المراجع ← الحَكَم) كل سبت 4:00 فجراً بتوقيت الرياض. الدرجات تُقارن بالتشغيل السابق من نفس الإصدار. الحَكَم نموذج لغوي: أي تغيّر أقل من ±5 ضجيج. الفحوص كود حتمي وليست رأي الحَكَم.", run: "شغّل الآن", running: "قيد التشغيل… حتى 5 دقائق، أبقِ الصفحة مفتوحة", resume: "أكمل الحالات الناقصة", none: "لا يوجد تشغيل بعد. الأول يوم السبت، أو شغّله الآن.", noKey: "لا يوجد هنا مفتاح نموذج للمزوّد المضبوط (ANTHROPIC_API_KEY، ومع LLM_PROVIDER=straitly أحد STRAITLY_API_KEY أو ANTHROPIC_API_KEY)، فلا يمكن التشغيل.", paused: "Claude متوقف في الكود (src/lib/model.ts)، فلا يمكن التشغيل.", overall: "المتوسط العام", cost: "تكلفة النماذج $", alerts: "تنبيهات", noAlerts: "لا تراجع.", agent: "الوكيل / الحالة", score: "الدرجة", delta: "Δ", checks: "الفحوص", secs: "ثوانٍ", history: "السجل", partial: "جزئي", complete: "مكتمل", show: "الناتج", hide: "إخفاء", busy: "تشغيل آخر قيد التنفيذ.", failed: "فشل التشغيل", carried: "منقول من تشغيل", promptChanged: "تغيّرت التعليمات", promptChangedTip: "دليل هذا الوكيل أو review.md أو شخصيته وقواعده أو مواصفة المهمة أو فحوص المراجع أو معايير الحَكَم أو دليل القطاع تغيّر عمّا قاس به التشغيل السابق الحالات نفسها، فقد يكون تغيّر الدرجة من التعليمات." },
+  en: { title: "Golden set · weekly", note: "Fixed cases on fictional brands, run through the real pipeline (agent → reviewer → judge) every Saturday 04:00 Riyadh. Scores compare to the previous run of the same version. The judge is an LLM: moves under ±5 are noise. Checks are deterministic code, not the judge.", run: "Run now", running: "Running… up to 5 minutes, keep this tab open", resume: "Finish missing cases", none: "No run yet. The first one happens on Saturday, or run it now.", noKey: "No model key is set here for the configured provider (ANTHROPIC_API_KEY; with LLM_PROVIDER=straitly, STRAITLY_API_KEY or ANTHROPIC_API_KEY), so the set cannot run.", paused: "Claude is paused in code (src/lib/model.ts), so the set cannot run.", overall: "Overall", cost: "Model cost $", alerts: "Alerts", noAlerts: "No regressions.", agent: "Agent / case", score: "Score", delta: "Δ", checks: "Checks", secs: "Sec", history: "History", partial: "partial", complete: "complete", show: "output", hide: "hide", busy: "Another run is in progress.", failed: "Run failed", carried: "carried from", promptChanged: "prompt changed", runCheck: "Run with self-check", checkRun: "self-check", checkTip: "Each case's items went through self-check (judge, then one rewrite under 70) before the final judge. Compared only with self-check runs. first → final is the lift on the same items.", rewritten: "rewritten", promptChangedTip: "This agent's playbook, review.md, persona and rules, task spec, reviewer checks, judge rubric or industry playbook differs from what the previous run measured the same cases with, so a move in its score may come from the prompt." },
+  ar: { title: "المجموعة الذهبية · أسبوعياً", note: "حالات ثابتة على علامات وهمية تمر بخط الإنتاج الحقيقي (الوكيل ← المراجع ← الحَكَم) كل سبت 4:00 فجراً بتوقيت الرياض. الدرجات تُقارن بالتشغيل السابق من نفس الإصدار. الحَكَم نموذج لغوي: أي تغيّر أقل من ±5 ضجيج. الفحوص كود حتمي وليست رأي الحَكَم.", run: "شغّل الآن", running: "قيد التشغيل… حتى 5 دقائق، أبقِ الصفحة مفتوحة", resume: "أكمل الحالات الناقصة", none: "لا يوجد تشغيل بعد. الأول يوم السبت، أو شغّله الآن.", noKey: "لا يوجد هنا مفتاح نموذج للمزوّد المضبوط (ANTHROPIC_API_KEY، ومع LLM_PROVIDER=straitly أحد STRAITLY_API_KEY أو ANTHROPIC_API_KEY)، فلا يمكن التشغيل.", paused: "Claude متوقف في الكود (src/lib/model.ts)، فلا يمكن التشغيل.", overall: "المتوسط العام", cost: "تكلفة النماذج $", alerts: "تنبيهات", noAlerts: "لا تراجع.", agent: "الوكيل / الحالة", score: "الدرجة", delta: "Δ", checks: "الفحوص", secs: "ثوانٍ", history: "السجل", partial: "جزئي", complete: "مكتمل", show: "الناتج", hide: "إخفاء", busy: "تشغيل آخر قيد التنفيذ.", failed: "فشل التشغيل", carried: "منقول من تشغيل", promptChanged: "تغيّرت التعليمات", runCheck: "شغّل مع الفحص الذاتي", checkRun: "فحص ذاتي", checkTip: "مرّت مواد كل حالة بالفحص الذاتي (الحَكَم ثم إعادة كتابة واحدة لما دون 70) قبل الحَكَم الأخير. يُقارن فقط بتشغيلات الفحص الذاتي. الأولى ← الأخيرة هو التحسّن على المواد نفسها.", rewritten: "أُعيدت كتابتها", promptChangedTip: "دليل هذا الوكيل أو review.md أو شخصيته وقواعده أو مواصفة المهمة أو فحوص المراجع أو معايير الحَكَم أو دليل القطاع تغيّر عمّا قاس به التشغيل السابق الحالات نفسها، فقد يكون تغيّر الدرجة من التعليمات." },
 } as const;
 
 const tone = (n: number | null) => (n === null ? "text-foreground-muted" : n < 70 ? "text-danger font-semibold" : "");
@@ -30,10 +30,11 @@ export default function GoldenPanel({ lang = "en" }: { lang?: "ar" | "en" }) {
   const load = () => adminFetch("/api/admin/golden").then((r) => r.json()).then((j) => j.ok && setData(j)).catch(() => {});
   useEffect(() => { void load(); }, []);
 
-  async function run(resume = false) {
+  // Resume finishes the latest run in its own mode; a self-check run is offered only where SELF_CHECK is on (rule 4833).
+  async function run(resume = false, selfCheck = false) {
     setBusy(true); setMsg("");
     try {
-      const r = await adminFetch("/api/admin/golden", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ resume }) });
+      const r = await adminFetch("/api/admin/golden", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ resume, selfCheck }) });
       const j = await r.json().catch(() => ({}));
       if (!j.ok) setMsg(j.error === "already_running" ? S.busy : `${S.failed}: ${j.error ?? r.status}`);
     } catch {
@@ -49,7 +50,8 @@ export default function GoldenPanel({ lang = "en" }: { lang?: "ar" | "en" }) {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h2 className="font-display text-lg font-semibold text-foreground">{S.title}{data ? ` · v${data.version} · ${data.cases}` : ""}</h2>
         <div className="flex gap-2">
-          {latest?.status === "partial" && <button type="button" disabled={busy} onClick={() => run(true)} className="btn btn-secondary btn-xs">{S.resume}</button>}
+          {latest?.status === "partial" && <button type="button" disabled={busy} onClick={() => run(true, !!latest.selfCheck)} className="btn btn-secondary btn-xs">{S.resume}</button>}
+          {data?.selfCheck && <button type="button" disabled={busy || data.modelKey === false || !!data.paused} onClick={() => run(false, true)} className="btn btn-secondary btn-xs" data-golden-self-check>{S.runCheck}</button>}
           <button type="button" disabled={busy || data?.modelKey === false || !!data?.paused} onClick={() => run(false)} className="btn btn-primary btn-xs">{busy ? S.running : S.run}</button>
         </div>
       </div>
@@ -62,7 +64,7 @@ export default function GoldenPanel({ lang = "en" }: { lang?: "ar" | "en" }) {
       {latest && (
         <>
           <p className="mt-3 text-sm">
-            <span className="font-mono tabular-nums">{latest.startedAt.slice(0, 16).replace("T", " ")}</span> · {latest.trigger} · {latest.status === "partial" ? <span className="badge badge-danger">{S.partial}</span> : <span className="badge badge-primary">{S.complete}</span>} · {S.overall}: <span className={`font-mono tabular-nums ${tone(latest.overall)}`}>{latest.overall ?? "—"}</span> · {S.cost}: <span className="font-mono tabular-nums">{latest.usd.toFixed(2)}</span>
+            <span className="font-mono tabular-nums">{latest.startedAt.slice(0, 16).replace("T", " ")}</span> · {latest.trigger} · {latest.selfCheck && <><span className="badge badge-accent" title={S.checkTip}>{S.checkRun}</span> · </>}{latest.status === "partial" ? <span className="badge badge-danger">{S.partial}</span> : <span className="badge badge-primary">{S.complete}</span>} · {S.overall}: <span className={`font-mono tabular-nums ${tone(latest.overall)}`}>{latest.overall ?? "—"}</span> · {S.cost}: <span className="font-mono tabular-nums">{latest.usd.toFixed(2)}</span>
           </p>
           <div className="mt-2 rounded-lg bg-background-muted p-3 text-xs">
             <p className="font-semibold">{S.alerts} ({latest.regressions.length})</p>
@@ -83,7 +85,7 @@ export default function GoldenPanel({ lang = "en" }: { lang?: "ar" | "en" }) {
                         <Fragment key={r.id}>
                           <tr className="border-t border-foreground/5 text-foreground-muted">
                             <td className="p-2 ps-6 font-mono text-xs">{r.id}{r.carried && <span className="ms-2 badge text-foreground-muted" dir="auto">{S.carried} <bdi dir="ltr">{r.carried.slice(0, 10)}</bdi></span>}</td>
-                            <td className={`font-mono tabular-nums ${tone(r.score)}`}>{r.ok ? r.score ?? "—" : <span className="text-danger">{r.error}</span>}</td>
+                            <td className={`font-mono tabular-nums ${tone(r.score)}`}>{r.ok ? r.score ?? "—" : <span className="text-danger">{r.error}</span>}{r.selfCheck && <span className="ms-2 text-xs text-foreground-muted" title={S.checkTip}><bdi dir="ltr">{r.selfCheck.first ?? "—"} → {r.score ?? "—"}</bdi> · {r.selfCheck.rewritten} {S.rewritten}</span>}</td>
                             <td className={`font-mono tabular-nums ${deltaTone(r.delta)}`}><bdi dir="ltr">{fmtDelta(r.delta)}</bdi></td>
                             <td className={`text-xs ${failed.length ? "text-danger" : ""}`} dir="auto">{r.checks.length === 0 ? "—" : failed.length ? failed.map((c) => `${c.name}${c.detail ? ` (${c.detail})` : ""}`).join(" · ") : `${r.checks.length}/${r.checks.length} ✓`}</td>
                             <td className="font-mono tabular-nums">{Math.round(r.ms / 1000)}</td>
@@ -108,7 +110,7 @@ export default function GoldenPanel({ lang = "en" }: { lang?: "ar" | "en" }) {
       )}
 
       {data && data.history.length > 1 && (
-        <p className="mt-3 text-xs text-foreground-muted">{S.history}: {data.history.map((h) => `${h.startedAt.slice(0, 10)} v${h.version} ${h.overall ?? "—"}${h.status === "partial" ? "*" : ""} ($${h.usd.toFixed(2)})`).join(" · ")}</p>
+        <p className="mt-3 text-xs text-foreground-muted">{S.history}: {data.history.map((h) => `${h.startedAt.slice(0, 10)} v${h.version}${h.selfCheck ? ` (${S.checkRun})` : ""} ${h.overall ?? "—"}${h.status === "partial" ? "*" : ""} ($${h.usd.toFixed(2)})`).join(" · ")}</p>
       )}
     </section>
   );

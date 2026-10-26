@@ -4,7 +4,7 @@ import { fail, handler } from "@/lib/api-handler";
 import { sc } from "@/lib/auth";
 import { WINDOW } from "@/lib/rate";
 import { decideResearch, getResearch, isResearchId, researchCard } from "@/lib/research";
-import { RESEARCH } from "@/lib/v2-flags";
+import { v2On } from "@/lib/v2-switch";
 
 const action = z.object({ action: z.enum(["approve", "dismiss"]) });
 
@@ -21,7 +21,7 @@ const action = z.object({ action: z.enum(["approve", "dismiss"]) });
 export const GET = handler<"user", undefined, undefined, { id: string }>(
   { auth: "user", role: "read", rate: { bucket: "researchread", max: 300, window: WINDOW.hour, per: "scope" } },
   async ({ u, params: { id } }) => {
-    if (!RESEARCH || !isResearchId(id)) return fail("not_found", 404);
+    if (!v2On("RESEARCH") || !isResearchId(id)) return fail("not_found", 404);
     const p = await getResearch(sc(u), id);
     if (!p) return fail("not_found", 404);
     return NextResponse.json({ ok: true, research: researchCard(p) });
@@ -37,7 +37,7 @@ export const POST = handler<"user", typeof action, undefined, { id: string }>(
     invalid: "bad_action",
   },
   async ({ u, input: b, params: { id } }) => {
-    if (!RESEARCH || !isResearchId(id)) return fail("not_found", 404);
+    if (!v2On("RESEARCH") || !isResearchId(id)) return fail("not_found", 404);
     const r = await decideResearch(sc(u), id, b.action);
     if (!r.ok) return NextResponse.json(r, { status: r.error === "not_found" ? 404 : 409 });
     return NextResponse.json({ ok: true, research: researchCard(r.p) });

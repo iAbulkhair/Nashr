@@ -84,7 +84,7 @@ describe("rules 4770-4772: a stored step as the person sees it", () => {
       tokens: 15,
     });
     const tool = (outcome: "ran" | "refused" | "error") =>
-      workStep({ t: "tool", at: 2, tool: "publish_item", outcome, ms: 1 }).state;
+      workStep({ t: "tool", at: 2, tool: "publish_item", outcome, ms: 1 })!.state;
     expect([tool("ran"), tool("refused"), tool("error")]).toEqual(["ok", "refused", "error"]);
     expect(workStep({ t: "publish", at: 3, provider: "composio", ok: true })).toMatchObject({
       name: "composio",
@@ -153,7 +153,7 @@ describe("rule 4774: a turn's steps reach the chat as they happen", () => {
 
   it("the chat route streams a step event, and the chat passes the listener and its thread to the run", () => {
     expect(src("src/app/api/chat/route.ts")).toMatch(
-      /onStep: \(e\) => send\(\{ type: "step", step: workStep\(e\) \}\)/,
+      /onStep: \(e\) => \{\s+const step = workStep\(e\);\s+if \(step\) send\(\{ type: "step", step \}\);/,
     );
     expect(src("src/lib/chat.ts")).toMatch(/\.\.\.runConv\(conv\), onStep: opts\.onStep \}/);
     expect(src("src/components/app/ChatPanel.tsx")).toMatch(
@@ -244,8 +244,8 @@ describe("rules 4778-4779: the timeline and the panel", () => {
   });
 
   it("the pages mount it only while the run log is on, and the client imports no server module", () => {
-    expect(src("src/app/[lang]/app/b/[brand]/page.tsx")).toMatch(/\{RUN_LOG && <WorkPanel /);
-    expect(src("src/app/[lang]/app/b/[brand]/chat/page.tsx")).toMatch(/workView=\{RUN_LOG\}/);
+    expect(src("src/app/[lang]/app/b/[brand]/page.tsx")).toMatch(/\{v2On\("RUN_LOG"\) && <WorkPanel /);
+    expect(src("src/app/[lang]/app/b/[brand]/chat/page.tsx")).toMatch(/workView=\{v2On\("RUN_LOG"\)\}/);
     const panel = src("src/components/app/WorkPanel.tsx");
     for (const m of panel.matchAll(/^import (.+) from "@\/lib\/(.+)";$/gm)) expect(m[1]).toMatch(/^type /);
   });

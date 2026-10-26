@@ -2,8 +2,12 @@
  * The switches of Thakeen v2 phase 0 (rules 4500-4549, docs/system/tests/4500-v2-phase0.md, the "Thakeen v2" plan).
  *
  * Release step (rule 679): EXPAND. Both are off in this release: no route, model call or tool answer changes, and nothing
- * new is written. Turned on in a later release by changing the value here, never from a request or an environment
- * variable. They live in their own module so a test can turn them on with `vi.mock("@/lib/v2-flags")`.
+ * new is written. Turned on in a later release by changing the value here, never from a request. They live in their own
+ * module so a test can turn them on with `vi.mock("@/lib/v2-flags")`.
+ *
+ * Code reads them through `v2On` and `gatewayMode` in `src/lib/v2-switch.ts`, never directly: there, on the staging site
+ * only, `V2_STAGING_FLAGS` can turn on a flag that is still off here (rules 4820-4824). On every other host the values
+ * below are the whole answer.
  */
 
 /**

@@ -8,7 +8,7 @@ import { sweepCalendars } from "@/lib/secretary-gcal";
 import { emptyCalendlyReport, sweepCalendly } from "@/lib/secretary-calendly";
 import { sweepDigests } from "@/lib/notif-digest";
 import { zonesDue } from "@/lib/secretary-evening";
-import { QUEUE } from "@/lib/v2-flags";
+import { v2On } from "@/lib/v2-switch";
 
 export const maxDuration = 60;
 
@@ -112,7 +112,7 @@ export async function POST(req: Request) {
   }
   // The durable queue (v2 C7, rule 4660): while it is on, each tick starts the queue's own invocation the same way, so a
   // plan step waits at most 15 minutes. Off in this release: nothing is read or started.
-  if (QUEUE && secret) {
+  if (v2On("QUEUE") && secret) {
     const kickQueue = () => fetch(`${appOrigin()}/api/cron/queue`, { headers: { authorization: `Bearer ${secret}` }, signal: AbortSignal.timeout(8000) }).then(() => undefined, () => undefined);
     try { after(kickQueue); } catch { void kickQueue(); }
   }

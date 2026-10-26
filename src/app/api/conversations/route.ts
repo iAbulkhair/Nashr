@@ -4,7 +4,7 @@ import { handler } from "@/lib/api-handler";
 import { isAgentId } from "@/lib/agents";
 import { createConversation, deleteConversation, listConversations, renameConversation, searchConversations, setConversationOwner } from "@/lib/conversations";
 import { entitlements } from "@/lib/entitlements";
-import { TEAM_CHAT } from "@/lib/v2-flags";
+import { v2On } from "@/lib/v2-switch";
 import { retryAfter } from "@/lib/rate";
 
 const busy = () => NextResponse.json({ ok: false, error: "busy" }, { status: 503, headers: retryAfter(1) });
@@ -36,7 +36,7 @@ export const DELETE = handler({ auth: "user", role: "conversations", query: z.ob
  * team chat is off and for a conversation the caller's scope does not hold, `bad_agent` (400) for an agent the plan does not include.
  */
 export const PUT = handler({ auth: "user", role: "conversations", input: z.object({ id: z.string().min(1), owner: z.unknown() }) }, async ({ u, scope, input: b }) => {
-  if (!TEAM_CHAT) return NextResponse.json({ ok: false, error: "not_found" }, { status: 404 });
+  if (!v2On("TEAM_CHAT")) return NextResponse.json({ ok: false, error: "not_found" }, { status: 404 });
   if (!isAgentId(b.owner) || !entitlements(u).agents.includes(b.owner)) return NextResponse.json({ ok: false, error: "bad_agent" }, { status: 400 });
   const r = await setConversationOwner(scope, b.id, b.owner);
   if (r === "busy") return busy();

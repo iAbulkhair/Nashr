@@ -8,7 +8,7 @@ import { scoreItems, type Quality } from "./judge";
 import { runEvent } from "./runs";
 import { pmap } from "./parallel";
 import { log } from "./log";
-import { SELF_CHECK } from "./v2-flags";
+import { v2On } from "./v2-switch";
 import type { Layers } from "./agent-instructions";
 import type { ActivityVia } from "./activity";
 import type { UsageWho } from "./usage";
@@ -112,7 +112,7 @@ async function rewriteItem(
 
 /** See the file's comment. Returns the batch's tasks, each with its `selfCheck` mark; never throws. */
 export async function selfCheck(tasks: Task[], c: SelfCheckCtx, now = Date.now()): Promise<Task[]> {
-  if (!SELF_CHECK || !tasks.length) return tasks;
+  if (!v2On("SELF_CHECK") || !tasks.length) return tasks;
   const end = c.deadline ?? now + MODEL_BUDGET.GEN_MS;
   const mark = (m: SelfCheckMark) => tasks.map((t) => ({ ...t, selfCheck: m }));
   if (end - now < SELF_CHECK_MIN_MS) return mark({ rewritten: false, skipped: "time" });

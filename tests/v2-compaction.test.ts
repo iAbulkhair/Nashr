@@ -107,10 +107,10 @@ describe("rule 4580: the switch ships off, and off changes nothing", () => {
 
   it("off: the chat turn reads no summary and makes no summary call", () => {
     const chat = src("src/lib/chat.ts");
-    expect(chat).toMatch(/COMPACTION \? readSummary\(sc\(user\), conv\)/);
-    expect(chat).toMatch(/: \(null as ThreadSummary \| null\), COMPACTION && RUN_LOG \? readMeters\(/);
+    expect(chat).toMatch(/v2On\("COMPACTION"\) \? readSummary\(sc\(user\), conv\)/);
+    expect(chat).toMatch(/: \(null as ThreadSummary \| null\), v2On\("COMPACTION"\) && v2On\("RUN_LOG"\) \? readMeters\(/);
     // The context meter (C13, rule 4763) picks how many of the kept messages stay out of the summary; off, all of them.
-    expect(chat).toMatch(/if \(COMPACTION\) \{\n\s+const kept = keptFor\(underPressure\(meters, agentId\), trimmed\.length\);\n\s+const c = await compactThread\(/);
+    expect(chat).toMatch(/if \(v2On\("COMPACTION"\)\) \{\n\s+const kept = keptFor\(underPressure\(meters, agentId\), trimmed\.length\);\n\s+const c = await compactThread\(/);
     expect(chat.match(/compactThread\(|proposeSummaryFacts\(|summaryBlock\(/g)).toHaveLength(3);
   });
 });
@@ -349,7 +349,7 @@ describe("rule 4586: facts become inferred memory cards only, screened and cappe
 
   it("the chat turn proposes them only with MEMORY_V2 on, passing its own via", () => {
     expect(src("src/lib/chat.ts")).toMatch(
-      /if \(MEMORY_V2\) await proposeSummaryFacts\(sc\(user\), c\.facts, \{ agent: agentId, conv, via \}, by, memoryProposed\);/,
+      /if \(v2On\("MEMORY_V2"\)\) await proposeSummaryFacts\(sc\(user\), c\.facts, \{ agent: agentId, conv, via \}, by, memoryProposed\);/,
     );
   });
 });

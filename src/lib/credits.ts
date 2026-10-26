@@ -8,6 +8,7 @@ import { renewalDue as renewalDueOn } from "./renewal";
 import { ksaDay } from "./partner-rules";
 import { adminAudit } from "./admin-audit";
 import { log } from "./log";
+import { runCredits } from "./runs";
 
 /**
  * Credit ledger. Every balance change goes through a per-user lock so two
@@ -95,11 +96,13 @@ export function charge(email: string, cost: number): Promise<ChargeResult>;
 export function charge(email: string, cost: number, meta: SpendMeta): Promise<AgentCharge>;
 export async function charge(email: string, cost: number, meta?: SpendMeta): Promise<ChargeResult | AgentCharge> {
   if (!Number.isFinite(cost) || cost < 0) throw new Error(`invalid_cost:${String(cost)}`);
-  return withUserLock(email, async (u): Promise<ChargeResult | AgentCharge> => {
+  const out = await withUserLock(email, async (u): Promise<ChargeResult | AgentCharge> => {
     const { out, dirty } = debit(u, cost, meta);
     if (dirty) await saveUser(u);
     return out;
   });
+  if (out.ok) runCredits(cost);
+  return out;
 }
 
 /**
@@ -228,13 +231,16 @@ export async function saveSettledTopups(email: string): Promise<{ saved: boolean
  * the charge was made in. A refund that lands after the month rolled over must not eat into the new month's counter.
  */
 export async function refund(email: string, n: number, spend?: SpendRef): Promise<number> {
-  if (!spend) return adjust(email, n);
-  if (!Number.isFinite(n)) throw new Error(`invalid_delta:${String(n)}`);
-  return withUserLock(email, async (u) => {
-    giveBack(u, n, spend);
-    await saveUser(u);
-    return u.credits;
-  });
+  if (spend && !Number.isFinite(n)) throw new Error(`invalid_delta:${String(n)}`);
+  const credits = spend
+    ? await withUserLock(email, async (u) => {
+        giveBack(u, n, spend);
+        await saveUser(u);
+        return u.credits;
+      })
+    : await adjust(email, n);
+  runCredits(-n);
+  return credits;
 }
 
 /**
@@ -347,6 +353,13 @@ export type OnceCharge =
 const heldCredits = (h: OnboardHold) => (Number.isFinite(h.credits) ? Math.max(0, Math.trunc(h.credits)) : 0);
 export async function chargeOnce(email: string, cost: number, meta: SpendMeta, claim: string): Promise<OnceCharge> {
   if (!Number.isFinite(cost) || cost < 0) throw new Error(`invalid_cost:${String(cost)}`);
+  const out = await chargeOnceLocked(email, cost, meta, claim);
+  // A reused hold took nothing now; a swapped one took the new price and gave the old hold back in the same save.
+  if (out.ok && !out.reused) runCredits(cost - (out.replaced ?? 0));
+  return out;
+}
+
+function chargeOnceLocked(email: string, cost: number, meta: SpendMeta, claim: string): Promise<OnceCharge> {
   return withUserLock(email, async (u): Promise<OnceCharge> => {
     const balance = Number.isFinite(u.credits) ? u.credits : 0;
     const held = u.paidOnce?.[claim];
@@ -381,7 +394,7 @@ export async function chargeOnce(email: string, cost: number, meta: SpendMeta, c
  * nothing (`refunded: 0`), so a failure is refunded once however many paths report it.
  */
 export async function refundOnce(email: string, claim: string): Promise<{ credits: number; refunded: number }> {
-  return withUserLock(email, async (u) => {
+  const out = await withUserLock(email, async (u) => {
     const hold = u.paidOnce?.[claim];
     if (!hold) return { credits: Number.isFinite(u.credits) ? u.credits : 0, refunded: 0 };
     const n = heldCredits(hold);
@@ -393,6 +406,8 @@ export async function refundOnce(email: string, claim: string): Promise<{ credit
     await saveUser(u);
     return { credits: u.credits, refunded: n };
   });
+  runCredits(-out.refunded);
+  return out;
 }
 
 /**
@@ -420,7 +435,7 @@ function trimReceipt(from: Receipt, n: number): Receipt {
  */
 export async function refundOncePart(email: string, claim: string, n: number): Promise<{ credits: number; refunded: number }> {
   if (!Number.isSafeInteger(n) || n < 0) throw new Error("invalid_delta");
-  return withUserLock(email, async (u) => {
+  const out = await withUserLock(email, async (u) => {
     const hold = u.paidOnce?.[claim];
     const balance = Number.isFinite(u.credits) ? u.credits : 0;
     if (!hold || n === 0) return { credits: balance, refunded: 0 };
@@ -431,6 +446,8 @@ export async function refundOncePart(email: string, claim: string, n: number): P
     await saveUser(u);
     return { credits: u.credits, refunded: m };
   });
+  runCredits(-out.refunded);
+  return out;
 }
 
 /**

@@ -6,7 +6,7 @@ import { BATCH_RUN_MIN_MS, generateBatch, type BatchResult } from "./generate-ba
 import { RETRY_LATE } from "./cron-batch";
 import { deliverRun } from "./run-receipt";
 import { LEAD_BRIEF_MAX } from "./json";
-import { PLANS, QUEUE } from "./v2-flags";
+import { v2On } from "./v2-switch";
 import { wsKey, type Scope } from "./keys";
 import type { By } from "./actor";
 import type { AgentId } from "./agents";
@@ -73,7 +73,7 @@ export type ApproveResult =
 
 /** The owner's Approve (POST /api/plans/{id}, action `approve`): see the file's comment. */
 export async function approvePlan(u: User, id: string, by: By, now = Date.now()): Promise<ApproveResult> {
-  if (!QUEUE) return { ok: false, error: "queue_off" };
+  if (!v2On("QUEUE")) return { ok: false, error: "queue_off" };
   const s = sc(u);
   return (
     (await withPlanLock(s, id, async (): Promise<ApproveResult> => {
@@ -162,7 +162,7 @@ async function settleScope(s: Scope): Promise<string> {
 /** One workspace's turn in the queue tick (see the file's comment). The answer is the batch outcome for this scope. */
 export async function tickScope(u: User, deadline: number): Promise<string> {
   const s = sc(u);
-  if (!QUEUE || !PLANS) {
+  if (!v2On("QUEUE") || !v2On("PLANS")) {
     await leaveQueue(s);
     return "off";
   }

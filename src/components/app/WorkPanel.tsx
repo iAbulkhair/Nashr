@@ -98,6 +98,7 @@ export default function WorkPanel({
                       {r.agent && <span>{t.agents[r.agent].name}</span>}
                       <Time value={r.startedAt} lang={lang} style="datetime" className="tnum text-foreground-muted" />
                       <span className="tnum text-foreground-muted">{fill(w.ms, { n: Math.round(r.ms / 1000) })}</span>
+                      {r.credits > 0 && <span className="tnum text-foreground-muted">{fill(w.charge, { n: r.credits })}</span>}
                       <Badge tone={r.ok ? "success" : "danger"}>{w.state[r.ok ? "ok" : "error"]}</Badge>
                     </summary>
                     <div className="mt-2">

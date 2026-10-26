@@ -16,7 +16,7 @@ import { agentScopePreflight, agentScopeSlowText } from "@/lib/agent-scope";
 import { customerModelError } from "@/lib/provider-fault-note";
 import { acct } from "@/lib/account-id";
 import { teamRoute } from "@/lib/team-chat";
-import { TEAM_CHAT } from "@/lib/v2-flags";
+import { v2On } from "@/lib/v2-switch";
 import { workStep } from "@/lib/work-view";
 
 export const maxDuration = 300;
@@ -82,7 +82,7 @@ export async function POST(req: Request) {
   const team = teamRoute(text, page, record);
   const agent = team.agent;
   if (!entitlements(u).agents.includes(agent)) return NextResponse.json({ ok: false, error: "agent_not_included" }, { status: 403 });
-  const teamOpt = TEAM_CHAT ? { team } : {};
+  const teamOpt = v2On("TEAM_CHAT") ? { team } : {};
   if (pre.slow) return retryLater({ ok: false, error: "slow_down", retry: pre.slow, message: { role: "assistant", content: agentScopeSlowText(lang), at: new Date().toISOString(), agent } }, WINDOW[pre.slow]);
   if (slow) return retryLater({ ok: false, error: "slow_down", retry: slow, message: refused(slow, chatCaps(u)[slow]) }, WINDOW[slow]);
   // The turn's one model, resolved once: the conversation's pick when route() accepts it, else automatic, and then the
@@ -98,7 +98,7 @@ export async function POST(req: Request) {
     try {
       const { message: m, chat: status, charged } = await runChatTurn(u, gate, () => chat(u, text, b.conv, agent, { lang, deadline, model: gate.model, agentScope: pre.modes, modelRejected, ...teamOpt }));
       await track(acct(u), "chat");
-      if (b.conv && b.conv !== "default") await touchConversation(sc(u), b.conv, text, TEAM_CHAT ? agent : undefined);
+      if (b.conv && b.conv !== "default") await touchConversation(sc(u), b.conv, text, v2On("TEAM_CHAT") ? agent : undefined);
       return NextResponse.json({ ok: true, message: m, credits: u.credits, limit: m.limit ?? null, chat: status, charged });
     } catch (e) {
       console.error("chat failed", e);
@@ -115,9 +115,12 @@ export async function POST(req: Request) {
       // Mobile carriers and proxies drop connections that stay silent for 30-60 s, and a batch takes longer than that.
       const beat = setInterval(() => { try { controller.enqueue(enc.encode(": ping\n\n")); } catch { /* closed */ } }, 10000);
       try {
-        const { message: m, chat: status, charged } = await runChatTurn(u, gate, () => chat(u, text, b.conv, agent, { lang, deadline, model: gate.model, agentScope: pre.modes, modelRejected, ...teamOpt, onStatus: (s) => send({ type: "status", text: s }), onStep: (e) => send({ type: "step", step: workStep(e) }) }));
+        const { message: m, chat: status, charged } = await runChatTurn(u, gate, () => chat(u, text, b.conv, agent, { lang, deadline, model: gate.model, agentScope: pre.modes, modelRejected, ...teamOpt, onStatus: (s) => send({ type: "status", text: s }), onStep: (e) => {
+          const step = workStep(e);
+          if (step) send({ type: "step", step });
+        } }));
         await track(acct(u), "chat");
-        if (b.conv && b.conv !== "default") await touchConversation(sc(u), b.conv, text, TEAM_CHAT ? agent : undefined);
+        if (b.conv && b.conv !== "default") await touchConversation(sc(u), b.conv, text, v2On("TEAM_CHAT") ? agent : undefined);
         send({ type: "message", message: m, credits: u.credits, limit: m.limit ?? null, chat: status, charged });
       } catch (e) {
         console.error("chat failed", e);

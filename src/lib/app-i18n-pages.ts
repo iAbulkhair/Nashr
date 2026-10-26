@@ -138,7 +138,7 @@ export const arPages = {
     billing: "افتح صفحة الاشتراك", hireTitle: "وظّف فريقك التسويقي اليوم.", hire: "وظّف نور", hireSub: "تجربة مجانية 3 أيام.", firstUp: "أول خطوة", firstSteps: { catalog: "استورد منتجاتك من متجرك لتكتب نور بأسماء وأسعار حقيقية", offer: "أضف عرضك الحالي في ملف العلامة لتُنسج في المحتوى", connect: "اربط ووردبريس (كمسودات) أو تيليجرام من التكاملات، ثم انشر ما تعتمده من صندوق الموافقة", batch: "اطلب أول دفعة: 10 منشورات لهذا الأسبوع" } },
   work: {
     title: "سير العمل", open: "اعرض سير العمل", empty: "لا خطوات مسجّلة بعد.", loading: "جارٍ التحميل…", failed: "تعذّر التحميل، حاول مرة أخرى.",
-    model: "يفكّر", tool: "أداة: {name}", publish: "نشر: {name}", check: "فحص ذاتي: {n} من 100", rewritten: "أُعيدت كتابته",
+    model: "يفكّر", tool: "أداة: {name}", publish: "نشر: {name}", check: "فحص ذاتي: {n} من 100", rewritten: "أُعيدت كتابته", charge: "{n} رصيد", refund: "أُعيد {n} رصيد",
     state: { ok: "تم", refused: "رُفض", error: "تعذّر" }, tokens: "{n} توكن", ms: "{n} ث",
     kind: { chat: "محادثة", batch: "دفعة", mcp: "مساعدك الخاص" },
     meter: "امتلاء السياق", meterRow: "{name}: {pct}%", meterHot: "سيُلخَّص أول المحادثة قبل الرد القادم.",
@@ -278,7 +278,7 @@ export const enPages: typeof arPages = {
     billing: "Open Subscription", hireTitle: "Hire your marketing team today.", hire: "Hire Noor", hireSub: "3-day free trial.", firstUp: "First up", firstSteps: { catalog: "Import your products from your store so Noor writes with real names and prices", offer: "Add your current offer to the brand file so it is woven into content", connect: "Connect WordPress (as drafts) or Telegram from Integrations, then publish what you approve from the inbox", batch: "Ask for the first batch: 10 posts for this week" } },
   work: {
     title: "Work view", open: "Show the work", empty: "No steps recorded yet.", loading: "Loading…", failed: "Could not load, try again.",
-    model: "Thinking", tool: "Tool: {name}", publish: "Publish: {name}", check: "Self-check: {n} of 100", rewritten: "rewritten",
+    model: "Thinking", tool: "Tool: {name}", publish: "Publish: {name}", check: "Self-check: {n} of 100", rewritten: "rewritten", charge: "{n} credits", refund: "{n} credits given back",
     state: { ok: "done", refused: "refused", error: "failed" }, tokens: "{n} tokens", ms: "{n} s",
     kind: { chat: "Chat", batch: "Batch", mcp: "Your own assistant" },
     meter: "Context used", meterRow: "{name}: {pct}%", meterHot: "The start of this thread is summarised before the next reply.",

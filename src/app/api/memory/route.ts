@@ -4,7 +4,7 @@ import { fail, handler } from "@/lib/api-handler";
 import { sc } from "@/lib/auth";
 import { forgetFact, listFacts } from "@/lib/memory";
 import { WINDOW } from "@/lib/rate";
-import { MEMORY_V2 } from "@/lib/v2-flags";
+import { v2On } from "@/lib/v2-switch";
 
 /**
  * The brand's saved memory (src/lib/memory.ts, Thakeen v2 phase 1, rule 4558), in the caller's own scope (`sc(u)`).
@@ -15,7 +15,7 @@ import { MEMORY_V2 } from "@/lib/v2-flags";
 export const GET = handler(
   { auth: "user", rate: { bucket: "mem:r", max: 300, window: WINDOW.hour, per: "scope" } },
   async ({ u }) => {
-    if (!MEMORY_V2) return fail("not_found", 404);
+    if (!v2On("MEMORY_V2")) return fail("not_found", 404);
     const facts = await listFacts(sc(u));
     return NextResponse.json({
       ok: true,
@@ -40,7 +40,7 @@ export const DELETE = handler(
     query: z.object({ id: z.string().min(1) }),
   },
   async ({ u, query: { id } }) => {
-    if (!MEMORY_V2) return fail("not_found", 404);
+    if (!v2On("MEMORY_V2")) return fail("not_found", 404);
     if (!(await forgetFact(sc(u), id))) return fail("not_found", 404);
     return NextResponse.json({ ok: true });
   },
