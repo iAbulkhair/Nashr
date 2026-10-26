@@ -2181,3 +2181,19 @@ The plan: component C9. Files: `src/lib/work-view.ts`, `src/app/api/runs/route.t
 ### 139.1 Release step (rule 679)
 
 Expand: the run log event `check` and the stream event `step`. Old code reading a run ignores an event kind it does not know; an old chat screen ignores the `step` event.
+
+## 140. Thakeen v2 phase 4: the research tool (2026-10-26, branch `claude/thakeen-v2-p4-research`, rules 4790-4808)
+
+The plan: component C10. Files: `src/lib/research.ts` (store, provider call, page reader, fence, tool definitions), `src/lib/research-tool.ts` (`runResearch`), `src/app/api/chat/research/[id]/route.ts`, `src/components/app/ResearchCard.tsx`; dispatched in `src/lib/chat.ts` beside `runRemember`, inside `gatedTool`. Shipped off: `RESEARCH` in `src/lib/v2-flags.ts`.
+
+1. Offered only to Faris, Noor and Layan (`RESEARCH_AGENTS`, keyed by every agent), only while `RESEARCH` is on (`toolsFor`), and refused in the tool too. Never over MCP or for an API token; the person chatting needs `generate`. A team note-taker is refused both tools (`NOTE_TOOLS`).
+2. `web_search` first stores a proposal (`researchprop:{scope}:{id}`: query, agent, thread, price, `by`) and returns a card (`research:{id}` action, chat message field `research`). Nothing runs and nothing is charged. One search a reply.
+3. The card (`GET /api/chat/research/{id}`) shows the query and the price; Approve (`POST`, `generate`) marks it approved and puts its id on the thread for that agent (`researchok:{scope}:{conv}:{agent}`, 1 hour). The card then sends a chat message so the agent continues.
+4. The agent's next `web_search` takes the approval once (GETDEL) and runs the stored query, never the model's new one: trial check, `charge` with the agent's monthly cap and the person's cap, the provider call (Brave Search, `BRAVE_SEARCH_API_KEY`), `meterSearch` (dollars per account and month), and the result addresses kept for the thread (`researchurls:{scope}:{conv}`, 1 hour). A failed or unconfigured provider refunds the charge.
+5. `read_page` opens only an address an approved search returned in the same thread in the last hour, or one the person wrote in the turn's own message, through `crawl` (`safeFetch`). Free; three pages a reply. A page cannot send the agent to an address of its choosing.
+6. All outside text is stripped of markup, cut and fenced in `<web_data source="...">` with every `<` and `>` replaced, under a rule that it is data, never instructions, and that a claim from it is written with its address. With `RESEARCH` on, the judge's `invented_fact` also fails a claim credited to an outside source without its address; off, the judge text is unchanged byte for byte.
+7. The gateway's authority for `web_search` is "ask" for every workspace. Not in this release: a per-agent research switch on the Governance page, an "on" mode without the card, and the price (`SEARCH_CREDITS` is a placeholder of 1); all three are the founder's at switch-on.
+
+### 140.1 Release step (rule 679)
+
+Expand: new keys `researchprop:*`, `researchprops:*`, `researchok:*`, `researchurls:*`, the usage field `search_usd_micro`, the optional chat message field `research`, the action prefix `research:`. Old code ignores the field and the action; nothing it reads changes shape.

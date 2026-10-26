@@ -10,7 +10,7 @@ import type { Task } from "@/lib/brand";
  * `runTool`, `metered` and `publishOnce` paths write what they would write once the switches are flipped. The batch
  * pipeline is a recorder, as in tests/tool-authority.test.ts, so no model is called.
  */
-vi.mock("@/lib/v2-flags", () => ({ GATEWAY_MODE: "log", RUN_LOG: true, MEMORY_V2: false, COMPACTION: false, PLANS: false, QUEUE: false, SELF_CHECK: false, TEAM_CHAT: false }));
+vi.mock("@/lib/v2-flags", () => ({ GATEWAY_MODE: "log", RUN_LOG: true, MEMORY_V2: false, COMPACTION: false, PLANS: false, QUEUE: false, SELF_CHECK: false, TEAM_CHAT: false, RESEARCH: false }));
 const g = vi.hoisted(() => ({ batch: 0 }));
 vi.mock("@/lib/generate-batch", async (orig) => {
   const real = await orig<typeof import("@/lib/generate-batch")>();
@@ -430,7 +430,7 @@ describe("rule 4516: the entry points open a run and the tool paths go through t
     // phase 2's `make_plan` (rule 4626) and phase 3's `propose_teammate` (rule 4738) run from the same call, inside the same
     // gatedTool; a team thread's note-taker (rule 4735) is refused before it.
     expect(src("src/lib/chat.ts")).toMatch(
-      /out = !teamAllows\(opts\.team, u\.name\) \? noteRefusal\(opts\.team!\.owner\) : await gatedTool\(user, u\.name, ctx, \(\) => \(u\.name === TEAMMATE_TOOL\.name \? Promise\.resolve\(runTeammate\(user, [^)]*\)\) : u\.name === REMEMBER_TOOL\.name \? runRemember\(user, [^)]*\) : u\.name === PLAN_TOOL\.name \? runMakePlan\(user, [^)]*\) : runTool\(user, u\.name, /,
+      /out = !teamAllows\(opts\.team, u\.name\) \? noteRefusal\(opts\.team!\.owner\) : await gatedTool\(user, u\.name, ctx, \(\) => \(u\.name === TEAMMATE_TOOL\.name \? Promise\.resolve\(runTeammate\(user, [^)]*\)\) : u\.name === REMEMBER_TOOL\.name \? runRemember\(user, [^)]*\) : u\.name === PLAN_TOOL\.name \? runMakePlan\(user, [^)]*\) : isResearchTool\(u\.name\) \? runResearch\(user, u\.name, [^)]*\) : runTool\(user, u\.name, /,
     );
     expect(src("src/lib/chat.ts").match(/runTool\(/g)).toHaveLength(1);
     expect(src("src/lib/publish-once.ts")).toMatch(/runEvent\(\{ t: "publish", provider, ok: r\.ok/);

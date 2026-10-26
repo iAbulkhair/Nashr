@@ -59,3 +59,11 @@ export const SELF_CHECK: boolean = false;
  * Release step: EXPAND.
  */
 export const TEAM_CHAT: boolean = false;
+
+/**
+ * The research tool (phase 4, C10, rules 4790-4819; src/lib/research.ts, src/lib/research-tool.ts). `false`: no agent is
+ * offered `web_search` or `read_page`, the card route answers 404 and the judge's prompt is as before. `true`: Faris, Noor
+ * and Layan may ask to search the web; each search runs only after a person presses Approve on its card, and the pages
+ * they read come back fenced as untrusted data. Off for customers until the founder sets its price. Release step: EXPAND.
+ */
+export const RESEARCH: boolean = false;

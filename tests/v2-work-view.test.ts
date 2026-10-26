@@ -20,6 +20,7 @@ vi.mock("@/lib/v2-flags", () => ({
   QUEUE: false,
   SELF_CHECK: false,
   TEAM_CHAT: false,
+  RESEARCH: false,
 }));
 
 import { newMember, newUser, signIn, signOut } from "./helpers/session";

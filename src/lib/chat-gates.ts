@@ -112,7 +112,7 @@ export function batchRefused(r: BatchRefusal, actions: string[], lowCredits: (ne
  * here in code, so asking Noor — in the app or over MCP — is never a way around the route's gate. A user with no actor
  * (nothing resolved who is acting) is refused, like every role check.
  */
-export const TOOL_ACTION: Readonly<Record<string, Action>> = { update_brand: "brand.write", publish_item: "publish", import_catalog: "catalog.import", propose_meeting_tasks: "todo.write" };
+export const TOOL_ACTION: Readonly<Record<string, Action>> = { update_brand: "brand.write", publish_item: "publish", import_catalog: "catalog.import", propose_meeting_tasks: "todo.write", web_search: "generate", read_page: "generate" };
 
 /**
  * The turn a tool runs in: the talking agent, who is talking (for the activity log), whether the turn came over MCP
@@ -120,7 +120,7 @@ export const TOOL_ACTION: Readonly<Record<string, Action>> = { update_brand: "br
  * proposal (`proposed`) and an away proposal (`awayProposed`, Reem's contact_away) are collected for the turn's reply
  * cards, and, for a handoff (src/lib/handoffs.ts), the turn's own message (`ownerMsg`) and its conversation (`conv`).
  */
-export type ToolCtx = { lang?: "ar" | "en"; agent?: AgentId; by?: By; via?: "app" | "mcp"; proposed?: BrandProposal[]; awayProposed?: AwayProposal[]; instructionProposed?: InstructionProposal[]; /** facts the `remember` tool proposed this turn (src/lib/memory-tool.ts, rule 4555) */ memoryProposed?: MemoryProposal[]; /** core-file rewrites held for the owner's Apply this turn (rule 2306, src/lib/file-proposals.ts) */ fileProposed?: FileProposal[]; /** paid work proposed on a card this turn because the owner's message did not ask for it (rule 1511) */ spendProposed?: SpendProposal[]; ownerMsg?: string; conv?: string; /** the founder's agent-scope modes for this turn (the preflight's copy): the role layer and the prompt flag for the batch */ modes?: AgentScopeModes; /** the turn's place in a team thread (v2 C4 + C12, src/lib/team-chat.ts); absent outside one */ team?: TeamTurn };
+export type ToolCtx = { lang?: "ar" | "en"; agent?: AgentId; by?: By; via?: "app" | "mcp"; proposed?: BrandProposal[]; awayProposed?: AwayProposal[]; instructionProposed?: InstructionProposal[]; /** facts the `remember` tool proposed this turn (src/lib/memory-tool.ts, rule 4555) */ memoryProposed?: MemoryProposal[]; /** core-file rewrites held for the owner's Apply this turn (rule 2306, src/lib/file-proposals.ts) */ fileProposed?: FileProposal[]; /** paid work proposed on a card this turn because the owner's message did not ask for it (rule 1511) */ spendProposed?: SpendProposal[]; ownerMsg?: string; conv?: string; /** the founder's agent-scope modes for this turn (the preflight's copy): the role layer and the prompt flag for the batch */ modes?: AgentScopeModes; /** web searches and page reads this reply made (v2 C10, rule 4796): one search and three pages a reply */ research?: { searches: number; pages: number }; /** the turn's place in a team thread (v2 C4 + C12, src/lib/team-chat.ts); absent outside one */ team?: TeamTurn };
 /** Brand-change cards one reply carries at most: update_brand refuses a further proposal rather than save one with no card. */
 export const BRAND_CARDS_PER_REPLY = 5;
 /** Away cards one reply carries at most: the turn's further contact_away calls are refused, not dropped from view. */

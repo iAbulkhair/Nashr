@@ -42,6 +42,7 @@ import { fileProposalKeys } from "./file-proposals";
 import { memoryKeys } from "./memory";
 import { planKeys } from "./plans";
 import { queueKeys } from "./queue";
+import { researchKeys } from "./research";
 import { dropNamespace } from "./memory-index";
 import { spendProposalKeys } from "./spend-proposals";
 import { forgetScopeMedia } from "./media/store";
@@ -138,9 +139,9 @@ export async function wipeAccount(id: string, opts: { userLocked?: boolean; logi
   const keys: string[] = [];
   // Every id, not only the newest 200 tasks or 100 conversations: nothing of a deleted account may stay behind. All
   // scopes are read in parallel (Upstash is HTTP per command).
-  const perScope = await pmap(scopes, (s) => Promise.all([db.lrange(wsKey.tasks(s), 0, -1), listFiles(s), db.lrange(wsKey.convs(s), 0, -1), db.smembers(wsKey.conns(s)), db.smembers(wsKey.taskMonths(s)), secretaryKeys(s), handoffKeys(s, (fp) => seenKey(e, fp)), proposalKeys(s), instructionProposalKeys(s), spendProposalKeys(s), fileProposalKeys(s), db.lrange(wsKey.runs(s), 0, -1), memoryKeys(s), planKeys(s), queueKeys(s)]));
+  const perScope = await pmap(scopes, (s) => Promise.all([db.lrange(wsKey.tasks(s), 0, -1), listFiles(s), db.lrange(wsKey.convs(s), 0, -1), db.smembers(wsKey.conns(s)), db.smembers(wsKey.taskMonths(s)), secretaryKeys(s), handoffKeys(s, (fp) => seenKey(e, fp)), proposalKeys(s), instructionProposalKeys(s), spendProposalKeys(s), fileProposalKeys(s), db.lrange(wsKey.runs(s), 0, -1), memoryKeys(s), planKeys(s), queueKeys(s), researchKeys(s)]));
   scopes.forEach((s, i) => {
-    const [taskIds, files, convIds, conns, months, sec, handoffs, proposals, instrProposals, spendProposals, fileProposals, runIds, memory, plans, queue] = perScope[i];
+    const [taskIds, files, convIds, conns, months, sec, handoffs, proposals, instrProposals, spendProposals, fileProposals, runIds, memory, plans, queue, research] = perScope[i];
     keys.push(
       // The run log and the gateway's audit list (rules 4511, 4503): steps and tool names only, but they name the scope.
       ...runIds.map((id) => wsKey.run(s, id)), wsKey.runs(s), wsKey.audit(s),
@@ -186,6 +187,9 @@ export async function wipeAccount(id: string, opts: { userLocked?: boolean; logi
       ...memory,
       // Goals and plans and the durable queue (v2 C3/C7, rules 4622, 4652): records, locks, jobs and step receipts.
       ...plans, ...queue,
+      // Web searches an agent asked for (v2 C10, rule 4804): the query, its card state, the one-time run token and the
+      // addresses a search returned (24 h and 1 h).
+      ...research,
       // Each routine's last run, locks, hold and attempt counts, for every routine id (routines.ts), and the hold of
       // Majed's auto-run under the same weekly cap (360 s).
       ...routineKeys(s), autoHoldKey(s),

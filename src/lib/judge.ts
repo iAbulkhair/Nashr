@@ -13,6 +13,7 @@ import { recordActivity, type Activity, type ActivityVia } from "./activity";
 import { route } from "./models/route";
 import { NO_LAYERS, instructionBlocks, type Layers } from "./agent-instructions";
 import { log } from "./log";
+import { RESEARCH } from "./v2-flags";
 
 /**
  * Automated quality judge. A cheaper model scores every generated item against
@@ -34,8 +35,14 @@ export type Quality = {
  * Automatic-fail triggers. The judge names at most one per item; the consequence is applied here, in code, so a fabricated
  * statistic or a promised result can never average out to a passing score because the rest of the item reads well.
  */
+const INVENTED_FACT = "a statistic, percentage, customer count, rating, ranking, award, certification or market figure stated as fact that appears in none of the sources shown (brand file, owner notes, workspace files, workspace data) and is not written as a placeholder or labelled assumption";
+/**
+ * With the research tool on (v2 C10, rule 4803), a claim credited to the web is checked too; off, the text is the same
+ * string as before, byte for byte.
+ */
+const WEB_CLAIM = "; a claim credited to a web page, study, report, survey or other outside source counts as invented unless the item writes that source's web address beside it and the same claim appears in the sources shown";
 export const AUTOFAIL = {
-  invented_fact: "a statistic, percentage, customer count, rating, ranking, award, certification or market figure stated as fact that appears in none of the sources shown (brand file, owner notes, workspace files, workspace data) and is not written as a placeholder or labelled assumption",
+  invented_fact: RESEARCH ? INVENTED_FACT + WEB_CLAIM : INVENTED_FACT,
   results_promise: "promises or guarantees an outcome: sales, revenue, leads, followers, rankings, returns, cures, or mentions by AI assistants",
   fake_proof: "an invented testimonial, review, quote, customer or company name, case study or \"X customers trust us\"",
   fake_scarcity: "urgency or scarcity not in the owner notes or the brand file's offers (\"last 3 pieces\", \"ends tonight\")",
