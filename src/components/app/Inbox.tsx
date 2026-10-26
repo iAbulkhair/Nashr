@@ -359,6 +359,8 @@ export default function Inbox({ t, lang, tasks, brief, connected = [], banned = 
                     return <span key={v.by} className={`whitespace-nowrap rounded-full px-2 py-0.5 ${v.verdict === "flag" ? "bg-lemon/20 font-semibold text-danger" : "bg-foreground/10 text-foreground"}`}>{v.verdict === "flag" ? (n === 1 ? fill(i.xNote, { name }) : fill(i.xNotes, { name, n })) : fill(i.xChecked, { name })}</span>;
                   })}
                   {x.source === "external" && <span title={i.externalHint} className="max-w-full rounded-full bg-foreground/5 px-2 py-0.5 text-foreground-muted">{i.external}</span>}
+                  {/* The agent who owns the request in a team thread (v2 C12, `Task.owner`, set in code from the turn). */}
+                  {x.owner && isAgentId(x.owner) && <span className="max-w-full rounded-full bg-foreground/10 px-2 py-0.5 text-foreground" data-owner>{fill(i.ownedBy, { name: t.agents[x.owner].name })}</span>}
                   {/* Made by a run of one of Majed's handoffs (`Task.parent`, set in code): back to the conversation that proposed it.
                       `parent.auto`: his auto-run started it, not a login pressing Run. */}
                   {x.source === "handoff" && x.parent && (x.parent.conv && /^[a-f0-9]{6,16}$/.test(x.parent.conv)

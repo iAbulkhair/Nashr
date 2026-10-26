@@ -78,6 +78,11 @@ export type Task = {
    * code by the step's run (src/lib/plan-run.ts), never from a request or the model. Expand: old code ignores it.
    */
   plan?: TaskPlan;
+  /**
+   * The agent who owns the request this task was made for in a team thread (v2 C12, rule 4743): the thread's owner, set in
+   * code from the turn (`scopeOf`, src/lib/chat-gates.ts), never from a request or the model. Expand: old code ignores it.
+   */
+  owner?: AgentId;
   scheduledFor?: string; // YYYY-MM-DD, set by owner in inbox/calendar
   imageUrl?: string;
   imagePrompt?: string;

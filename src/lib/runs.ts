@@ -36,7 +36,9 @@ export type RunEvent =
       verdict?: "allow" | "ask" | "deny";
       rule?: string;
     }
-  | { t: "publish"; at: number; provider: string; ok: boolean; error?: string };
+  | { t: "publish"; at: number; provider: string; ok: boolean; error?: string }
+  /** One draft's self-check score (C6, src/lib/self-check.ts), for the work view (C9, rule 4772): the number only. */
+  | { t: "check"; at: number; score: number; rewritten: boolean };
 
 /** A step as the code reports it; `at` is added here. */
 export type RunStep = RunEvent extends infer E ? (E extends RunEvent ? Omit<E, "at"> : never) : never;
@@ -49,6 +51,8 @@ export type Run = {
   label?: string;
   agent?: AgentId;
   via?: "app" | "mcp";
+  /** The chat thread (a conversation id that passed `isConversationId`; none for the default thread), for the context meter. */
+  conv?: string;
   startedAt: string;
   ms: number;
   ok: boolean;
@@ -57,7 +61,16 @@ export type Run = {
   dropped: number;
 };
 
-export type RunMeta = { scope: Scope; kind: RunKind; label?: string; agent?: AgentId; via?: "app" | "mcp" };
+export type RunMeta = {
+  scope: Scope;
+  kind: RunKind;
+  label?: string;
+  agent?: AgentId;
+  via?: "app" | "mcp";
+  conv?: string;
+  /** Hears each step as it is added (the chat's live work view, C9 rule 4774); never stored. A throw is ignored. */
+  onStep?: (e: RunEvent) => void;
+};
 
 /** Steps one run keeps: a chat turn is at most five model turns with a handful of tools each. */
 export const MAX_EVENTS = 200;
@@ -66,7 +79,7 @@ export const RUNS_KEEP = 200;
 /** Days a run record and the index live after the last write. */
 export const RUN_TTL_S = 30 * 86400;
 
-type Live = { scope: Scope; run: Run; t0: number };
+type Live = { scope: Scope; run: Run; t0: number; onStep?: (e: RunEvent) => void };
 const current = new AsyncLocalStorage<Live>();
 
 /**
@@ -83,6 +96,7 @@ export async function withRun<T>(meta: RunMeta, fn: () => Promise<T>, on: boolea
     ...(meta.label ? { label: meta.label } : {}),
     ...(meta.agent ? { agent: meta.agent } : {}),
     ...(meta.via ? { via: meta.via } : {}),
+    ...(meta.conv ? { conv: meta.conv } : {}),
     startedAt: new Date(t0).toISOString(),
     ms: 0,
     ok: false,
@@ -90,7 +104,7 @@ export async function withRun<T>(meta: RunMeta, fn: () => Promise<T>, on: boolea
     dropped: 0,
   };
   try {
-    const out = await current.run({ scope: meta.scope, run, t0 }, fn);
+    const out = await current.run({ scope: meta.scope, run, t0, onStep: meta.onStep }, fn);
     run.ok = true;
     return out;
   } finally {
@@ -107,7 +121,13 @@ export function runEvent(step: RunStep): void {
     live.run.dropped++;
     return;
   }
-  live.run.events.push({ ...step, at: Date.now() - live.t0 } as RunEvent);
+  const e = { ...step, at: Date.now() - live.t0 } as RunEvent;
+  live.run.events.push(e);
+  try {
+    live.onStep?.(e);
+  } catch {
+    // A listener that fails (a closed stream) never changes the run or the caller's answer.
+  }
 }
 
 /** The id of the open run, for an audit row to point at; undefined outside one. */

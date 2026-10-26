@@ -867,3 +867,10 @@ What each agent may do from a conversation, set by the owner and checked in code
 - `GET /api/cron/queue`: cron bearer only (`sameSecret` with `CRON_SECRET`), 401 otherwise; off `{ ok: true, off: true }`. The scopes it visits come from our own set `qscopes`, never from the request, and each runs through `runAsAccount`.
 - `make_plan` is Majed's only, in a chat turn that passed authentication, never over MCP or for an API token. It stores a proposal and spends nothing. The model is never the approval: Approve checks the fresh balance, the agent caps and the proposal's age in code, and each step's charge is bounded by its own claim. Every item a step makes waits in the inbox for a person.
 - The self-check rewrites only inside a scheduled batch that was already charged; the rewrite is metered as usage, never charged to the owner. The judge's note and the draft are data, never instructions; an auto-failed item is never auto-approved.
+
+## Team chat, the context meter and the work view (2026-10-26, branch `claude/thakeen-v2-p3-team`, rules 4720-4780)
+
+- `PUT /api/conversations` `{id, owner}`: role `conversations` (a viewer is refused), 404 while `TEAM_CHAT` is off. The id is format-checked and read only under `sc(u)` (another workspace's thread is 404); the owner must be an agent of the plan (`entitlements(u).agents`), else 400. It is the only writer of a thread's owner; the model only proposes a card, and the person's press sends this request.
+- A note-taker in a team thread is refused every tool outside `NOTE_TOOLS` in code, whatever the model names.
+- `GET /api/runs?conv=`: any login of the account (read-only, a viewer too), 404 while `RUN_LOG` is off. It reads only the caller's own run log under `sc(u)`; `conv` is a selector checked as a conversation id and never part of a key. The answer carries no model id, gateway rule id or error text.
+- The routine rails pause a routine in code after three failed runs in a row; only the owner's switch on the Scheduled tasks page resumes it.

@@ -24,8 +24,13 @@ describe("callers read what a plan includes from entitlements", () => {
   it("rule 782: each of those checks comes before the trial gate, so a refused agent counts nothing", () => {
     // The code expressions, not the words: `agent_not_included` also appears in the route's doc comment.
     const chat = read("src/app/api/chat/route.ts");
-    const agentRead = chat.indexOf("const agent = ");
-    const chatCheck = chat.indexOf("entitlements(u).agents.includes(agent)");
+    // The page's agent is checked before the trial gate; a teammate named with @ (v2 C4, rule 4731) is checked again once
+    // the thread is read, still before any count or save.
+    const agentRead = chat.indexOf("const page = ");
+    const chatCheck = chat.indexOf("entitlements(u).agents.includes(page)");
+    const teamCheck = chat.indexOf("entitlements(u).agents.includes(agent)");
+    expect(teamCheck, "chat: the answering agent is checked after the team route").toBeGreaterThan(chat.indexOf("const agent = team.agent"));
+    expect(chat.slice(teamCheck, teamCheck + 200)).toMatch(/error: "agent_not_included" \}, \{ status: 403 \}/);
     const chatTrial = chat.indexOf("if (trialOver(u))");
     expect([agentRead, chatCheck, chatTrial].every((i) => i > -1), "chat: all three expressions are found").toBe(true);
     expect(chatCheck, "chat: after the agent is read").toBeGreaterThan(agentRead);

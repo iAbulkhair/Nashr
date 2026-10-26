@@ -268,6 +268,7 @@ const ROUTE_ROLES: Record<string, Gate> = {
   "POST /api/chat/feedback": g("member", "feedback"),
   "POST /api/conversations": g("member", "conversations"),
   "PATCH /api/conversations": g("member", "conversations"),
+  "PUT /api/conversations": g("member", "conversations"), // rule 4742: the thread's owner, on a person's press; 404 while TEAM_CHAT is off
   "DELETE /api/conversations": g("member", "conversations"),
   "POST /api/generate": g("member", "generate"),
   "POST /api/integrations": g("member", "integrations.request"),
@@ -414,6 +415,7 @@ const READS: Record<string, Gate> = {
   "GET /api/connect": "member",
   "GET /api/conversations": "member",
   "GET /api/files": "member",
+  "GET /api/runs": "member", // rules 4775-4777: the work view and the context meter, read-only; 404 while RUN_LOG is off
   "GET /api/memory": "member", // rule 4558: the brand's saved facts, the ones its agents read; 404 while MEMORY_V2 is off
   "GET /api/drives": "member",
   "GET /api/governance": "member",

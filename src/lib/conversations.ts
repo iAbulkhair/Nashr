@@ -11,8 +11,11 @@ import { ConversationRecord, parseStored } from "./stored";
  * Multiple conversations per scope, searchable. `chat:{scope}` stays the legacy default thread, which has no record.
  * `model`: the conversation's chat pick (src/lib/models/overrides.ts), set and cleared only by PUT /api/models; absent:
  * automatic. Absent on conversations saved before 2026-10-08.
+ * `owner` and `members` (v2 C4 + C12, rules 4744-4747): the agent who owns the thread's requests, set only by
+ * `setConversationOwner` (a person's press), and the agents who answered in it, added by `touchConversation`. Expand:
+ * absent on every older thread, where the owner is the page's agent; old code ignores both.
  */
-export type Conversation = { id: string; title: string; createdAt: string; updatedAt: string; count: number; agent?: AgentId; model?: string };
+export type Conversation = { id: string; title: string; createdAt: string; updatedAt: string; count: number; agent?: AgentId; model?: string; owner?: AgentId; members?: AgentId[] };
 
 /**
  * A conversation id as `createConversation` makes them, checked before it is put in a key: letters, digits, "_" and "-",
@@ -103,35 +106,60 @@ export async function createConversation(scope: string, title: string, agent: Ag
  * not exist or was deleted meanwhile. Never fails the turn: when the lock is not taken in time the update is skipped
  * (logged without the account or the id) and the next turn's touch counts again from the record as it is.
  */
-export async function touchConversation(scope: string, id: string, firstUserText?: string): Promise<void> {
-  if (!isConversationId(id)) return;
-  const key = wsKey.conv(scopeParam(scope), id);
-  const r = await withConversationLock(scope, id, async () => {
-    const c = asConversation(await db.get<unknown>(key));
-    if (!c) return;
+export async function touchConversation(scope: string, id: string, firstUserText?: string, agent?: AgentId): Promise<void> {
+  const r = await editConversation(scope, id, (c) => {
     c.updatedAt = new Date().toISOString();
     c.count += 1;
     if (firstUserText && (c.title === "" || c.title === "…")) c.title = firstUserText.slice(0, 60);
-    await db.set(key, c);
+    // The agents who answered in it (v2 C4, rule 4745): each once, only while team chat passes the turn's agent.
+    if (agent && !(c.members ?? []).includes(agent)) c.members = [...(c.members ?? []), agent].slice(-MEMBERS_MAX);
+    return true;
   });
-  if (!r.ok) log.warn("conversation touch skipped: lock busy");
+  if (r === "busy") log.warn("conversation touch skipped: lock busy");
 }
-/** Rename under the conversation's lock; `not_found` (nothing written) when it does not exist, `busy` when the lock was not taken. */
-export async function renameConversation(scope: string, id: string, title: string): Promise<ConversationWrite> {
+/** The agents a thread keeps as members at most: the roster's size. */
+const MEMBERS_MAX = 8;
+
+/**
+ * One read-modify-write of conversation `id` under its lock: `edit` changes the record read again under the lock and
+ * says whether to write it. `not_found` (nothing written) when it does not exist or `edit` declines, `busy` when the
+ * lock was not taken in time.
+ */
+async function editConversation(scope: string, id: string, edit: (c: Conversation) => boolean): Promise<ConversationWrite> {
   if (!isConversationId(id)) return "not_found";
   const key = wsKey.conv(scopeParam(scope), id);
   const r = await withConversationLock(scope, id, async () => {
     const c = asConversation(await db.get<unknown>(key));
-    if (!c) return false;
-    c.title = title.slice(0, 80);
+    if (!c || !edit(c)) return false;
     await db.set(key, c);
     return true;
   });
-  if (!r.ok) {
-    log.warn("conversation rename skipped: lock busy");
-    return "busy";
-  }
+  if (!r.ok) return "busy";
   return r.value ? "ok" : "not_found";
+}
+
+/** Rename under the conversation's lock; `not_found` (nothing written) when it does not exist, `busy` when the lock was not taken. */
+export async function renameConversation(scope: string, id: string, title: string): Promise<ConversationWrite> {
+  const r = await editConversation(scope, id, (c) => {
+    c.title = title.slice(0, 80);
+    return true;
+  });
+  if (r === "busy") log.warn("conversation rename skipped: lock busy");
+  return r;
+}
+
+/**
+ * The thread's owner agent (v2 C12, rules 4746-4747), under the conversation's lock: the one writer of `owner`, called
+ * only by PUT /api/conversations, which a person's press on the teammate card sends. The caller checked the agent.
+ */
+export async function setConversationOwner(scope: string, id: string, owner: AgentId): Promise<ConversationWrite> {
+  const r = await editConversation(scope, id, (c) => {
+    c.owner = owner;
+    if (!(c.members ?? []).includes(owner)) c.members = [...(c.members ?? []), owner].slice(-MEMBERS_MAX);
+    return true;
+  });
+  if (r === "busy") log.warn("conversation owner skipped: lock busy");
+  return r;
 }
 /**
  * Which of `ids` are conversations that still exist under `scope`, in ONE request (MGET of their records). A deleted
