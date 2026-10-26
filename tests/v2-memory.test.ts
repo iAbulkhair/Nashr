@@ -125,7 +125,7 @@ describe("rule 4550: the switch ships off, and off changes nothing", () => {
 
   it("off: the chat turn reads no memory and its prompt gets no memory block", () => {
     const chat = src("src/lib/chat.ts");
-    expect(chat).toMatch(/MEMORY_V2 \? recall\(sc\(user\), text, \{ agent: agentId, conv \}\)/);
+    expect(chat).toMatch(/v2On\("MEMORY_V2"\) \? recall\(sc\(user\), text, \{ agent: agentId, conv \}\)/);
     expect(chat).toMatch(/const remembered = recallBlock\(recalled\);\n\s+if \(remembered\) sys\[2\] = /);
     expect(recallBlock([])).toBe("");
   });

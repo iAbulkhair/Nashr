@@ -5,7 +5,7 @@ import { fail, handler } from "@/lib/api-handler";
 import { sc } from "@/lib/auth";
 import { decideMemoryProposal } from "@/lib/memory";
 import { WINDOW } from "@/lib/rate";
-import { MEMORY_V2 } from "@/lib/v2-flags";
+import { v2On } from "@/lib/v2-switch";
 
 const decision = z.object({ decision: z.enum(["save", "dismiss"]) });
 
@@ -29,7 +29,7 @@ export const POST = handler<"user", typeof decision, undefined, { id: string }>(
     invalid: "bad_action",
   },
   async ({ u, input: b, params: { id } }) => {
-    if (!MEMORY_V2) return fail("not_found", 404);
+    if (!v2On("MEMORY_V2")) return fail("not_found", 404);
     const r = await decideMemoryProposal(sc(u), id, b.decision, byOf(u));
     if (!r.ok)
       return NextResponse.json(

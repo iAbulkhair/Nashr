@@ -39,7 +39,7 @@ import { feedbackFor } from "./feedback";
 import { generate, type Generated } from "./noor";
 import { judgeLater } from "./judge";
 import { selfCheck } from "./self-check";
-import { SELF_CHECK } from "./v2-flags";
+import { v2On } from "./v2-switch";
 import { warnAgentCap } from "./notifications";
 import { initialStatus, isCustomerFacing } from "./brand-rules";
 import { regulatedSector, withDisclaimer } from "./regulated";
@@ -443,7 +443,7 @@ async function runBatch(user: User, scope: string, opts: BatchOpts, late: Promis
     made = tasks.length;
     // The self-check (v2 C6, rule 4675): before the output check, so a rewritten item is checked like any other. It never
     // throws and never changes the count, so the refund shares below are what they were.
-    if (opts.selfCheck && SELF_CHECK && tasks.length) tasks = await selfCheck(tasks, { email: acct(user), brand, type, requested: opts.count, ground, prefs, memory, feedback, layers, agentScope: scopeModes.prompt === "on", model, noEmDash: gov.noEmDash, meterWho: usageWho(user, scope), via: opts.via, deadline: opts.deadline });
+    if (opts.selfCheck && v2On("SELF_CHECK") && tasks.length) tasks = await selfCheck(tasks, { email: acct(user), brand, type, requested: opts.count, ground, prefs, memory, feedback, layers, agentScope: scopeModes.prompt === "on", model, noEmDash: gov.noEmDash, meterWho: usageWho(user, scope), via: opts.via, deadline: opts.deadline });
     // Layer 4, the output check on the items (rule 801; spec section 6), between generation and saving: each item's title and
     // body, as the owning agent's text, five at a time (`pmap`, never one await per item). `enforce`: a refused item is not
     // saved; when none is left, or any is refused in a claim's batch (`once`, which charges and refunds only whole), the batch

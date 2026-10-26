@@ -1,6 +1,6 @@
 import type { AgentId } from "./agents";
 import { STUCK_DAYS, type AgentStatus } from "./agent-status";
-import type { Run, RunEvent, RunKind } from "./runs";
+import type { Run, RunCredit, RunEvent, RunKind } from "./runs";
 
 /**
  * The work view (Thakeen v2 phase 3, C9, rules 4770-4789, docs/system/flows.md "Work view").
@@ -10,20 +10,22 @@ import type { Run, RunEvent, RunKind } from "./runs";
  * workspace's newest runs with each thread's context meter (C13) for the panel beside the inbox.
  *
  * A step as the person sees it is narrower than the stored one: the step's kind, the tool, task purpose or provider it
- * names, its state, its tokens and a self-check score. No model id (Thakeen names no model to customers), no gateway rule
+ * names, its state, its tokens, a self-check score and the credits it moved (rule 4827). No model id (Thakeen names no model to customers), no gateway rule
  * id, no error text. The run log itself holds no words of the work, so neither does this.
  */
 export type WorkStep = {
-  kind: RunEvent["t"];
+  kind: RunEvent["t"] | "charge";
   /** Milliseconds since the run started. */
   at: number;
   agent?: AgentId;
-  /** A tool name, a model call's purpose ("chat", "compact", "judge"), a publish provider, or "self_check". */
+  /** A tool name, a model call's purpose ("chat", "compact", "judge"), a publish provider, "self_check" or "credits". */
   name: string;
   state: "ok" | "refused" | "error";
   tokens?: number;
   score?: number;
   rewritten?: boolean;
+  /** A `charge` step's credits: taken, or given back when negative. */
+  credits?: number;
 };
 
 export type WorkRun = {
@@ -36,10 +38,12 @@ export type WorkRun = {
   ok: boolean;
   steps: WorkStep[];
   tokens: number;
+  /** Credits the run took, net of what it gave back (rule 4828); 0 for a run that moved none. */
+  credits: number;
 };
 
-/** One stored step as the work view shows it (rule 4771). Pure. */
-export function workStep(e: RunEvent): WorkStep {
+/** One stored step as the work view shows it (rule 4771); a kind this code does not know is left out (rule 4829). Pure. */
+export function workStep(e: RunEvent): WorkStep | null {
   switch (e.t) {
     case "model":
       return {
@@ -61,12 +65,18 @@ export function workStep(e: RunEvent): WorkStep {
       return { kind: "publish", at: e.at, name: e.provider, state: e.ok ? "ok" : "error" };
     case "check":
       return { kind: "check", at: e.at, name: "self_check", state: "ok", score: e.score, rewritten: e.rewritten };
+    default:
+      return null;
   }
 }
 
-/** One run as the work view shows it: its steps in order and its total tokens. Pure. */
+/** One credit move as a step (rule 4827). Pure. */
+export const creditStep = (c: RunCredit): WorkStep => ({ kind: "charge", at: c.at, name: "credits", state: "ok", credits: c.credits });
+
+/** One run as the work view shows it: its steps and credit moves in order, its total tokens and its net credits. Pure. */
 export function workRun(r: Run): WorkRun {
-  const steps = [...r.events].sort((a, b) => a.at - b.at).map(workStep);
+  const moves = (r.credits ?? []).filter((c) => Number.isFinite(c.at) && Number.isFinite(c.credits)).map(creditStep);
+  const steps = [...r.events.map(workStep).filter((s): s is WorkStep => s !== null), ...moves].sort((a, b) => a.at - b.at);
   return {
     id: r.id,
     kind: r.kind,
@@ -77,6 +87,7 @@ export function workRun(r: Run): WorkRun {
     ok: r.ok,
     steps,
     tokens: steps.reduce((s, x) => s + (x.tokens ?? 0), 0),
+    credits: moves.reduce((s, x) => s + (x.credits ?? 0), 0),
   };
 }
 

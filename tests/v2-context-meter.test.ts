@@ -142,7 +142,7 @@ describe("rule 4760: the meter follows the run log and adds no storage", () => {
   it("chat reads it only with COMPACTION and RUN_LOG on, from the run log, failing open", () => {
     const chat = src("src/lib/chat.ts");
     expect(chat).toMatch(
-      /COMPACTION && RUN_LOG \? readMeters\(sc\(user\), conv\)\.catch\(\(e\): ContextMeter\[\] => \{/,
+      /v2On\("COMPACTION"\) && v2On\("RUN_LOG"\) \? readMeters\(sc\(user\), conv\)\.catch\(\(e\): ContextMeter\[\] => \{/,
     );
     expect(chat).toMatch(/: \(\[\] as ContextMeter\[\]\)\]\);/);
     const meter = src("src/lib/context-meter.ts");

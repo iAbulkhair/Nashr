@@ -30,7 +30,7 @@ import {
 import { can } from "./roles";
 import { NO_CREDITS_HINT } from "./topups";
 import { meterSearch } from "./usage";
-import { RESEARCH } from "./v2-flags";
+import { v2On } from "./v2-switch";
 
 /**
  * The research tools (Thakeen v2 phase 4, C10, rules 4795-4801). Offered only to Faris, Noor and Layan, only while
@@ -55,7 +55,7 @@ export async function runResearch(
   ctx: ToolCtx,
   actions: string[],
 ): Promise<string> {
-  if (!RESEARCH || !isResearchAgent(ctx.agent)) return "Unknown tool.";
+  if (!v2On("RESEARCH") || !isResearchAgent(ctx.agent)) return "Unknown tool.";
   const agent = ctx.agent;
   if (ctx.via === "mcp" || ctx.by?.kind === "token" || user.actor?.kind === "token")
     return "Not done: web research runs only in the app's chat, where a person approves it. Nothing was searched or read.";

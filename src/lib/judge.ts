@@ -13,7 +13,7 @@ import { recordActivity, type Activity, type ActivityVia } from "./activity";
 import { route } from "./models/route";
 import { NO_LAYERS, instructionBlocks, type Layers } from "./agent-instructions";
 import { log } from "./log";
-import { RESEARCH } from "./v2-flags";
+import { v2On } from "./v2-switch";
 
 /**
  * Automated quality judge. A cheaper model scores every generated item against
@@ -42,7 +42,8 @@ const INVENTED_FACT = "a statistic, percentage, customer count, rating, ranking,
  */
 const WEB_CLAIM = "; a claim credited to a web page, study, report, survey or other outside source counts as invented unless the item writes that source's web address beside it and the same claim appears in the sources shown";
 export const AUTOFAIL = {
-  invented_fact: RESEARCH ? INVENTED_FACT + WEB_CLAIM : INVENTED_FACT,
+  // Read once when the server starts; on staging, saving V2_STAGING_FLAGS in hPanel restarts it (rule 4822).
+  invented_fact: v2On("RESEARCH") ? INVENTED_FACT + WEB_CLAIM : INVENTED_FACT,
   results_promise: "promises or guarantees an outcome: sales, revenue, leads, followers, rankings, returns, cures, or mentions by AI assistants",
   fake_proof: "an invented testimonial, review, quote, customer or company name, case study or \"X customers trust us\"",
   fake_scarcity: "urgency or scarcity not in the owner notes or the brand file's offers (\"last 3 pieces\", \"ends tonight\")",

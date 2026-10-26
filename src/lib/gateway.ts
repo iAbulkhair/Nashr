@@ -12,7 +12,8 @@ import { can, type Action } from "./roles";
 import { WEB_SEARCH_TOOL } from "./research";
 import { currentRunId, runEvent } from "./runs";
 import { authorityOf, capOfTool, type AuthorityMode } from "./tool-authority";
-import { GATEWAY_MODE, type GatewayMode } from "./v2-flags";
+import { type GatewayMode } from "./v2-flags";
+import { gatewayMode } from "./v2-switch";
 
 /**
  * The action gateway (Thakeen v2 component C1, rules 4500-4509, docs/system/flows.md "Action gateway").
@@ -177,7 +178,7 @@ export async function gatedTool(
   tool: string,
   ctx: { agent?: AgentId; via?: "app" | "mcp" },
   run: () => Promise<string>,
-  mode: GatewayMode = GATEWAY_MODE,
+  mode: GatewayMode = gatewayMode(),
 ): Promise<string> {
   const t0 = Date.now();
   const initiator: Initiator = ctx.via === "mcp" ? "mcp" : ctx.agent ? "agent" : "person";
@@ -221,7 +222,7 @@ export async function gatedMcp(
   tool: string,
   need: Action,
   run: () => Promise<Response>,
-  mode: GatewayMode = GATEWAY_MODE,
+  mode: GatewayMode = gatewayMode(),
 ): Promise<Response> {
   const t0 = Date.now();
   const j =

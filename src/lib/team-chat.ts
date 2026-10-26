@@ -3,7 +3,7 @@ import { AGENTS, agentById, isAgentId, type AgentId } from "./agents";
 import type { User } from "./auth";
 import type { ToolCtx } from "./chat-gates";
 import { entitlements } from "./entitlements";
-import { TEAM_CHAT } from "./v2-flags";
+import { v2On } from "./v2-switch";
 
 /**
  * Team chat and one task owner (Thakeen v2 phase 3, C4 + C12, rules 4730-4759). One thread, several agents: the thread's
@@ -45,7 +45,7 @@ export function mentionOf(text: string): AgentId | null {
  * own conversation, read under `sc(u)`; nothing in the request names the owner.
  */
 export function teamRoute(text: string, requested: AgentId, record: { owner?: unknown } | null): TeamTurn {
-  if (!TEAM_CHAT) return { agent: requested, owner: requested, role: "owner" };
+  if (!v2On("TEAM_CHAT")) return { agent: requested, owner: requested, role: "owner" };
   const owner = isAgentId(record?.owner) ? record.owner : requested;
   const agent = mentionOf(text) ?? owner;
   return { agent, owner, role: agent === owner ? "owner" : "note" };
@@ -86,7 +86,7 @@ export const TEAMMATE_TOOL: Anthropic.Tool = {
 
 /** The tools of a team turn: the note-taker's reading tools, or the owner's list plus the card tool. Off: unchanged. */
 export function teamTools(tools: Anthropic.Tool[], team: TeamTurn | undefined): Anthropic.Tool[] {
-  if (!TEAM_CHAT || !team) return tools;
+  if (!v2On("TEAM_CHAT") || !team) return tools;
   if (team.role === "note") return tools.filter((t) => NOTE_TOOLS.has(t.name));
   return [...tools, TEAMMATE_TOOL];
 }
@@ -97,7 +97,7 @@ export function teamTools(tools: Anthropic.Tool[], team: TeamTurn | undefined): 
  * itself, for an agent the plan does not include, and after the reply's first card.
  */
 export function runTeammate(user: User, input: Record<string, unknown>, ctx: ToolCtx, actions: string[]): string {
-  if (!TEAM_CHAT || !ctx.team) return "Not done: team chat is not available. Nothing was proposed.";
+  if (!v2On("TEAM_CHAT") || !ctx.team) return "Not done: team chat is not available. Nothing was proposed.";
   if (ctx.via === "mcp") return "Not done: a teammate card can only be shown in the app. Nothing was proposed.";
   if (ctx.team.role !== "owner") return noteRefusal(ctx.team.owner);
   const id = input.agent;
@@ -114,11 +114,11 @@ export function runTeammate(user: User, input: Record<string, unknown>, ctx: Too
 
 /** The owner a team turn's reply carries (rule 4742): the thread's owner, shown beside the answering agent. Off: none. */
 export const ownerOf = (team: TeamTurn | undefined): { owner?: AgentId } =>
-  TEAM_CHAT && team ? { owner: team.owner } : {};
+  v2On("TEAM_CHAT") && team ? { owner: team.owner } : {};
 
 /** The prompt line of a team turn (rule 4736): a guide for the model; the gates above are what hold. */
 export function teamNote(team: TeamTurn | undefined, lang: "ar" | "en"): string {
-  if (!TEAM_CHAT || !team) return "";
+  if (!v2On("TEAM_CHAT") || !team) return "";
   const owner = agentById(team.owner).name[lang];
   return team.role === "note"
     ? `\n\nTeam thread: the person named you in a thread that ${owner} owns. Give your notes on the request in a few lines, as a reviewer. Do not write the deliverable yourself and do not promise to; ${owner} drafts it.`

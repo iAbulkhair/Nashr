@@ -137,7 +137,7 @@ describe("rule 4670: off changes nothing", () => {
   });
   it("only the scheduled paths ask for it, and the batch runs it before the output check", () => {
     const gen = src("src/lib/generate-batch.ts");
-    const at = gen.indexOf("if (opts.selfCheck && SELF_CHECK && tasks.length) tasks = await selfCheck(");
+    const at = gen.indexOf('if (opts.selfCheck && v2On("SELF_CHECK") && tasks.length) tasks = await selfCheck(');
     expect(at).toBeGreaterThan(0);
     expect(at).toBeLessThan(gen.indexOf("const output = scopeModes.output;"));
     expect(src("src/lib/routines.ts")).toMatch(/via: "routine", gov, brand, settle, once: claim, selfCheck: true,/);

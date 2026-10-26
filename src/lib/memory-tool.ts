@@ -3,7 +3,7 @@ import { byOf } from "./actor";
 import { sc, type User } from "./auth";
 import type { ToolCtx } from "./chat-gates";
 import { FACT_CHARS, MEMORY_CARDS_PER_REPLY, proposeMemory, REMEMBER_REFUSAL } from "./memory";
-import { MEMORY_V2 } from "./v2-flags";
+import { v2On } from "./v2-switch";
 
 /**
  * The chat's `remember` tool (Thakeen v2 phase 1, C5, rules 4555-4559). Offered to every agent only while `MEMORY_V2` is
@@ -36,7 +36,7 @@ export const REMEMBER_TOOL: Anthropic.Tool = {
 };
 
 export async function runRemember(user: User, input: Record<string, unknown>, ctx: ToolCtx): Promise<string> {
-  if (!MEMORY_V2) return "Unknown tool.";
+  if (!v2On("MEMORY_V2")) return "Unknown tool.";
   if (ctx.via === "mcp" || ctx.by?.kind === "token" || user.actor?.kind === "token")
     return "Not done: memory is proposed only in the app's chat. Nothing was stored.";
   const proposed = ctx.memoryProposed ?? [];
