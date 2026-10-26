@@ -19,6 +19,8 @@ vi.mock("@/lib/v2-flags", () => ({
   PLANS: false,
   QUEUE: false,
   SELF_CHECK: false,
+  TEAM_CHAT: false,
+  RESEARCH: false,
 }));
 
 import { json, newMember, newUser, params, seedActiveBrand, signIn, signOut } from "./helpers/session";
@@ -281,7 +283,7 @@ describe("rule 4555: the tool refuses outside the app's chat and past the reply'
 
   it("is called from the chat's one tool call, inside the gateway", () => {
     expect(src("src/lib/chat.ts")).toMatch(
-      /gatedTool\(user, u\.name, ctx, \(\) => \(u\.name === REMEMBER_TOOL\.name \? runRemember\(/,
+      /gatedTool\(user, u\.name, ctx, \(\) => \(u\.name === TEAMMATE_TOOL\.name \? Promise\.resolve\(runTeammate\([^)]*\)\) : u\.name === REMEMBER_TOOL\.name \? runRemember\(/,
     );
   });
 });

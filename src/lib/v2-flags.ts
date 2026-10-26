@@ -51,3 +51,19 @@ export const QUEUE: boolean = false;
  * is saved, and a weak item is rewritten once with the judge's notes, inside the credits already charged. Release step: EXPAND.
  */
 export const SELF_CHECK: boolean = false;
+
+/**
+ * Team chat and one task owner (phase 3, C4 + C12, rules 4730-4759; src/lib/team-chat.ts). `false`: a turn is answered by
+ * the agent the page names, exactly as before. `true`: the person can write @Name to bring an agent into the thread; the
+ * thread's owner drafts, an agent named beside it only adds notes, and ownership moves only when a person presses the card.
+ * Release step: EXPAND.
+ */
+export const TEAM_CHAT: boolean = false;
+
+/**
+ * The research tool (phase 4, C10, rules 4790-4819; src/lib/research.ts, src/lib/research-tool.ts). `false`: no agent is
+ * offered `web_search` or `read_page`, the card route answers 404 and the judge's prompt is as before. `true`: Faris, Noor
+ * and Layan may ask to search the web; each search runs only after a person presses Approve on its card, and the pages
+ * they read come back fenced as untrusted data. Off for customers until the founder sets its price. Release step: EXPAND.
+ */
+export const RESEARCH: boolean = false;

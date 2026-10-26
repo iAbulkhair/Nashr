@@ -760,6 +760,14 @@ Thakeen v2 phase 1, C11. `src/lib/compaction.ts` folds the messages the chat's h
 
 Thakeen v2 phase 2, C3 and C7. Switched by `PLANS` and `QUEUE` in `src/lib/v2-flags.ts`, shipped off; until they are on the app still has no queue. Workspace keys (`wsKey`): `goalplan:{scope}:{id}` (json `Plan`, 90 days from its last write), `goalplans:{scope}` (list of ids, the 20 newest), `goalplanlock:{scope}:{id}` (lock), `goalplan-day:{scope}` (rate bucket of the day's proposals), `qjob:{scope}:{id}` (json `QueueJob`, 30 days), `jobq:{scope}` (list of waiting ids, at most 40), `qjobs:{scope}` (set of every job id, for the wipe). Platform key (`globalKey`): `qscopes` (set of scopes with waiting work). Claim prefix `planstep:{plan}:{n}` in `User.paidOnce`, swept by `src/lib/hold-sweep.ts`. Optional fields: `Task.plan`, `Task.selfCheck` (C6), `ChatMsg.goalPlan`. New routes: `GET`/`POST /api/plans/{id}` and the cron `GET /api/cron/queue` (`40 6 * * *` fallback, kicked by Reem's tick while `QUEUE` is on). Flows: `flows.md` sections 133-135.
 
+### 3.z.4 Team keys and fields (2026-10-26, branch `claude/thakeen-v2-p3-team`, rules 4720-4780)
+
+Thakeen v2 phase 3, C8, C4, C12, C13 and C9. Workspace key (`wsKey`): `routinerail:{scope}:{id}` (json `RoutineRail`: failures in a row, last failed outcome, `pausedAt`; deleted by the wipe). Optional fields: `Conversation.owner`, `Conversation.members`, `Task.owner`, chat message `teamCard` and `owner`, `Run.conv`, run log event `{t: "check", score, rewritten}`, `RoutineView.paused`. New routes: `PUT /api/conversations` (owner, 404 while `TEAM_CHAT` is off) and `GET /api/runs` (work view and context meter, 404 while `RUN_LOG` is off). Stream event `step` on `/api/chat`. Flows: `flows.md` sections 136-139.
+
+### 3.z.5 Research keys (2026-10-26, branch `claude/thakeen-v2-p4-research`, rules 4790-4808)
+
+Thakeen v2 phase 4, C10. Workspace keys (`wsKey`): `researchprop:{scope}:{id}` (json `ResearchProposal`: agent, thread, query, language, credits, `by`, state; 24 hours), `researchprops:{scope}` (set of ids, 24 hours), `researchok:{scope}:{conv}:{agent}` (the approved id, 1 hour, taken with GETDEL), `researchurls:{scope}:{conv}` (set of addresses a search returned, 1 hour). All deleted by the wipe (`researchKeys`). Account usage field `search_usd_micro` (`searchCostKey`). Optional chat message field `research: {id}`. New route `GET`/`POST /api/chat/research/[id]`, 404 while `RESEARCH` is off. Outside call: Brave Search at a fixed address. Flows: `flows.md` section 140.
+
 ## 4. Request lifecycles
 
 ### (a) Marketing page

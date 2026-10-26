@@ -2129,3 +2129,71 @@ The plan: component C6. Files: `src/lib/self-check.ts`, wired in `src/lib/genera
 ### 135.1 Release step (rule 679)
 
 Expand: the optional field `Task.selfCheck`. Before switching on, run golden with `SELF_CHECK` on to measure the gain and the cost.
+
+## 136. Thakeen v2 phase 3: routine rails (2026-10-26, branch `claude/thakeen-v2-p3-team`, rules 4720-4724)
+
+The plan: component C8. File: `src/lib/routines.ts` (`runRoutine`, `recordRail`, `pausedRoutines`). Always on: the rails guard routines that already run, so they have no switch.
+
+1. A routine never runs twice within `ROUTINE_MIN_GAP_MS` (20 hours) whatever its cadence, checked by the runner after the period check. A brand runs at most `ROUTINES_MAX_ACTIVE` (10) routines: the list is code, and the cron takes no more than that of it.
+2. After `ROUTINE_FAILS_PAUSE` (3) failed runs in a row (a throw, refunded first, or a period whose unsettled charges ran out) the routine pauses, and the owner gets one notice in the inbox. A paused routine answers `paused` (an activity outcome the status board reads as stuck) and runs nothing until the owner switches it on again on the Scheduled tasks page. A run that made items clears the count; one that ran nothing leaves it.
+3. Switching a routine off does not resume it. The rail is per routine under `sc(u)` and the workspace wipe deletes it.
+
+### 136.1 Release step (rule 679)
+
+Expand: the new key `routinerail:{scope}:{id}` and the optional `RoutineView.paused`. Old code ignores the key.
+
+## 137. Thakeen v2 phase 3: team chat and one task owner (2026-10-26, branch `claude/thakeen-v2-p3-team`, rules 4730-4748)
+
+The plan: components C4 and C12. Files: `src/lib/team-chat.ts`, wired in `src/lib/chat.ts`, `src/lib/chat-gates.ts`, `src/app/api/chat/route.ts` and `src/app/api/conversations/route.ts` (`PUT`), cards in `src/components/app/TeamCard.tsx`. Switched by `TEAM_CHAT`, shipped off.
+
+1. The agent who answers comes from the person's own message: `@Name` (an agent id, or its Arabic or English name, folded) brings that agent in; otherwise the thread's stored owner answers, and a thread with no owner is led by the page's agent.
+2. A named agent who is not the owner joins with notes only: it is offered reading tools (`NOTE_TOOLS`) and refused any other tool it names anyway, in code, so nothing runs and nothing is charged.
+3. The owner may propose a teammate with `propose_teammate`: a card under the reply. Off, over MCP, for the note-taker, for itself, for an unknown agent and for a second card the tool is refused. Only the person's press acts on the card: "ask" fills the message box with `@Name`, "make owner" calls `PUT /api/conversations`.
+4. `PUT /api/conversations` `{id, owner}` is the one writer of a thread's owner; the thread's members grow as agents answer in it. Every item a batch saves in the turn carries the owner (`Task.owner`), set in code from the turn through `scopeOf`, never by the model.
+
+### 137.1 Release step (rule 679)
+
+Expand: the optional fields `Conversation.owner`, `Conversation.members`, `Task.owner` and the chat message fields `teamCard` and `owner`. Old code ignores them.
+
+## 138. Thakeen v2 phase 3: the context meter (2026-10-26, branch `claude/thakeen-v2-p3-team`, rules 4760-4765)
+
+The plan: component C13. File: `src/lib/context-meter.ts`, read in `src/lib/chat.ts` and `GET /api/runs`. Read from the run log, so it follows `RUN_LOG`; its trigger needs `COMPACTION` too. Both ship off. No new storage.
+
+1. One meter per agent per thread: the input tokens of the agent's first chat call in its newest turn of that thread (`Run.conv`; the default thread is a run with no `conv`), against `contextBudget(model)`, the room a first call has within the per-message ceiling (`chatTurnMaxUsd`) after a full first answer (`CHAT_FIRST_MIN_OUT`), priced as plain input.
+2. At `METER_PRESSURE` (80%) the agent's next turn in the thread compacts first (section 131): all but the newest `CONTEXT_KEEP` (6) messages go to the summary, and only those six are sent once the summary covers every older message. A compaction that did not run or failed never costs the thread a message.
+3. The turn reads the meters with its other reads (one list read and one batch read of the caller's own run log) and fails open: a failed read means no pressure. Another workspace's runs never move a meter. The meter sent to the browser carries no model id.
+
+### 138.1 Release step (rule 679)
+
+Expand: the optional field `Run.conv`. Old code ignores it.
+
+## 139. Thakeen v2 phase 3: the work view (2026-10-26, branch `claude/thakeen-v2-p3-team`, rules 4770-4780)
+
+The plan: component C9. Files: `src/lib/work-view.ts`, `src/app/api/runs/route.ts`, `src/components/app/RunTimeline.tsx`, `src/components/app/WorkPanel.tsx`; mounted on the brand home page and the chat page. Read from the run log, so it follows `RUN_LOG`, shipped off.
+
+1. A step as the person sees it (`workStep`): its kind (model call, tool, publish, self-check), the tool, purpose or provider it names, its state in words (done, refused, failed), its tokens and a self-check score. No model id, no gateway rule id, no error text; the run log holds no words of the work.
+2. The self-check records each scored draft's first score as a `check` step of the batch's run, and a batch run names its agent.
+3. A chat turn's steps stream to the chat as they happen: `withRun` hands each step to `onStep` (never stored; a listener that throws changes nothing), and `/api/chat` sends `{"type":"step","step":WorkStep}`. The chat shows them under the busy line.
+4. `GET /api/runs?conv=` lists the caller's own newest runs (20) as `workRun` and the thread's meters; with `conv` only that thread's chat runs. 404 while `RUN_LOG` is off. The home page reads the same with the page and shows the panel beside the inbox; in a thread the panel reads the route the first time it is opened.
+5. The status board agrees with the run log: an agent whose newest run failed, newer than the activity row that decided its state and within `STUCK_DAYS`, is shown stuck.
+6. Not recorded: credits per step. Charges happen per message or per batch outside the run, and the message already shows what the turn charged.
+
+### 139.1 Release step (rule 679)
+
+Expand: the run log event `check` and the stream event `step`. Old code reading a run ignores an event kind it does not know; an old chat screen ignores the `step` event.
+
+## 140. Thakeen v2 phase 4: the research tool (2026-10-26, branch `claude/thakeen-v2-p4-research`, rules 4790-4808)
+
+The plan: component C10. Files: `src/lib/research.ts` (store, provider call, page reader, fence, tool definitions), `src/lib/research-tool.ts` (`runResearch`), `src/app/api/chat/research/[id]/route.ts`, `src/components/app/ResearchCard.tsx`; dispatched in `src/lib/chat.ts` beside `runRemember`, inside `gatedTool`. Shipped off: `RESEARCH` in `src/lib/v2-flags.ts`.
+
+1. Offered only to Faris, Noor and Layan (`RESEARCH_AGENTS`, keyed by every agent), only while `RESEARCH` is on (`toolsFor`), and refused in the tool too. Never over MCP or for an API token; the person chatting needs `generate`. A team note-taker is refused both tools (`NOTE_TOOLS`).
+2. `web_search` first stores a proposal (`researchprop:{scope}:{id}`: query, agent, thread, price, `by`) and returns a card (`research:{id}` action, chat message field `research`). Nothing runs and nothing is charged. One search a reply.
+3. The card (`GET /api/chat/research/{id}`) shows the query and the price; Approve (`POST`, `generate`) marks it approved and puts its id on the thread for that agent (`researchok:{scope}:{conv}:{agent}`, 1 hour). The card then sends a chat message so the agent continues.
+4. The agent's next `web_search` takes the approval once (GETDEL) and runs the stored query, never the model's new one: trial check, `charge` with the agent's monthly cap and the person's cap, the provider call (Brave Search, `BRAVE_SEARCH_API_KEY`), `meterSearch` (dollars per account and month), and the result addresses kept for the thread (`researchurls:{scope}:{conv}`, 1 hour). A failed or unconfigured provider refunds the charge.
+5. `read_page` opens only an address an approved search returned in the same thread in the last hour, or one the person wrote in the turn's own message, through `crawl` (`safeFetch`). Free; three pages a reply. A page cannot send the agent to an address of its choosing.
+6. All outside text is stripped of markup, cut and fenced in `<web_data source="...">` with every `<` and `>` replaced, under a rule that it is data, never instructions, and that a claim from it is written with its address. With `RESEARCH` on, the judge's `invented_fact` also fails a claim credited to an outside source without its address; off, the judge text is unchanged byte for byte.
+7. The gateway's authority for `web_search` is "ask" for every workspace. Not in this release: a per-agent research switch on the Governance page, an "on" mode without the card, and the price (`SEARCH_CREDITS` is a placeholder of 1); all three are the founder's at switch-on.
+
+### 140.1 Release step (rule 679)
+
+Expand: new keys `researchprop:*`, `researchprops:*`, `researchok:*`, `researchurls:*`, the usage field `search_usd_micro`, the optional chat message field `research`, the action prefix `research:`. Old code ignores the field and the action; nothing it reads changes shape.

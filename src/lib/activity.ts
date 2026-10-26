@@ -188,7 +188,7 @@ export async function listActivity(scope: string, q: ActivityQuery = {}): Promis
 }
 
 /** Outcomes of a scheduled run worth a row every time, and the two the daily cron would otherwise repeat every day. */
-const SKIPPED = new Set(["cap_reached", "agent_cap", "no_credits", "trial_over", "fair_use", "attempts_exhausted", "error"]);
+const SKIPPED = new Set(["cap_reached", "agent_cap", "no_credits", "trial_over", "fair_use", "attempts_exhausted", "error", "paused"]);
 const NOTHING_NEW = new Set(["idle", "no_data"]);
 export type ScheduledRun = { id: string; agent: AgentId; type: TaskType; via: "weekly" | "routine"; by: By; period: string; ttlS: number };
 

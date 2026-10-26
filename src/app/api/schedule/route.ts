@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { currentUser, sc } from "@/lib/auth";
 import { getSchedule, runDaily, runWeekly, saveSchedule, type Schedule } from "@/lib/schedule";
-import { isRoutineId, runRoutine, type RoutineId } from "@/lib/routines";
+import { isRoutineId, resumeRoutines, runRoutine, type RoutineId } from "@/lib/routines";
 import { byOf } from "@/lib/actor";
 import { deadlineFor } from "@/lib/media/keys";
 import { forbid } from "@/lib/roles";
@@ -32,7 +32,11 @@ export async function PUT(req: Request) {
     for (const [id, on] of Object.entries(b.routines)) if (isRoutineId(id) && typeof on === "boolean") routines[id] = on;
     if (Object.keys(routines).length) patch.routines = routines;
   }
-  return NextResponse.json({ ok: true, schedule: await saveSchedule(sc(u), patch) });
+  const schedule = await saveSchedule(sc(u), patch);
+  // Switching a routine on is the owner's resume of one the rails paused (rule 4723): its failure count goes with it.
+  const resumed = Object.entries(patch.routines ?? {}).flatMap(([id, on]) => (on && isRoutineId(id) ? [id] : []));
+  if (resumed.length) await resumeRoutines(sc(u), resumed);
+  return NextResponse.json({ ok: true, schedule });
 }
 /**
  * POST {run: "weekly"|"daily"} → run now; {run: "routine", id} → run a routine the cron held (rule 2479). Both paid runs are

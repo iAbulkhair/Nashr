@@ -5,6 +5,7 @@ import { asData, groundingBlocks, type Grounding } from "./json";
 import { parseItems, stripDashes, systemPrompt, taskSpec } from "./noor";
 import { capDiscounts } from "./cart-recovery";
 import { scoreItems, type Quality } from "./judge";
+import { runEvent } from "./runs";
 import { pmap } from "./parallel";
 import { log } from "./log";
 import { SELF_CHECK } from "./v2-flags";
@@ -138,7 +139,7 @@ export async function selfCheck(tasks: Task[], c: SelfCheckCtx, now = Date.now()
           3,
         )
       : [];
-    return tasks.map((t, i): Task => {
+    const out = tasks.map((t, i): Task => {
       const q = scores[i];
       if (!q) return { ...t, selfCheck: { rewritten: false, skipped: "judge" } };
       const first = { first: q.score, ...(q.autofail ? { autofail: q.autofail } : {}) };
@@ -155,6 +156,11 @@ export async function selfCheck(tasks: Task[], c: SelfCheckCtx, now = Date.now()
         };
       return { ...t, ...held, title: r.title, body: r.body, selfCheck: { ...first, rewritten: true } };
     });
+    // The work view (C9, rule 4772): each scored draft's first score, a number only, as a step of the batch's run.
+    for (const t of out)
+      if (typeof t.selfCheck?.first === "number")
+        runEvent({ t: "check", score: t.selfCheck.first, rewritten: t.selfCheck.rewritten });
+    return out;
   } catch (e) {
     log.error("self-check failed", { error: e, type: c.type });
     return mark({ rewritten: false, skipped: "error" });

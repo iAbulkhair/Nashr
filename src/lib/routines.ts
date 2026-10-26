@@ -1,5 +1,5 @@
 import { db } from "./db";
-import { trialOver, type User } from "./auth";
+import { sc, trialOver, type User } from "./auth";
 import { monthKey } from "./credits";
 import { TASK_COUNT, getBrand, isAutonomous, listLite, type Brand, type TaskLite, type TaskType } from "./brand";
 import { BATCH_RUN_MIN_MS, generateBatch } from "./generate-batch";
@@ -16,7 +16,8 @@ import { pmap } from "./parallel";
 import { appDict } from "./app-i18n";
 import { actSkipKey, recordRun } from "./activity";
 import { systemBy } from "./actor";
-import { globalKey, runClaim, scopeParam, wsKey } from "./keys";
+import { globalKey, runClaim, scopeParam, wsKey, type Scope } from "./keys";
+import { log } from "./log";
 import { acct } from "./account-id";
 import { beginRun, clearRun, deliverRun, readRun, readRuns, refundedRun } from "./run-receipt";
 import { tellHeld } from "./run-held";
@@ -118,7 +119,7 @@ export const isRoutineId = (v: unknown): v is RoutineId => typeof v === "string"
 export const routineOn = (s: Pick<Schedule, "routines">, id: RoutineId): boolean => s.routines?.[id] !== false;
 
 /** What the Scheduled tasks page shows per routine; the page renders it on the server. */
-export type RoutineView = { id: RoutineId; agent: AgentId; type: TaskType; cadence: Cadence; last?: string; /** this period's run was held for the owner (rule 2479) */ held?: boolean };
+export type RoutineView = { id: RoutineId; agent: AgentId; type: TaskType; cadence: Cadence; last?: string; /** this period's run was held for the owner (rule 2479) */ held?: boolean; /** the rails paused it after failures in a row (rule 4722) */ paused?: boolean };
 
 const lastKey = (scope: string, id: RoutineId) => `routinelast:${scope}:${id}`;
 const lockKey = (scope: string, id: RoutineId) => `routinelock:${scope}:${id}`;
@@ -141,6 +142,71 @@ const runFingerprint = (scope: string, id: RoutineId, period: string) => `routin
 const periodDays = (cadence: Cadence) => (cadence === "weekly" ? 8 : 35);
 /** Unsettled charges a routine may leave in one period before it waits for the next. */
 const MAX_UNSETTLED = 2;
+
+/**
+ * The routine rails (v2 C8, rules 4720-4729, docs/system/tests/4720-v2-team.md). On once shipped, no switch: they only
+ * stop work, never start any.
+ * - A routine never runs twice within `ROUTINE_MIN_GAP_MS`, whatever its cadence: at most once a day. Twenty hours, not
+ *   twenty-four, because the daily cron's start drifts by minutes and a weekly run on Saturday must not push Sunday's.
+ * - A brand runs at most `ROUTINES_MAX_ACTIVE` routines: the list is code, and the cron takes no more than that of it.
+ * - After `ROUTINE_FAILS_PAUSE` failed runs in a row (`RAIL_FAILED`: a throw, which was refunded first, or a period whose
+ *   unsettled charges ran out) the routine pauses and the owner gets one notice. A paused routine answers "paused" and
+ *   charges nothing until the owner switches it on again (PUT /api/schedule), which deletes the rail. A run that made
+ *   items deletes it too; an outcome that ran nothing ("idle", "no_data", a "retry:" one) leaves the count as it is.
+ */
+export const ROUTINE_MIN_GAP_MS = 20 * 3600e3;
+export const ROUTINES_MAX_ACTIVE = 10;
+export const ROUTINE_FAILS_PAUSE = 3;
+export const RAIL_FAILED: readonly string[] = ["error", "attempts_exhausted"];
+export type RoutineRail = { fails: number; /** the outcome of the last failed run */ last?: string; pausedAt?: string };
+const railKey = (s: Scope, id: RoutineId) => wsKey.routineRail(s, id);
+
+/** The routines of one brand the rails paused, in one round (the Scheduled tasks page). */
+export async function routinesPaused(s: Scope): Promise<Partial<Record<RoutineId, true>>> {
+  const rails = await Promise.all(ROUTINE_IDS.map((id) => db.get<RoutineRail>(railKey(s, id))));
+  return Object.fromEntries(ROUTINE_IDS.flatMap((id, i) => (rails[i]?.pausedAt ? [[id, true as const]] : [])));
+}
+
+/** The owner switched these routines on: their failure counts and pauses go, in one round. */
+export async function resumeRoutines(s: Scope, ids: RoutineId[]): Promise<void> {
+  await Promise.all(ids.map((id) => db.del(railKey(s, id))));
+}
+
+/**
+ * After a run, under the routine's lock: a run that made items clears the rail, a failed one counts, and the count's
+ * `ROUTINE_FAILS_PAUSE`th pauses the routine and tells the owner once. Never throws: it runs in `runRoutine`'s `finally`,
+ * where a throw would hide the run's own error.
+ */
+async function railAfter(user: User, r: Routine, rail: RoutineRail | null, outcome: string): Promise<void> {
+  try {
+    const scope = sc(user);
+    const key = railKey(scope, r.id);
+    if (outcome.startsWith("ok:")) {
+      if (rail) await db.del(key);
+      return;
+    }
+    if (!RAIL_FAILED.includes(outcome)) return;
+    const fails = (rail?.fails ?? 0) + 1;
+    const pause = fails >= ROUTINE_FAILS_PAUSE;
+    await db.set(key, { fails, last: outcome, ...(pause ? { pausedAt: new Date().toISOString() } : {}) } satisfies RoutineRail);
+    if (!pause || rail?.pausedAt) return;
+    const ul = user.lang === "en" ? "en" : "ar";
+    const name = agentById(r.agent).name[ul];
+    const label = appDict[ul].generate.types[r.type].t;
+    await notifyItem(acct(user), ul, {
+      kind: "info",
+      agent: r.agent,
+      title: ul === "ar" ? `أوقفنا «${label}» من ${name} مؤقتاً` : `We paused ${name}'s ${label}`,
+      body: ul === "ar"
+        ? `فشل التشغيل ${ROUTINE_FAILS_PAUSE} مرات متتالية، فأوقفناه حتى لا يتكرر. فعّله من جديد من المهام المجدولة حين تريد.`
+        : `It failed ${ROUTINE_FAILS_PAUSE} times in a row, so we paused it to stop the retries. Switch it back on in Scheduled tasks when you want it.`,
+      href: "tasks",
+      brandScope: scope,
+    });
+  } catch (err) {
+    log.error("routine rail write failed", err);
+  }
+}
 
 /** The period a run belongs to: the Sunday that starts the UTC week, or the UTC month. */
 export const periodOf = (cadence: Cadence, now: Date = new Date()) => (cadence === "weekly" ? weekStartUtc(now) : monthKey(now));
@@ -185,10 +251,11 @@ export async function dueRoutines(users: User[], now: Date = new Date()): Promis
   const groups = await pmap(users, async (u) => {
     const scope = u.scope ?? acct(u);
     const sched = await getSchedule(scope);
-    const on = ROUTINES.filter((r) => routineOn(sched, r.id));
+    // At most ROUTINES_MAX_ACTIVE of a brand's routines (rule 4721); a paused one waits for the owner (rule 4722).
+    const on = ROUTINES.filter((r) => routineOn(sched, r.id)).slice(0, ROUTINES_MAX_ACTIVE);
     if (!on.length) return [];
-    const last = await Promise.all(on.map((r) => db.get<string>(lastKey(scope, r.id))));
-    return on.filter((r, i) => !ranThisPeriod(r.cadence, last[i], now)).map((r) => ({ user: u, id: r.id }));
+    const [last, rails] = await Promise.all([Promise.all(on.map((r) => db.get<string>(lastKey(scope, r.id)))), Promise.all(on.map((r) => db.get<RoutineRail>(railKey(sc(u), r.id))))]);
+    return on.filter((r, i) => !ranThisPeriod(r.cadence, last[i], now) && !rails[i]?.pausedAt).map((r) => ({ user: u, id: r.id }));
   });
   return groups.flat();
 }
@@ -212,10 +279,13 @@ export async function runRoutine(user: User, id: RoutineId, deadline?: number, o
   const r = ROUTINES.find((x) => x.id === id);
   if (!r) return "unknown_routine";
   const scope = user.scope ?? acct(user);
-  const [brand, sched, last] = await Promise.all([getBrand(scope), getSchedule(scope), db.get<string>(lastKey(scope, id))]);
+  const [brand, sched, last, rail] = await Promise.all([getBrand(scope), getSchedule(scope), db.get<string>(lastKey(scope, id)), db.get<RoutineRail>(railKey(sc(user), id))]);
   if (!brand) return "no_brand";
   if (!routineOn(sched, id)) return "off";
+  // The rails (rules 4720, 4722): paused after failures until the owner switches it on, and never twice in a day.
+  if (rail?.pausedAt) return "paused";
   if (ranThisPeriod(r.cadence, last)) return "already_this_period";
+  if (last && Date.now() - Date.parse(last) < ROUTINE_MIN_GAP_MS) return "too_soon";
   // Before any charge. Without a key the output would be placeholders, which must never be charged for.
   const state = modelState();
   if (state === "paused") return "retry:paused";
@@ -229,6 +299,7 @@ export async function runRoutine(user: User, id: RoutineId, deadline?: number, o
     outcome = await routineFor(user, scope, brand, r, deadline, opts.resume === true);
     return outcome;
   } finally {
+    await railAfter(user, r, rail, outcome);
     // The hold goes only after the batch is saved: until then the brand's other routines count it, and after it the items.
     await Promise.all([
       db.del(holdKey(scope, id)),

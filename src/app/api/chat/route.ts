@@ -15,6 +15,9 @@ import { noteRejectedPick } from "@/lib/usage";
 import { agentScopePreflight, agentScopeSlowText } from "@/lib/agent-scope";
 import { customerModelError } from "@/lib/provider-fault-note";
 import { acct } from "@/lib/account-id";
+import { teamRoute } from "@/lib/team-chat";
+import { TEAM_CHAT } from "@/lib/v2-flags";
+import { workStep } from "@/lib/work-view";
 
 export const maxDuration = 300;
 
@@ -31,6 +34,7 @@ export async function GET(req: Request) {
 /**
  * POST {text, conv?, agent?, stream?} → JSON reply, or with stream=true a text/event-stream:
  *   data: {"type":"status","text":"…"}  (one per working step)
+ *   data: {"type":"step","step":WorkStep}  (one per run-log step while RUN_LOG is on: the work view, v2 C9, rule 4774)
  *   data: {"type":"message","message":…,"credits":n,"limit":"credits"|"trial"|"agent_cap"|null,"chat":ChatStatus,"charged":n}
  * Refused before anything is saved, counted or streamed, always as JSON: 403 `agent_not_included` (an agent the plan does not
  * include, rule 782), 402 `trial_over` (an ended trial, rule 330: limit
@@ -53,12 +57,12 @@ export async function POST(req: Request) {
   const b = (await req.json().catch(() => ({}))) as { text?: string; conv?: string; agent?: string; stream?: boolean };
   const text = (b.text ?? "").trim().slice(0, 4000);
   if (!text) return NextResponse.json({ ok: false, error: "empty" }, { status: 400 });
-  const agent = isAgentId(b.agent) ? b.agent : "noor";
+  const page = isAgentId(b.agent) ? b.agent : "noor";
   // An agent the plan does not include (rule 782): refused before the trial gate and every count. Every plan includes all
   // eight today, so nothing reaches this yet.
-  if (!entitlements(u).agents.includes(agent)) return NextResponse.json({ ok: false, error: "agent_not_included" }, { status: 403 });
+  if (!entitlements(u).agents.includes(page)) return NextResponse.json({ ok: false, error: "agent_not_included" }, { status: 403 });
   const lang = req.headers.get("x-lang") === "en" ? "en" : u.lang;
-  const refused = (kind: ChatRefused, cap?: number) => ({ role: "assistant" as const, content: chatRefusedText(kind, lang, { cap }), at: new Date().toISOString(), agent });
+  const refused = (kind: ChatRefused, cap?: number) => ({ role: "assistant" as const, content: chatRefusedText(kind, lang, { cap }), at: new Date().toISOString(), agent: page });
   // An ended trial that never subscribed gets no model turn (rule 330): checked first, so it uses up neither a ceiling
   // nor a message of the trial's allowance.
   if (trialOver(u)) return NextResponse.json({ ok: false, error: "trial_over", limit: "trial", message: refused("trial"), credits: u.credits }, { status: 402 });
@@ -73,6 +77,12 @@ export async function POST(req: Request) {
   // count or save (rule 2933): a turn would otherwise write `chat:{scope}:{conv}` outside the `convs:` index, where the
   // account wipe never finds it. Ids come only from POST /api/conversations; "default" is the legacy thread, with no record.
   if (b.conv && b.conv !== "default" && !record) return NextResponse.json({ ok: false, error: "conversation_gone" }, { status: 404 });
+  // Team chat (v2 C4 + C12, rule 4731): the agent who answers is the thread's owner, or the one the person named with @ in
+  // this message, checked against the plan as the page's agent is. Off: the page's agent, exactly as before.
+  const team = teamRoute(text, page, record);
+  const agent = team.agent;
+  if (!entitlements(u).agents.includes(agent)) return NextResponse.json({ ok: false, error: "agent_not_included" }, { status: 403 });
+  const teamOpt = TEAM_CHAT ? { team } : {};
   if (pre.slow) return retryLater({ ok: false, error: "slow_down", retry: pre.slow, message: { role: "assistant", content: agentScopeSlowText(lang), at: new Date().toISOString(), agent } }, WINDOW[pre.slow]);
   if (slow) return retryLater({ ok: false, error: "slow_down", retry: slow, message: refused(slow, chatCaps(u)[slow]) }, WINDOW[slow]);
   // The turn's one model, resolved once: the conversation's pick when route() accepts it, else automatic, and then the
@@ -86,9 +96,9 @@ export async function POST(req: Request) {
 
   if (!b.stream) {
     try {
-      const { message: m, chat: status, charged } = await runChatTurn(u, gate, () => chat(u, text, b.conv, agent, { lang, deadline, model: gate.model, agentScope: pre.modes, modelRejected }));
+      const { message: m, chat: status, charged } = await runChatTurn(u, gate, () => chat(u, text, b.conv, agent, { lang, deadline, model: gate.model, agentScope: pre.modes, modelRejected, ...teamOpt }));
       await track(acct(u), "chat");
-      if (b.conv && b.conv !== "default") await touchConversation(sc(u), b.conv, text);
+      if (b.conv && b.conv !== "default") await touchConversation(sc(u), b.conv, text, TEAM_CHAT ? agent : undefined);
       return NextResponse.json({ ok: true, message: m, credits: u.credits, limit: m.limit ?? null, chat: status, charged });
     } catch (e) {
       console.error("chat failed", e);
@@ -105,9 +115,9 @@ export async function POST(req: Request) {
       // Mobile carriers and proxies drop connections that stay silent for 30-60 s, and a batch takes longer than that.
       const beat = setInterval(() => { try { controller.enqueue(enc.encode(": ping\n\n")); } catch { /* closed */ } }, 10000);
       try {
-        const { message: m, chat: status, charged } = await runChatTurn(u, gate, () => chat(u, text, b.conv, agent, { lang, deadline, model: gate.model, agentScope: pre.modes, modelRejected, onStatus: (s) => send({ type: "status", text: s }) }));
+        const { message: m, chat: status, charged } = await runChatTurn(u, gate, () => chat(u, text, b.conv, agent, { lang, deadline, model: gate.model, agentScope: pre.modes, modelRejected, ...teamOpt, onStatus: (s) => send({ type: "status", text: s }), onStep: (e) => send({ type: "step", step: workStep(e) }) }));
         await track(acct(u), "chat");
-        if (b.conv && b.conv !== "default") await touchConversation(sc(u), b.conv, text);
+        if (b.conv && b.conv !== "default") await touchConversation(sc(u), b.conv, text, TEAM_CHAT ? agent : undefined);
         send({ type: "message", message: m, credits: u.credits, limit: m.limit ?? null, chat: status, charged });
       } catch (e) {
         console.error("chat failed", e);

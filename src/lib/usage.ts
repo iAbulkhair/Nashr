@@ -78,7 +78,7 @@ const dimKey = (k: string, dim: UsageDim, p: "calls" | "usd_micro") => `${k}:by:
 export function usageMonthKeys(email: string, month: string): string[] {
   const k = accountKey.usage(email, month);
   return [
-    ...["in", "out", "calls", "usd_micro", "cache_read", "cache_write", "chat_msgs", "chat_over", "chat_cred", "media_usd_micro"].map((p) => `${k}:${p}`),
+    ...["in", "out", "calls", "usd_micro", "cache_read", "cache_write", "chat_msgs", "chat_over", "chat_cred", "media_usd_micro", "search_usd_micro"].map((p) => `${k}:${p}`),
     ...KINDS.flatMap((kind) => [`${k}:kind:${kind}`, `${k}:kind:${kind}:in`, `${k}:kind:${kind}:out`, `${k}:kind:${kind}:usd_micro`]),
     ...AGENT_IDS.flatMap((id) => [`${k}:agent:${id}:calls`, `${k}:agent:${id}:usd_micro`]),
     ...USAGE_DIMS.flatMap((d) => [dimKey(k, d, "calls"), dimKey(k, d, "usd_micro")]),
@@ -292,6 +292,17 @@ export async function meterRender(email: string, usd: number | undefined): Promi
   const micro = Math.round(usd * 1e6);
   // The render's cost also counts in the founder's ranking (rule 2905), so a media-heavy account ranks by what it costs.
   await Promise.all([db.incrby(mediaCostKey(email), micro), db.zincrby(usageRankKey(monthKey()), micro, email)]);
+}
+/**
+ * What the account's web searches cost us this month, in micro-dollars (v2 C10, rule 4799): `SEARCH_USD` for every search
+ * that ran, added by the research tool. Under the `usage:{email}:{YYYY-MM}` prefix, listed in `usageMonthKeys`, and counted
+ * in the founder's ranking like a render.
+ */
+export const searchCostKey = (email: string, month = monthKey()) => accountKey.usage(email, month) + ":search_usd_micro";
+export async function meterSearch(email: string, usd: number): Promise<void> {
+  if (!email || !Number.isFinite(usd) || usd <= 0) return;
+  const micro = Math.round(usd * 1e6);
+  await Promise.all([db.incrby(searchCostKey(email), micro), db.zincrby(usageRankKey(monthKey()), micro, email)]);
 }
 /** The trial's messages are granted once for the whole trial, not per month. Deleted with the account (`wipeAccount`). */
 export const chatTrialKey = (email: string) => accountKey.chatTrial(email);

@@ -35,14 +35,18 @@ import { toolsFor } from "./chat-tools";
 import { getGov } from "./governance";
 import { policyNote } from "./tool-authority";
 import { withRun } from "./runs";
+import { coveredTail, keptFor, readMeters, runConv, underPressure, type ContextMeter } from "./context-meter";
 import { gatedTool } from "./gateway";
 import type { ToolCtx } from "./chat-gates";
 import { runTool } from "./chat-run-tool";
 import type { MemoryProposal } from "./memory";
 import { REMEMBER_TOOL, runRemember } from "./memory-tool";
 import { PLAN_TOOL, runMakePlan } from "./plan-tool";
+import { isResearchTool } from "./research";
+import { runResearch } from "./research-tool";
+import { TEAMMATE_TOOL, noteRefusal, ownerOf, runTeammate, teamAllows, teamNote, teamTools } from "./team-chat";
 import { recall, recallBlock } from "./recall";
-import { COMPACTION, MEMORY_V2 } from "./v2-flags";
+import { COMPACTION, MEMORY_V2, RUN_LOG } from "./v2-flags";
 import { compactThread, droppedTurns, proposeSummaryFacts, readSummary, summaryBlock, type ThreadSummary } from "./compaction";
 
 export { history, push } from "./chat-history";
@@ -58,7 +62,7 @@ export { runTool } from "./chat-run-tool";
 
 export async function chat(user: User, text: string, conv?: string, agentId: AgentId = "noor", opts: ChatOpts = {}): Promise<ChatTurn> {
   // One run of the run log (rules 4510-4519, src/lib/runs.ts): off in this release, a plain call then.
-  return withRun({ scope: sc(user), kind: "chat", agent: agentId, via: opts.via ?? "app" }, () => chatTurn(user, text, conv, agentId, opts));
+  return withRun({ scope: sc(user), kind: "chat", agent: agentId, via: opts.via ?? "app", ...runConv(conv), onStep: opts.onStep }, () => chatTurn(user, text, conv, agentId, opts));
 }
 
 async function chatTurn(user: User, text: string, conv: string | undefined, agentId: AgentId, opts: ChatOpts): Promise<ChatTurn> {
@@ -81,6 +85,7 @@ async function chatTurn(user: User, text: string, conv: string | undefined, agen
   const awayProposed: AwayProposal[] = [];
   const instructionProposed: InstructionProposal[] = [];
   const memoryProposed: MemoryProposal[] = [];
+  const research = { searches: 0, pages: 0 };
   const spendProposed: SpendProposal[] = [];
   const fileProposed: FileProposal[] = [];
   const via = opts.via ?? "app";
@@ -98,7 +103,7 @@ async function chatTurn(user: User, text: string, conv: string | undefined, agen
   // Independent reads, fetched together: one after another they cost 1-2 s of silence before every model call. The last
   // two are for the agent-scope input gate below: the modes (the route's copy when it passed one) and the names of the
   // account's other brands. A store error on the brand names must not cost the owner the turn: the gate reads none.
-  const [brand, prefs, memory, files, conns, thread, feedback, notes, by, workDays, layers, scopeModes, otherBrands, gov, recalled, storedSummary] = await Promise.all([getBrand(email), listPreferencesFor(email, agentId), memoryBlock(email), listFileNames(email), listConnections(email), history(email, conv), feedbackFor(email, agentId, { chat: true }), handoffNotesFor(email, agentId), opts.by ?? byOf(user), db.get<unknown>(SEC_KEYS.cal(email)), loadLayers(sc(user), entitlements(user).instructions, "active", [agentId], "stub"), opts.agentScope ?? readAgentScopeModes(), otherBrandNames(user).catch((e): string[] => {
+  const [brand, prefs, memory, files, conns, thread, feedback, notes, by, workDays, layers, scopeModes, otherBrands, gov, recalled, storedSummary, meters] = await Promise.all([getBrand(email), listPreferencesFor(email, agentId), memoryBlock(email), listFileNames(email), listConnections(email), history(email, conv), feedbackFor(email, agentId, { chat: true }), handoffNotesFor(email, agentId), opts.by ?? byOf(user), db.get<unknown>(SEC_KEYS.cal(email)), loadLayers(sc(user), entitlements(user).instructions, "active", [agentId], "stub"), opts.agentScope ?? readAgentScopeModes(), otherBrandNames(user).catch((e): string[] => {
     log.error("agent scope brand names failed", e);
     return [];
   }), getGov(email), MEMORY_V2 ? recall(sc(user), text, { agent: agentId, conv }).catch((e): never[] => {
@@ -107,7 +112,10 @@ async function chatTurn(user: User, text: string, conv: string | undefined, agen
   }) : [], COMPACTION ? readSummary(sc(user), conv).catch((e): null => {
     log.error("thread summary read failed", e);
     return null;
-  }) : (null as ThreadSummary | null)]);
+  }) : (null as ThreadSummary | null), COMPACTION && RUN_LOG ? readMeters(sc(user), conv).catch((e): ContextMeter[] => {
+    log.error("context meter read failed", e);
+    return [];
+  }) : ([] as ContextMeter[])]);
   // The agent-scope input gate (rule 794; spec docs/superpowers/specs/2026-10-08-entitlements-agent-scope-design.md 4.2),
   // after the paused return and the brand reads and before the first model call. The owner's message is already saved
   // above, so an enforced refusal saves only its reply: the thread reads the same as "message, then refusal".
@@ -135,20 +143,27 @@ async function chatTurn(user: User, text: string, conv: string | undefined, agen
     // The owner's tool authority, in the workspace block (the brand file's block): one line naming what is off or ask-first.
     const authority = policyNote(gov.toolPolicy, agentId);
     if (authority) sys[1] = { ...sys[1], text: sys[1].text + authority };
+    // Team chat (v2 C4 + C12, rule 4736): the turn's place in the thread, a guide only; the tool gates below hold.
+    const teamLine = teamNote(opts.team, lang);
+    if (teamLine) sys[1] = { ...sys[1], text: sys[1].text + teamLine };
     // Scoped memory (v2 phase 1, rule 4562): the facts recalled for this message, in the uncached block, fenced as data.
     const remembered = recallBlock(recalled);
     if (remembered) sys[2] = { ...sys[2], text: sys[2].text + remembered };
     // The owner's tool authority (rule 2431): a capability switched off for this agent is not offered in this turn.
-    const tools = toolsFor(agentId, gov.toolPolicy);
+    const tools = teamTools(toolsFor(agentId, gov.toolPolicy), opts.team);
     // The per-message ceiling (CHAT_TURN_MAX_USD), checked in code before every call (src/lib/chat-budget.ts). The first
     // call: the thread, already cut by the history guard, is shortened from its oldest end until the call has room for a
     // full answer. Every later call: estimated from the previous call's metered input (its cached prefix as a cache read)
     // and output, plus the tool results added since.
-    const trimmed = trimHistory(thread);
+    let trimmed = trimHistory(thread);
     // Thread compaction (v2 phase 1, C11, rules 4580-4589): the messages the guard dropped are folded into the thread's
     // summary, read as data in the uncached block before the first call is fitted. Off, nothing is read or written.
+    // The context meter (v2 phase 3, C13, rules 4760-4769): with this agent's last turn here at 80% of its room, older
+    // messages the guard kept are folded too, and only the newest are sent once the summary covers the rest.
     if (COMPACTION) {
-      const c = await compactThread(sc(user), conv, storedSummary, droppedTurns(thread, trimmed.length), { agent: agentId, deadline, lang, onStatus: opts.onStatus });
+      const kept = keptFor(underPressure(meters, agentId), trimmed.length);
+      const c = await compactThread(sc(user), conv, storedSummary, droppedTurns(thread, kept), { agent: agentId, deadline, lang, onStatus: opts.onStatus });
+      trimmed = coveredTail(trimmed, thread, kept, c.summary);
       const block = summaryBlock(c.summary);
       if (block) sys[2] = { ...sys[2], text: sys[2].text + block };
       if (MEMORY_V2) await proposeSummaryFacts(sc(user), c.facts, { agent: agentId, conv, via }, by, memoryProposed);
@@ -212,7 +227,7 @@ async function chatTurn(user: User, text: string, conv: string | undefined, agen
             shown = out.block ? out.reply : said;
           } else late.push(check);
         }
-        const m: ChatTurn = { role: "assistant", content: notice + (shown || "…"), at: new Date().toISOString(), ...turnParts(actions, made, proposed, awayProposed, instructionProposed, spendProposed, fileProposed, memoryProposed), agent: agentId };
+        const m: ChatTurn = { role: "assistant", content: notice + (shown || "…"), at: new Date().toISOString(), ...turnParts(actions, made, proposed, awayProposed, instructionProposed, spendProposed, fileProposed, memoryProposed), agent: agentId, ...ownerOf(opts.team) };
         await deliver(email, m, conv);
         return withLimit(m, actions, spent);
       }
@@ -224,8 +239,9 @@ async function chatTurn(user: User, text: string, conv: string | undefined, agen
         try {
           // Through the action gateway (rules 4500-4509, src/lib/gateway.ts): off in this release; in log mode it records the
           // call and its verdict and never changes the answer. Every gate in runTool still decides.
-          const ctx: ToolCtx = { lang, agent: agentId, by, via, proposed, awayProposed, instructionProposed, memoryProposed, spendProposed, fileProposed, ownerMsg: text, conv, modes: scopeModes };
-          out = await gatedTool(user, u.name, ctx, () => (u.name === REMEMBER_TOOL.name ? runRemember(user, u.input as Record<string, unknown>, ctx) : u.name === PLAN_TOOL.name ? runMakePlan(user, u.input as Record<string, unknown>, ctx, actions) : runTool(user, u.name, u.input as Record<string, unknown>, actions, made, deadline, ctx)));
+          const ctx: ToolCtx = { lang, agent: agentId, by, via, proposed, awayProposed, instructionProposed, memoryProposed, spendProposed, fileProposed, research, ownerMsg: text, conv, modes: scopeModes, ...(opts.team ? { team: opts.team } : {}) };
+          // A note-taker in a team thread (rule 4735) is refused any tool it was not offered, whatever the model names.
+          out = !teamAllows(opts.team, u.name) ? noteRefusal(opts.team!.owner) : await gatedTool(user, u.name, ctx, () => (u.name === TEAMMATE_TOOL.name ? Promise.resolve(runTeammate(user, u.input as Record<string, unknown>, ctx, actions)) : u.name === REMEMBER_TOOL.name ? runRemember(user, u.input as Record<string, unknown>, ctx) : u.name === PLAN_TOOL.name ? runMakePlan(user, u.input as Record<string, unknown>, ctx, actions) : isResearchTool(u.name) ? runResearch(user, u.name, u.input as Record<string, unknown>, ctx, actions) : runTool(user, u.name, u.input as Record<string, unknown>, actions, made, deadline, ctx)));
         } catch (e) {
           isError = true;
           out = e instanceof Error ? e.message : "tool_failed";
@@ -250,7 +266,7 @@ async function chatTurn(user: User, text: string, conv: string | undefined, agen
       } else late.push(check);
     }
     const content = outOfTime ? OUT_OF_TIME_REPLY[lang] : ended === "refused" ? REFUSED_REPLY[lang] : ended === "large" ? LARGE_REPLY[lang] : ended === "cut" ? cut : ended === "capped" ? CAPPED_REPLY[lang] : DONE_REPLY[lang];
-    const m: ChatTurn = { role: "assistant", content: notice + content, at: new Date().toISOString(), ...turnParts(actions, made, proposed, awayProposed, instructionProposed, spendProposed, fileProposed, memoryProposed), ...(spent > 0 || outOfTime ? { agent: agentId } : {}), ...(large && ended !== "large" && !outOfTime ? { large: true as const } : {}) };
+    const m: ChatTurn = { role: "assistant", content: notice + content, at: new Date().toISOString(), ...turnParts(actions, made, proposed, awayProposed, instructionProposed, spendProposed, fileProposed, memoryProposed), ...(spent > 0 || outOfTime ? { agent: agentId } : {}), ...ownerOf(opts.team), ...(large && ended !== "large" && !outOfTime ? { large: true as const } : {}) };
     await deliver(email, m, conv);
     return withLimit(m, actions, spent);
   } finally {

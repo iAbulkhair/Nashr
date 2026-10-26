@@ -58,6 +58,8 @@ export const BRAND_API: readonly string[] = [
   "/api/chat",
   "/api/chat/feedback",
   "/api/chat/spend/[id]",
+  // Web search cards (v2 C10, rule 4801): `researchprop:{sc(u)}:{id}`, one brand's record like a plan's.
+  "/api/chat/research/[id]",
   "/api/conversations",
   "/api/files",
   "/api/files/proposals/[id]",

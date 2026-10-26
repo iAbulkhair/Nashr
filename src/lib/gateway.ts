@@ -9,6 +9,7 @@ import { getGov } from "./governance";
 import { wsKey, type Scope } from "./keys";
 import { log } from "./log";
 import { can, type Action } from "./roles";
+import { WEB_SEARCH_TOOL } from "./research";
 import { currentRunId, runEvent } from "./runs";
 import { authorityOf, capOfTool, type AuthorityMode } from "./tool-authority";
 import { GATEWAY_MODE, type GatewayMode } from "./v2-flags";
@@ -191,8 +192,11 @@ export async function gatedTool(
             initiator,
             offered: !ctx.agent || toolsFor(ctx.agent).some((t) => t.name === tool),
             roleOk: !needs || can(user, needs),
+            // A web search runs only from its approved card (v2 C10, rule 4798): "ask" for every workspace in this release.
             authority:
-              cap && ctx.agent
+              tool === WEB_SEARCH_TOOL.name
+                ? "ask"
+                : cap && ctx.agent
                 ? authorityOf((await getGov(user.scope ?? acct(user))).toolPolicy, ctx.agent, cap)
                 : "on",
           };

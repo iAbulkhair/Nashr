@@ -224,6 +224,19 @@ export const wsKey = {
   queue: (s: Scope) => `jobq:${s}`,
   /** set: every job id this scope ever queued, for `wipeAccount` (rule 4652); 30 days from the last job. */
   queueJobs: (s: Scope) => `qjobs:${s}`,
+  /**
+   * json `RoutineRail` (src/lib/routines.ts, rules 4720-4729): one routine's failures in a row and, after
+   * `ROUTINE_FAILS_PAUSE` of them, its pause. No expiry: a success or the owner's switch deletes it, and so does `wipeAccount`.
+   */
+  routineRail: (s: Scope, id: string) => `routinerail:${s}:${id}`,
+  /** json `ResearchProposal` (src/lib/research.ts, rule 4793): a web search an agent asked for, waiting for a person's Approve; 24 hours. */
+  researchProp: (s: Scope, id: string) => `researchprop:${s}:${id}`,
+  /** set: the ids of this scope's research proposals, for `wipeAccount` (rule 4793); 24 hours from the last one. */
+  researchProps: (s: Scope) => `researchprops:${s}`,
+  /** string: the approved proposal id one agent's next turn in one thread may run, taken once with GETDEL (rule 4794); 1 hour. */
+  researchOk: (s: Scope, conv: string, agent: string) => `researchok:${s}:${conv}:${agent}`,
+  /** set: the page addresses an approved search returned in one thread, the only pages `read_page` opens (rule 4797); 1 hour. */
+  researchUrls: (s: Scope, conv: string) => `researchurls:${s}:${conv}`,
 } as const;
 
 export const personKey = {
