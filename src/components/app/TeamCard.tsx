@@ -55,7 +55,11 @@ export function TeamCard({
           {t.chat.teamOwner.replace("{name}", name)}
         </button>
       )}
-      {state === "fail" && <p role="alert" className="text-danger">{t.chat.teamFail}</p>}
+      {state === "fail" && (
+        <p role="alert" className="text-danger">
+          {t.chat.teamFail}
+        </p>
+      )}
     </div>
   );
 }
