@@ -12,6 +12,7 @@ export function stepLabel(t: AppDict, s: WorkStep): string {
   if (s.kind === "model") return w.model;
   if (s.kind === "tool") return fill(w.tool, { name: s.name });
   if (s.kind === "publish") return fill(w.publish, { name: s.name });
+  if (s.kind === "charge") return fill((s.credits ?? 0) < 0 ? w.refund : w.charge, { n: Math.abs(s.credits ?? 0) });
   return fill(w.check, { n: s.score ?? 0 }) + (s.rewritten ? " · " + w.rewritten : "");
 }
 

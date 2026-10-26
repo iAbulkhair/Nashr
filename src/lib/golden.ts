@@ -3,7 +3,7 @@ import { db } from "./db";
 import { generate, type Generated } from "./noor";
 import { scoreItems, type Quality } from "./judge";
 import { AGENTS, agentForTask, type AgentId } from "./agents";
-import { TASK_COUNT, type Brand, type TaskType } from "./brand";
+import { TASK_COUNT, type Brand, type Task, type TaskType } from "./brand";
 import { accountByLogin, adminEmails, type User } from "./auth";
 import { acct } from "./account-id";
 import { notifyItem } from "./notifications";
@@ -12,6 +12,9 @@ import { CUSTOMER_FACING, brandRules, checkText } from "./brand-rules";
 import { modelState } from "./model";
 import { promptHashes, promptStamp, type PromptStamp } from "./prompt-stamp";
 import { instructionBlocks, loadLayers, type Layers } from "./agent-instructions";
+import { route } from "./models/route";
+import { selfCheck } from "./self-check";
+import { v2On } from "./v2-switch";
 
 /**
  * Weekly golden set. A fixed list of cases (fictional brand + task type + owner
@@ -28,6 +31,8 @@ export const GOLDEN_EMAIL = "golden@nashr.internal";
 const CONCURRENCY = 8;
 /** Do not start new cases after this many ms; the route has maxDuration 300. */
 const START_BUDGET_MS = 200_000;
+/** A self-check run (rule 4831) rewrites only while this much of the route's 300 s is left to it, so the last case still saves. */
+const RUN_END_MS = 285_000;
 const CASE_DROP = 10, AGENT_DROP = 6, LOW = 70;
 
 const base = { website: "", competitors: "", channels: ["instagram", "snapchat", "tiktok", "whatsapp"], updatedAt: "2026-09-18T00:00:00.000Z" };
@@ -139,6 +144,12 @@ export type GoldenResult = {
   carried?: string;
   /** Which prompts produced this row (src/lib/prompt-stamp.ts). A carried row keeps the stamp of the run that measured it. */
   pb?: PromptStamp;
+  /**
+   * What self-check did to this case's items in a self-check run (rules 4830-4834): `first`, the mean in-line score before
+   * any rewrite (null when the judge gave none), so `score - first` is the lift measured on the same items in the same run;
+   * how many items were rewritten, and how many kept their text for a reason (`SelfCheckMark.skipped`). Absent otherwise.
+   */
+  selfCheck?: { first: number | null; rewritten: number; skipped: number };
 };
 export type GoldenRun = {
   id: string; version: number; trigger: "cron" | "manual"; startedAt: string; finishedAt: string;
@@ -160,6 +171,12 @@ export type GoldenRun = {
    * Absent on runs before 2026-09-29. GOLDEN_VERSION still decides which runs compare.
    */
   playbooks?: Record<string, string>;
+  /**
+   * A self-check run (rule 4830): each case's items went through `selfCheck` (src/lib/self-check.ts) after the agent and
+   * before the judge, as a scheduled batch's would with SELF_CHECK on. It is compared, carried and resumed only with runs of
+   * the same mode, so it never moves the weekly run's deltas. Absent on a plain run and on every run before rule 4830.
+   */
+  selfCheck?: true;
 };
 
 const AR = /[\u0600-\u06FF]/g, LAT = /[A-Za-z]/g;
@@ -217,7 +234,7 @@ const trim = (i: Generated) => ({ ...i, body: i.body.length > 3000 ? `${i.body.s
  */
 const stampOf = (c: GoldenCase, layers: Layers) => ({ plat: instructionBlocks(layers, agentForTask(c.type).id).stamp.plat, ins: "none" });
 
-async function runCase(c: GoldenCase, layers: Layers): Promise<GoldenResult> {
+async function runCase(c: GoldenCase, layers: Layers, check?: { deadline: number }): Promise<GoldenResult> {
   const t0 = Date.now();
   const brand = GOLDEN_BRANDS[c.brand];
   const head = { id: c.id, agent: agentForTask(c.type).id, type: c.type, brand: brand.name, delta: null, pb: promptStamp(c.type, brand, stampOf(c, layers)) };
@@ -227,6 +244,18 @@ async function runCase(c: GoldenCase, layers: Layers): Promise<GoldenResult> {
     // No cross-agent review: it costs a model call per reviewer, writes notes only, and the golden set measures the
     // agents' own output with the reviewer and the judge. The prompts it measures are the same either way.
     items = await generate(c.type, brand, [], c.extra, { meter: GOLDEN_EMAIL, stats: c.stats, count: c.count, crossReview: false, layers });
+    let sc: GoldenResult["selfCheck"];
+    if (check) {
+      // The batch's own self-check (rule 4831): the same judge, bar and rewrite, on the same model `generate` routed to.
+      // `selfCheck` never throws; an item it could not score or rewrite keeps its text and says why.
+      stage = "self-check";
+      const at = new Date().toISOString();
+      const lang = brand.languages[0] ?? "ar";
+      const tasks: Task[] = items.map((g, i) => ({ id: `golden-${c.id}-${i}`, type: c.type, channel: g.channel, title: g.title, body: g.body, status: "pending", createdAt: at, lang }));
+      const out = await selfCheck(tasks, { email: GOLDEN_EMAIL, brand, type: c.type, requested: c.count, ground: { notes: c.extra, stats: c.stats }, prefs: [], layers, agentScope: false, model: route("generate", { task: c.type }).model, deadline: check.deadline });
+      items = out.map((t, i) => ({ ...items[i], title: t.title, body: t.body }));
+      sc = { first: mean(out.flatMap((t) => (typeof t.selfCheck?.first === "number" ? [t.selfCheck.first] : []))), rewritten: out.filter((t) => t.selfCheck?.rewritten).length, skipped: out.filter((t) => t.selfCheck?.skipped).length };
+    }
     stage = "judge";
     const verdicts = await scoreItems(GOLDEN_EMAIL, brand, c.type, items, c.count, { notes: c.extra, stats: c.stats, layers });
     // An unjudged item is left out of the mean rather than counted as 0, and the gap is written into the notes so a
@@ -235,7 +264,7 @@ async function runCase(c: GoldenCase, layers: Layers): Promise<GoldenResult> {
     const missing = verdicts.length - q.length;
     const dims = q.length ? (Object.fromEntries((Object.keys(q[0].dims) as (keyof Quality["dims"])[]).map((k) => [k, Math.round(mean(q.map((x) => x.dims[k])) ?? 0)])) as Quality["dims"]) : null;
     const notes = [...(missing ? [`judge returned no verdict for ${missing} of ${verdicts.length} item(s)`] : []), ...q.map((x) => x.notes).filter(Boolean)];
-    return { ...head, ok: true, score: mean(q.map((x) => x.score)), dims, notes, checks: hardChecks(c, brand, items), items: items.map(trim), ms: Date.now() - t0 };
+    return { ...head, ok: true, score: mean(q.map((x) => x.score)), dims, notes, checks: hardChecks(c, brand, items), items: items.map(trim), ms: Date.now() - t0, ...(sc ? { selfCheck: sc } : {}) };
   } catch (e) {
     // Keep the output and the deterministic checks when only the judge failed.
     return { ...head, ok: false, error: `${stage}: ${(e instanceof Error ? e.message : String(e)).slice(0, 180)}`, score: null, dims: null, notes: [], checks: items.length ? hardChecks(c, brand, items) : [], items: items.map(trim), ms: Date.now() - t0 };
@@ -305,7 +334,7 @@ export function summarize(run: GoldenRun, prev: GoldenRun | undefined) {
  * cases that errored or never started in the latest run and merges them in.
  * Returns null when another run holds the lock, no model key is set or Claude is paused (src/lib/model.ts).
  */
-export async function runGolden(trigger: "cron" | "manual", opts: { agent?: AgentId; resume?: boolean } = {}): Promise<GoldenRun | null> {
+export async function runGolden(trigger: "cron" | "manual", opts: { agent?: AgentId; resume?: boolean; selfCheck?: boolean } = {}): Promise<GoldenRun | null> {
   if (modelState() !== "on") return null;
   if (!(await db.lock("golden:lock", 300))) return null;
   try {
@@ -313,7 +342,11 @@ export async function runGolden(trigger: "cron" | "manual", opts: { agent?: Agen
     // The prompt versions this run starts with, kept on the run for the console (`summarize` compares each case's stamp).
     const playbooks = promptHashes(GOLDEN_CASES.map((c) => c.type));
     const history = await listGoldenRuns(6);
-    const last = history[0];
+    // Self-check mode (rule 4830) needs SELF_CHECK on for this host (`v2On`), as the batches it stands for do; asked for
+    // with it off, the run is a plain one. Runs of the other mode are never carried, resumed or compared (rule 4832).
+    const check = !!opts.selfCheck && v2On("SELF_CHECK");
+    const sameMode = (r: GoldenRun) => !!r.selfCheck === check;
+    const last = history.find(sameMode);
     const resuming = !!(opts.resume && last && last.version === GOLDEN_VERSION && last.status === "partial");
     // Single-agent run: carry the other agents' results over from the latest run so the panel stays complete.
     const carried = !resuming && opts.agent && last && last.version === GOLDEN_VERSION ? last.results.filter((r) => r.agent !== opts.agent).map((r) => ({ ...r, carried: r.carried ?? last.startedAt })) : [];
@@ -332,7 +365,7 @@ export async function runGolden(trigger: "cron" | "manual", opts: { agent?: Agen
           results.push({ id: c.id, agent: agentForTask(c.type).id, type: c.type, brand: GOLDEN_BRANDS[c.brand].name, ok: false, error: "skipped_time_budget", score: null, dims: null, notes: [], checks: [], items: [], ms: 0, delta: null, pb: promptStamp(c.type, GOLDEN_BRANDS[c.brand], stampOf(c, layers)) });
           continue;
         }
-        results.push(await runCase(c, layers));
+        results.push(await runCase(c, layers, check ? { deadline: t0 + RUN_END_MS } : undefined));
       }
     }));
 
@@ -345,9 +378,10 @@ export async function runGolden(trigger: "cron" | "manual", opts: { agent?: Agen
       usd: Math.round(((resuming ? last.usd : 0) + (await getUsage(GOLDEN_EMAIL)).usd - usdBefore) * 100) / 100,
       // A resumed run started with its first attempt's prompts; today's may differ (a deploy in between).
       agents: [], results: merged, regressions: [], playbooks: resuming ? last.playbooks : playbooks,
+      ...(check ? { selfCheck: true as const } : {}),
     };
-    // Compare with the latest earlier run of the same version.
-    summarize(run, history.find((h) => h.id !== run.id && h.version === GOLDEN_VERSION));
+    // Compare with the latest earlier run of the same version and mode.
+    summarize(run, history.find((h) => h.id !== run.id && h.version === GOLDEN_VERSION && sameMode(h)));
     await db.set(`golden:run:${run.id}`, run);
     if (!resuming) await db.lpush("golden:runs", run.id);
 

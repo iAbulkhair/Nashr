@@ -4,7 +4,7 @@ import { handler } from "@/lib/api-handler";
 import { sc } from "@/lib/auth";
 import { metersOf, runConv, METER_RUNS } from "@/lib/context-meter";
 import { listRuns } from "@/lib/runs";
-import { RUN_LOG } from "@/lib/v2-flags";
+import { v2On } from "@/lib/v2-switch";
 import { workRun } from "@/lib/work-view";
 
 /**
@@ -17,7 +17,7 @@ import { workRun } from "@/lib/work-view";
 export const GET = handler(
   { auth: "user", query: z.object({ conv: z.string().max(64).optional() }) },
   async ({ u, query: { conv } }) => {
-    if (!RUN_LOG) return NextResponse.json({ ok: false, error: "not_found" }, { status: 404 });
+    if (!v2On("RUN_LOG")) return NextResponse.json({ ok: false, error: "not_found" }, { status: 404 });
     const runs = await listRuns(sc(u), METER_RUNS);
     const thread = runConv(conv).conv;
     const shown = conv === undefined ? runs : runs.filter((r) => r.kind === "chat" && r.conv === thread);

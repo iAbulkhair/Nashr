@@ -20,7 +20,7 @@ import {
   type Plan,
   type PlanParseError,
 } from "./plans";
-import { PLANS } from "./v2-flags";
+import { v2On } from "./v2-switch";
 
 /**
  * Majed's `make_plan` tool (Thakeen v2 phase 2, C3, rules 4623-4628). Offered only in Majed's turn and only while `PLANS`
@@ -99,7 +99,7 @@ export async function runMakePlan(
   ctx: ToolCtx,
   actions: string[],
 ): Promise<string> {
-  if (!PLANS) return "Unknown tool.";
+  if (!v2On("PLANS")) return "Unknown tool.";
   if (ctx.agent !== "majed") return "Not done: only Majed, the lead, makes plans. Nothing was saved.";
   if (ctx.via === "mcp" || ctx.by?.kind === "token" || user.actor?.kind === "token")
     return "Not done: plans are made only in the app's chat. Nothing was saved.";

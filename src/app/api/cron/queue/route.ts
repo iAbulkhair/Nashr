@@ -7,7 +7,7 @@ import { deadlineFor } from "@/lib/media/keys";
 import { runAsAccount, type JobRef } from "@/lib/job-account";
 import { leaveQueue, queueScopes } from "@/lib/queue";
 import { tickScope } from "@/lib/plan-run";
-import { QUEUE } from "@/lib/v2-flags";
+import { v2On } from "@/lib/v2-switch";
 
 export const maxDuration = 300;
 
@@ -27,7 +27,7 @@ export async function GET(req: Request) {
   const deadline = deadlineFor(maxDuration);
   const bearer = (req.headers.get("authorization") ?? "").replace(/^Bearer\s+/i, "");
   if (!sameSecret(bearer, process.env.CRON_SECRET)) return NextResponse.json({ ok: false }, { status: 401 });
-  if (!QUEUE) return NextResponse.json({ ok: true, off: true });
+  if (!v2On("QUEUE")) return NextResponse.json({ ok: true, off: true });
   const items: Item[] = (await queueScopes()).flatMap((scope) => {
     const account = accountOfScope(scope);
     return account ? [{ scope, ref: { account, scope } }] : [];

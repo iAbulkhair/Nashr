@@ -15,7 +15,7 @@ import { authorityOf, capOfTool, type ToolPolicy } from "./tool-authority";
 import { REMEMBER_TOOL } from "./memory-tool";
 import { PLAN_TOOL } from "./plan-tool";
 import { RESEARCH_TOOLS, isResearchAgent } from "./research";
-import { MEMORY_V2, PLANS, RESEARCH } from "./v2-flags";
+import { v2On } from "./v2-switch";
 
 /**
  * Brand fields a tool call may propose a change to: every one of them is a plain string on `Brand`. No tool call writes
@@ -174,10 +174,10 @@ export const toolsFor = (agentId: AgentId, policy?: ToolPolicy): Anthropic.Tool[
   const base = agentId === "majed" ? [...TOOLS, PROPOSE_HANDOFF_TOOL] : agentId === "reem" ? [...TOOLS, CONTACT_AWAY_TOOL, PROPOSE_MEETING_TASKS_TOOL, FREE_SLOTS_TOOL] : TOOLS;
   // Scoped memory (v2 phase 1, rule 4555): the `remember` tool only while its switch is on; off, the list is as before.
   // Goals and plans (v2 phase 2, rule 4623): Majed's `make_plan` only while its switch is on.
-  const lead = PLANS && agentId === "majed" ? [...base, PLAN_TOOL] : base;
-  const remembered = MEMORY_V2 ? [...lead, REMEMBER_TOOL] : lead;
+  const lead = v2On("PLANS") && agentId === "majed" ? [...base, PLAN_TOOL] : base;
+  const remembered = v2On("MEMORY_V2") ? [...lead, REMEMBER_TOOL] : lead;
   // Research (v2 phase 4, rule 4795): web_search and read_page for Faris, Noor and Layan only while its switch is on.
-  const all = RESEARCH && isResearchAgent(agentId) ? [...remembered, ...RESEARCH_TOOLS] : remembered;
+  const all = v2On("RESEARCH") && isResearchAgent(agentId) ? [...remembered, ...RESEARCH_TOOLS] : remembered;
   if (!policy) return all;
   return all.filter((t) => {
     const cap = capOfTool(t.name);

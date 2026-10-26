@@ -6,7 +6,7 @@ import { sc } from "@/lib/auth";
 import { cancelPlan, getPlan, isPlanId, pausePlan, planView, resumePlan } from "@/lib/plans";
 import { approvePlan } from "@/lib/plan-run";
 import { WINDOW } from "@/lib/rate";
-import { PLANS } from "@/lib/v2-flags";
+import { v2On } from "@/lib/v2-switch";
 
 const action = z.object({ action: z.enum(["approve", "pause", "resume", "cancel"]) });
 
@@ -25,7 +25,7 @@ const STATUS: Record<string, number> = { not_found: 404, expired: 410, no_credit
 export const GET = handler<"user", undefined, undefined, { id: string }>(
   { auth: "user", role: "read", rate: { bucket: "planread", max: 300, window: WINDOW.hour, per: "scope" } },
   async ({ u, params: { id } }) => {
-    if (!PLANS || !isPlanId(id)) return fail("not_found", 404);
+    if (!v2On("PLANS") || !isPlanId(id)) return fail("not_found", 404);
     const p = await getPlan(sc(u), id);
     if (!p) return fail("not_found", 404);
     return NextResponse.json({ ok: true, plan: planView(p) });
@@ -41,7 +41,7 @@ export const POST = handler<"user", typeof action, undefined, { id: string }>(
     invalid: "bad_action",
   },
   async ({ u, input: b, params: { id } }) => {
-    if (!PLANS || !isPlanId(id)) return fail("not_found", 404);
+    if (!v2On("PLANS") || !isPlanId(id)) return fail("not_found", 404);
     const s = sc(u);
     const r =
       b.action === "approve"

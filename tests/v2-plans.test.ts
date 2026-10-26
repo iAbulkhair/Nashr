@@ -430,7 +430,7 @@ describe("rules 4650-4669: the durable queue, the sweep and the wipe", () => {
     expect(src("crons.json")).toContain('"/api/cron/queue"');
     expect(src("src/lib/cron-heartbeat.ts")).toMatch(/queue: 26 \* 3600/);
     expect(src("src/app/api/cron/queue/route.ts")).toMatch(/recordCronRun\("queue"\)/);
-    expect(src("src/app/api/cron/secretary/route.ts")).toMatch(/QUEUE && /);
+    expect(src("src/app/api/cron/secretary/route.ts")).toMatch(/v2On\("QUEUE"\) && /);
   });
   it("the card's words exist in both languages and the card renders no markup", () => {
     expect(Object.keys(GOAL_PLAN_COPY.ar).sort()).toEqual(Object.keys(GOAL_PLAN_COPY.en).sort());

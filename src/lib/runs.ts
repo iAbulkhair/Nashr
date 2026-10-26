@@ -4,7 +4,7 @@ import type { AgentId } from "./agents";
 import { db } from "./db";
 import { wsKey, type Scope } from "./keys";
 import { log } from "./log";
-import { RUN_LOG } from "./v2-flags";
+import { v2On } from "./v2-switch";
 
 /**
  * The run log (Thakeen v2 component C2, rules 4510-4519, docs/system/flows.md "Run log").
@@ -40,6 +40,14 @@ export type RunEvent =
   /** One draft's self-check score (C6, src/lib/self-check.ts), for the work view (C9, rule 4772): the number only. */
   | { t: "check"; at: number; score: number; rewritten: boolean };
 
+/**
+ * Credits the run took (positive) or gave back (negative), each when it happened (rules 4825-4829): a batch's charge, its
+ * refund on failure, a partial refund for fewer items. Kept beside `events`, not in it, so a reader that predates it
+ * reads the record unchanged (expand, rule 679). A charge made outside an open run (a chat message's overflow, billed
+ * after the turn; a research card's Approve) is not on any run.
+ */
+export type RunCredit = { at: number; credits: number };
+
 /** A step as the code reports it; `at` is added here. */
 export type RunStep = RunEvent extends infer E ? (E extends RunEvent ? Omit<E, "at"> : never) : never;
 
@@ -57,7 +65,9 @@ export type Run = {
   ms: number;
   ok: boolean;
   events: RunEvent[];
-  /** Steps past `MAX_EVENTS`, counted and not kept. */
+  /** Absent on a run that moved no credits, and on every run written before rule 4825. */
+  credits?: RunCredit[];
+  /** Steps past `MAX_EVENTS` (or credit moves past `MAX_CREDITS`), counted and not kept. */
   dropped: number;
 };
 
@@ -74,6 +84,8 @@ export type RunMeta = {
 
 /** Steps one run keeps: a chat turn is at most five model turns with a handful of tools each. */
 export const MAX_EVENTS = 200;
+/** Credit moves one run keeps: a batch is a charge and at most two refunds; a chat turn's tools a few batches. */
+export const MAX_CREDITS = 50;
 /** Runs one workspace's index keeps, newest first. */
 export const RUNS_KEEP = 200;
 /** Days a run record and the index live after the last write. */
@@ -86,7 +98,7 @@ const current = new AsyncLocalStorage<Live>();
  * Runs `fn` as one run of `meta.scope`, or as part of the run already open. Its record is written when `fn` settles,
  * whatever the outcome; the error, if any, is rethrown unchanged.
  */
-export async function withRun<T>(meta: RunMeta, fn: () => Promise<T>, on: boolean = RUN_LOG): Promise<T> {
+export async function withRun<T>(meta: RunMeta, fn: () => Promise<T>, on: boolean = v2On("RUN_LOG")): Promise<T> {
   if (!on || current.getStore()) return fn();
   const t0 = Date.now();
   const run: Run = {
@@ -130,6 +142,21 @@ export function runEvent(step: RunStep): void {
   }
 }
 
+/**
+ * Records a credit move on the open run (rule 4826): `n` taken, or given back when negative. Called by the ledger
+ * (src/lib/credits.ts) after the save, so a refused or failed charge is never recorded. Outside a run, or for 0, nothing.
+ */
+export function runCredits(n: number): void {
+  const live = current.getStore();
+  if (!live || !Number.isFinite(n) || n === 0) return;
+  const list = (live.run.credits ??= []);
+  if (list.length >= MAX_CREDITS) {
+    live.run.dropped++;
+    return;
+  }
+  list.push({ at: Date.now() - live.t0, credits: n });
+}
+
 /** The id of the open run, for an audit row to point at; undefined outside one. */
 export const currentRunId = (): string | undefined => current.getStore()?.run.id;
 
@@ -167,5 +194,6 @@ export function replay(run: Run) {
     toolCalls: tools.length,
     refusedTools: tools.filter((e) => e.outcome === "refused").length,
     publishes: steps.filter((e) => e.t === "publish").length,
+    credits: (run.credits ?? []).reduce((s, c) => s + c.credits, 0),
   };
 }

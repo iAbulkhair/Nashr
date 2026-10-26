@@ -46,7 +46,7 @@ import { isResearchTool } from "./research";
 import { runResearch } from "./research-tool";
 import { TEAMMATE_TOOL, noteRefusal, ownerOf, runTeammate, teamAllows, teamNote, teamTools } from "./team-chat";
 import { recall, recallBlock } from "./recall";
-import { COMPACTION, MEMORY_V2, RUN_LOG } from "./v2-flags";
+import { v2On } from "./v2-switch";
 import { compactThread, droppedTurns, proposeSummaryFacts, readSummary, summaryBlock, type ThreadSummary } from "./compaction";
 
 export { history, push } from "./chat-history";
@@ -106,13 +106,13 @@ async function chatTurn(user: User, text: string, conv: string | undefined, agen
   const [brand, prefs, memory, files, conns, thread, feedback, notes, by, workDays, layers, scopeModes, otherBrands, gov, recalled, storedSummary, meters] = await Promise.all([getBrand(email), listPreferencesFor(email, agentId), memoryBlock(email), listFileNames(email), listConnections(email), history(email, conv), feedbackFor(email, agentId, { chat: true }), handoffNotesFor(email, agentId), opts.by ?? byOf(user), db.get<unknown>(SEC_KEYS.cal(email)), loadLayers(sc(user), entitlements(user).instructions, "active", [agentId], "stub"), opts.agentScope ?? readAgentScopeModes(), otherBrandNames(user).catch((e): string[] => {
     log.error("agent scope brand names failed", e);
     return [];
-  }), getGov(email), MEMORY_V2 ? recall(sc(user), text, { agent: agentId, conv }).catch((e): never[] => {
+  }), getGov(email), v2On("MEMORY_V2") ? recall(sc(user), text, { agent: agentId, conv }).catch((e): never[] => {
     log.error("recall failed", e);
     return [];
-  }) : [], COMPACTION ? readSummary(sc(user), conv).catch((e): null => {
+  }) : [], v2On("COMPACTION") ? readSummary(sc(user), conv).catch((e): null => {
     log.error("thread summary read failed", e);
     return null;
-  }) : (null as ThreadSummary | null), COMPACTION && RUN_LOG ? readMeters(sc(user), conv).catch((e): ContextMeter[] => {
+  }) : (null as ThreadSummary | null), v2On("COMPACTION") && v2On("RUN_LOG") ? readMeters(sc(user), conv).catch((e): ContextMeter[] => {
     log.error("context meter read failed", e);
     return [];
   }) : ([] as ContextMeter[])]);
@@ -160,13 +160,13 @@ async function chatTurn(user: User, text: string, conv: string | undefined, agen
     // summary, read as data in the uncached block before the first call is fitted. Off, nothing is read or written.
     // The context meter (v2 phase 3, C13, rules 4760-4769): with this agent's last turn here at 80% of its room, older
     // messages the guard kept are folded too, and only the newest are sent once the summary covers the rest.
-    if (COMPACTION) {
+    if (v2On("COMPACTION")) {
       const kept = keptFor(underPressure(meters, agentId), trimmed.length);
       const c = await compactThread(sc(user), conv, storedSummary, droppedTurns(thread, kept), { agent: agentId, deadline, lang, onStatus: opts.onStatus });
       trimmed = coveredTail(trimmed, thread, kept, c.summary);
       const block = summaryBlock(c.summary);
       if (block) sys[2] = { ...sys[2], text: sys[2].text + block };
-      if (MEMORY_V2) await proposeSummaryFacts(sc(user), c.facts, { agent: agentId, conv, via }, by, memoryProposed);
+      if (v2On("MEMORY_V2")) await proposeSummaryFacts(sc(user), c.facts, { agent: agentId, conv, via }, by, memoryProposed);
     }
     const fit = fitFirstCall(model, trimmed, JSON.stringify(tools).length + sys[0].text.length + sys[1].text.length, sys[2].text.length);
     const large = workspaceLarge(trimmed.length, fit);
