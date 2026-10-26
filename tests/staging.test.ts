@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync, statSync } from "node:fs";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 
@@ -7,14 +7,23 @@ afterEach(() => vi.unstubAllEnvs());
 describe("the staging access token (rules 674-675)", () => {
   it("isStaging is APP_ENV=staging only", async () => {
     const { isStaging } = await import("@/lib/deploy-env");
-    for (const [v, want] of [["staging", true], ["", false], ["production", false], ["preview", false], ["Staging", false]] as const) {
-      vi.stubEnv("APP_ENV", v); expect(isStaging(), v).toBe(want);
+    for (const [v, want] of [
+      ["staging", true],
+      ["", false],
+      ["production", false],
+      ["preview", false],
+      ["Staging", false],
+    ] as const) {
+      vi.stubEnv("APP_ENV", v);
+      expect(isStaging(), v).toBe(want);
     }
   });
   it("token is the HMAC of the fixed label, never the key, and null without a key", async () => {
     const { accessToken } = await import("@/lib/staging-access");
     const { createHmac } = await import("node:crypto");
-    expect(accessToken("k".repeat(40))).toBe(createHmac("sha256", "k".repeat(40)).update("staging-access-v1").digest("hex"));
+    expect(accessToken("k".repeat(40))).toBe(
+      createHmac("sha256", "k".repeat(40)).update("staging-access-v1").digest("hex"),
+    );
     expect(accessToken("")).toBeNull();
     expect(accessToken(undefined)).toBeNull();
   });
@@ -32,7 +41,10 @@ describe("the staging access token (rules 674-675)", () => {
 });
 
 const req = (path: string, cookie?: string) =>
-  new NextRequest("https://staging.example" + path, cookie ? { headers: { cookie: `thakeen_staging=${cookie}` } } : undefined);
+  new NextRequest(
+    "https://staging.example" + path,
+    cookie ? { headers: { cookie: `thakeen_staging=${cookie}` } } : undefined,
+  );
 
 describe("the proxy off staging behaves as before (rule 674)", () => {
   it("/ redirects, app paths get x-pathname, others pass untouched, no robots header", async () => {
@@ -50,18 +62,35 @@ describe("the proxy off staging behaves as before (rule 674)", () => {
 describe("the staging lock (rules 674, 677)", () => {
   const key = "staging-key-" + "y".repeat(30);
   it("no cookie: 404 everywhere but the four open paths, all noindex", async () => {
-    vi.stubEnv("APP_ENV", "staging"); vi.stubEnv("STAGING_ACCESS_KEY", key);
+    vi.stubEnv("APP_ENV", "staging");
+    vi.stubEnv("STAGING_ACCESS_KEY", key);
     const { proxy } = await import("@/proxy");
-    for (const p of ["/", "/ar", "/ar/app/tasks", "/api/health", "/api/cron/weekly", "/sitemap.xml",
-      "/ar/staging-access/", "/AR/staging-access", "/ar/staging-access/x", "/en/staging-accessx", "/robots.txt/x"]) {
-      const r = proxy(req(p)); expect(r.status, p).toBe(404); expect(r.headers.get("x-robots-tag"), p).toBe("noindex, nofollow");
+    for (const p of [
+      "/",
+      "/ar",
+      "/ar/app/tasks",
+      "/api/health",
+      "/api/cron",
+      "/sitemap.xml",
+      "/ar/staging-access/",
+      "/AR/staging-access",
+      "/ar/staging-access/x",
+      "/en/staging-accessx",
+      "/robots.txt/x",
+    ]) {
+      const r = proxy(req(p));
+      expect(r.status, p).toBe(404);
+      expect(r.headers.get("x-robots-tag"), p).toBe("noindex, nofollow");
     }
     for (const p of ["/ar/staging-access", "/en/staging-access", "/api/staging-access", "/robots.txt"]) {
-      const r = proxy(req(p)); expect(r.status, p).not.toBe(404); expect(r.headers.get("x-robots-tag")).toBe("noindex, nofollow");
+      const r = proxy(req(p));
+      expect(r.status, p).not.toBe(404);
+      expect(r.headers.get("x-robots-tag")).toBe("noindex, nofollow");
     }
   });
   it("rule 1760: /m/ passes the lock without a cookie (the route checks its own session or signature); look-alikes stay locked", async () => {
-    vi.stubEnv("APP_ENV", "staging"); vi.stubEnv("STAGING_ACCESS_KEY", key);
+    vi.stubEnv("APP_ENV", "staging");
+    vi.stubEnv("STAGING_ACCESS_KEY", key);
     const { proxy } = await import("@/proxy");
     const { stagingOpen } = await import("@/lib/staging-access");
     const file = `/m/${"a".repeat(32)}.jpg`;
@@ -74,12 +103,49 @@ describe("the staging lock (rules 674, 677)", () => {
       expect(proxy(req(p)).status, p).toBe(404);
     }
   });
+  it("rules 4840-4842: /api/cron/{name} passes the lock without a cookie; look-alikes stay locked", async () => {
+    vi.stubEnv("APP_ENV", "staging");
+    vi.stubEnv("STAGING_ACCESS_KEY", key);
+    const { proxy } = await import("@/proxy");
+    const { stagingOpen } = await import("@/lib/staging-access");
+    for (const p of ["/api/cron/queue", "/api/cron/weekly", "/api/cron/secretary"]) {
+      expect(stagingOpen(p), p).toBe(true);
+      const r = proxy(req(p));
+      expect(r.status, p).not.toBe(404);
+      expect(r.headers.get("x-robots-tag"), p).toBe("noindex, nofollow");
+    }
+    for (const p of [
+      "/api/cron",
+      "/api/cron/",
+      "/api/cron/queue/x",
+      "/api/CRON/queue",
+      "/api/cron/Queue",
+      "/api/cronx/queue",
+      "/ar/api/cron/queue",
+      "/api/cron/queue/",
+    ]) {
+      expect(stagingOpen(p), p).toBe(false);
+      expect(proxy(req(p)).status, p).toBe(404);
+    }
+  });
+  it("rule 4841: every route under /api/cron/ checks the CRON_SECRET bearer with sameSecret before anything else", () => {
+    const dir = "src/app/api/cron";
+    const names = readdirSync(dir).filter((n) => statSync(`${dir}/${n}`).isDirectory());
+    expect(names.length).toBeGreaterThan(0);
+    for (const n of names) {
+      expect(n, n).toMatch(/^[a-z]+$/);
+      const src = readFileSync(`${dir}/${n}/route.ts`, "utf8");
+      expect(src, n).toMatch(/sameSecret\(bearer, process\.env\.CRON_SECRET\)/);
+    }
+  });
   it("valid cookie passes with noindex; a wrong cookie or a missing key stays locked", async () => {
-    vi.stubEnv("APP_ENV", "staging"); vi.stubEnv("STAGING_ACCESS_KEY", key);
+    vi.stubEnv("APP_ENV", "staging");
+    vi.stubEnv("STAGING_ACCESS_KEY", key);
     const { proxy } = await import("@/proxy");
     const { accessToken } = await import("@/lib/staging-access");
     const ok = proxy(req("/ar/pricing", accessToken(key)!));
-    expect(ok.status).not.toBe(404); expect(ok.headers.get("x-robots-tag")).toBe("noindex, nofollow");
+    expect(ok.status).not.toBe(404);
+    expect(ok.headers.get("x-robots-tag")).toBe("noindex, nofollow");
     expect(proxy(req("/", accessToken(key)!)).status).toBe(307);
     expect(proxy(req("/ar", "deadbeef")).status).toBe(404);
     vi.stubEnv("STAGING_ACCESS_KEY", "");
@@ -89,11 +155,28 @@ describe("the staging lock (rules 674, 677)", () => {
     // Every module a file names, however it spells the path: static and side-effect imports, re-exports, import() and
     // require(). A word after a slash is a path (the route `/api/instructions/refs/import` in the brand guard's list), never a statement. Comments are not stripped on purpose: a comment that looks like an import fails, the safe direction.
     const specs = (src: string) =>
-      [...new Set([...src.matchAll(/(?<![/\w])(?:from|import|require)\s*\(?\s*["'`]([^"'`]+)["'`]/g)].map((m) => m[1]))].sort();
+      [
+        ...new Set(
+          [...src.matchAll(/(?<![/\w])(?:from|import|require)\s*\(?\s*["'`]([^"'`]+)["'`]/g)].map((m) => m[1]),
+        ),
+      ].sort();
     // A closed list: proxy -> {cookie-names, csrf, deploy-env, staging-access}; cookie-names -> nothing; csrf -> origin; staging-access -> {secret, deploy-env};
     // secret -> crypto; origin and deploy-env -> nothing. Anything else fails, so "./lib/rate", "@/lib/rate.ts" and import("@/lib/db") cannot slip by.
     const allowed: Record<string, string[]> = {
-      "src/proxy.ts": ["@/lib/brand-path", "@/lib/brand-guard", "@/lib/cookie-names", "@/lib/csp", "@/lib/csrf", "@/lib/deploy-env", "@/lib/multi-org", "@/lib/request-id", "@/lib/settings-nav", "@/lib/staging-access", "@/lib/ws-path", "next/server"],
+      "src/proxy.ts": [
+        "@/lib/brand-path",
+        "@/lib/brand-guard",
+        "@/lib/cookie-names",
+        "@/lib/csp",
+        "@/lib/csrf",
+        "@/lib/deploy-env",
+        "@/lib/multi-org",
+        "@/lib/request-id",
+        "@/lib/settings-nav",
+        "@/lib/staging-access",
+        "@/lib/ws-path",
+        "next/server",
+      ],
       // Multi-workspace M2: the switch and the link's handle (rule 2113). The handle's shape only; no store, no secret.
       "src/lib/multi-org.ts": ["crypto", "./account-id"],
       // The one link builder: the handle on top of the pure brand path helpers (a type import, erased at build).
@@ -121,13 +204,24 @@ describe("the staging lock (rules 674, 677)", () => {
       "src/lib/csp.ts": [],
     };
     for (const [f, ok] of Object.entries(allowed))
-      expect(specs(readFileSync(f, "utf8")).filter((s) => !ok.includes(s)), f).toEqual([]);
+      expect(
+        specs(readFileSync(f, "utf8")).filter((s) => !ok.includes(s)),
+        f,
+      ).toEqual([]);
     expect(readFileSync("src/lib/settings-nav.ts", "utf8")).toMatch(/^import type \{ Lang \} from "\.\/i18n";$/m);
     expect(readFileSync("src/lib/settings-nav.ts", "utf8").match(/^import /gm)).toHaveLength(2);
     // The proxy reaches account-id.ts through multi-org.ts: crypto and zod only (its prose names `sc(u)`, which the spec reader would take for an import).
-    expect(readFileSync("src/lib/account-id.ts", "utf8").match(/^import .*$/gm)).toEqual(['import { randomBytes } from "crypto";', 'import { z } from "zod";']);
-    expect(readFileSync("src/lib/settings-nav.ts", "utf8")).toMatch(/^import \{ appHref, isBrandPath \} from "\.\/brand-path";$/m);
-    expect(readFileSync("src/lib/ws-path.ts", "utf8").match(/^import .*$/gm)).toEqual(['import { appHref as brandHref, brandSectionOf } from "./brand-path";', 'import type { Lang } from "./i18n";']);
+    expect(readFileSync("src/lib/account-id.ts", "utf8").match(/^import .*$/gm)).toEqual([
+      'import { randomBytes } from "crypto";',
+      'import { z } from "zod";',
+    ]);
+    expect(readFileSync("src/lib/settings-nav.ts", "utf8")).toMatch(
+      /^import \{ appHref, isBrandPath \} from "\.\/brand-path";$/m,
+    );
+    expect(readFileSync("src/lib/ws-path.ts", "utf8").match(/^import .*$/gm)).toEqual([
+      'import { appHref as brandHref, brandSectionOf } from "./brand-path";',
+      'import type { Lang } from "./i18n";',
+    ]);
     expect(readFileSync("src/lib/brand-path.ts", "utf8")).toMatch(/^import type \{ Lang \} from "\.\/i18n";$/m);
     expect(readFileSync("src/lib/brand-path.ts", "utf8").match(/^import /gm)).toHaveLength(1);
     // And the lock gets sameSecret from the module with no store behind it, through no other path.
@@ -138,14 +232,41 @@ describe("the staging lock (rules 674, 677)", () => {
   it("the proxy runs on every path but Next's static assets and the favicon, so nothing slips past the lock", async () => {
     const { unstable_doesMiddlewareMatch: runs } = await import("next/experimental/testing/server");
     const { config } = await import("@/proxy");
-    for (const url of ["/", "/app", "/ar", "/en/pricing", "/ar/app/chat", "/api/health", "/api/chat", "/robots.txt", "/sitemap.xml", "/manifest.webmanifest", "/icon-192.png"])
+    for (const url of [
+      "/",
+      "/app",
+      "/ar",
+      "/en/pricing",
+      "/ar/app/chat",
+      "/api/health",
+      "/api/chat",
+      "/robots.txt",
+      "/sitemap.xml",
+      "/manifest.webmanifest",
+      "/icon-192.png",
+    ])
       expect(runs({ config, url }), url).toBe(true);
-    for (const url of ["/_next/static/chunks/main.js", "/_next/static/a", "/_next/image", "/_next/image?url=%2Fa.png&w=64&q=75", "/favicon.ico"]) expect(runs({ config, url }), url).toBe(false);
+    for (const url of [
+      "/_next/static/chunks/main.js",
+      "/_next/static/a",
+      "/_next/image",
+      "/_next/image?url=%2Fa.png&w=64&q=75",
+      "/favicon.ico",
+    ])
+      expect(runs({ config, url }), url).toBe(false);
   });
   it("the exclusions are anchored: look-alikes of the static paths still meet the lock", async () => {
     const { unstable_doesMiddlewareMatch: runs } = await import("next/experimental/testing/server");
     const { config } = await import("@/proxy");
-    for (const url of ["/favicon.icox", "/faviconXico/pricing", "/_next/staticx/a", "/_next/staticx", "/_next/imagex", "/_next/image/ar", "/favicon.ico/x"])
+    for (const url of [
+      "/favicon.icox",
+      "/faviconXico/pricing",
+      "/_next/staticx/a",
+      "/_next/staticx",
+      "/_next/imagex",
+      "/_next/image/ar",
+      "/favicon.ico/x",
+    ])
       expect(runs({ config, url }), url).toBe(true);
   });
 });
@@ -157,7 +278,11 @@ describe("the proxy buffers at most 6 MB of a request body (rule 774)", () => {
     // The largest: POST /api/performance with the longest CSV it accepts, every character three bytes in UTF-8 (U+FFFD,
     // what a byte that is not UTF-8 becomes when the page reads the file), and a long file name.
     const { MAX_CSV_CHARS, METRICS } = await import("@/lib/perf-import");
-    const worst = JSON.stringify({ csv: "�".repeat(MAX_CSV_CHARS), file: "ت".repeat(255) + ".csv", metric: Object.keys(METRICS)[0] });
+    const worst = JSON.stringify({
+      csv: "�".repeat(MAX_CSV_CHARS),
+      file: "ت".repeat(255) + ".csv",
+      metric: Object.keys(METRICS)[0],
+    });
     expect(Buffer.byteLength(worst)).toBeLessThan(cap as number);
     expect(cap as number).toBeLessThan(10 * 1024 * 1024);
   });
@@ -168,13 +293,21 @@ describe("the staging access route (rule 675)", () => {
   const post = async (code: string | null, ip: string, url = "http://localhost:3000/api/staging-access") => {
     const { POST } = await import("@/app/api/staging-access/route");
     const body = new URLSearchParams(code === null ? { lang: "ar" } : { code, lang: "ar" });
-    return POST(new Request(url, { method: "POST", body, headers: { "x-forwarded-for": ip, "content-type": "application/x-www-form-urlencoded" } }));
+    return POST(
+      new Request(url, {
+        method: "POST",
+        body,
+        headers: { "x-forwarded-for": ip, "content-type": "application/x-www-form-urlencoded" },
+      }),
+    );
   };
   beforeEach(async () => {
     // The store is chosen when `db` first loads, and staging counts as production (rule 430): load it before the stub
     // so the limiter gets the memory store, not the one that refuses.
     await import("@/lib/db");
-    vi.stubEnv("APP_ENV", "staging"); vi.stubEnv("STAGING_ACCESS_KEY", key); vi.stubEnv("APP_ORIGIN", "https://staging.example");
+    vi.stubEnv("APP_ENV", "staging");
+    vi.stubEnv("STAGING_ACCESS_KEY", key);
+    vi.stubEnv("APP_ORIGIN", "https://staging.example");
   });
 
   it("right code: 303 to APP_ORIGIN (never req.url's host) with the token cookie, flags set, code absent", async () => {
@@ -184,15 +317,21 @@ describe("the staging access route (rule 675)", () => {
     expect(r.headers.get("location")).toBe("https://staging.example/ar");
     const c = r.headers.get("set-cookie") ?? "";
     expect(c).toContain(`thakeen_staging=${accessToken(key)}`);
-    expect(c).toMatch(/HttpOnly/i); expect(c).toMatch(/Secure/i); expect(c).toMatch(/SameSite=lax/i);
+    expect(c).toMatch(/HttpOnly/i);
+    expect(c).toMatch(/Secure/i);
+    expect(c).toMatch(/SameSite=lax/i);
     expect(c).not.toContain(key);
   });
   it("Secure follows the https APP_ORIGIN, whatever Host and x-forwarded-proto the proxy forwards (rule 675)", async () => {
     // The worst case for `sessionCookie`: a loopback Host and no x-forwarded-proto reads as plain http to localhost, and
     // its own rule then drops Secure. Behind Hostinger the request can look like that, so the route must not rely on it.
     const seen: Record<string, string>[] = [
-      {}, { host: "localhost:3000" }, { host: "127.0.0.1:3000" }, { host: "[::1]:3000" },
-      { host: "localhost:3000", "x-forwarded-proto": "http" }, { host: "staging.example", "x-forwarded-proto": "https" },
+      {},
+      { host: "localhost:3000" },
+      { host: "127.0.0.1:3000" },
+      { host: "[::1]:3000" },
+      { host: "localhost:3000", "x-forwarded-proto": "http" },
+      { host: "staging.example", "x-forwarded-proto": "https" },
     ];
     const { withHeaders } = await import("./helpers/session");
     for (const [i, h] of seen.entries()) {
@@ -212,7 +351,10 @@ describe("the staging access route (rule 675)", () => {
     expect(real.headers.get("set-cookie") ?? "").toMatch(/;\s*Secure(;|$)/i);
   });
   it("wrong code, a code only in the URL, and a missing key: back to the page with e=1, no cookie", async () => {
-    for (const [code, url] of [["nope", undefined], [null, `http://localhost:3000/api/staging-access?code=${key}`]] as const) {
+    for (const [code, url] of [
+      ["nope", undefined],
+      [null, `http://localhost:3000/api/staging-access?code=${key}`],
+    ] as const) {
       const r = await post(code, "10.0.0.2", url);
       expect(r.headers.get("location")).toBe("https://staging.example/ar/staging-access?e=1");
       expect(r.headers.get("set-cookie")).toBeNull();
@@ -231,9 +373,14 @@ describe("the staging access route (rule 675)", () => {
   it("the bucket is per client address: the last x-forwarded-for hop gets its own five tries, a spoofed header none (rule 773)", async () => {
     vi.stubEnv("VERCEL", ""); // Hostinger: no VERCEL
     const { POST } = await import("@/app/api/staging-access/route");
-    const from = (h: Record<string, string>) => POST(new Request("http://localhost:3000/api/staging-access", {
-      method: "POST", body: new URLSearchParams({ code: "nope", lang: "ar" }), headers: { ...h, "content-type": "application/x-www-form-urlencoded" },
-    }));
+    const from = (h: Record<string, string>) =>
+      POST(
+        new Request("http://localhost:3000/api/staging-access", {
+          method: "POST",
+          body: new URLSearchParams({ code: "nope", lang: "ar" }),
+          headers: { ...h, "content-type": "application/x-www-form-urlencoded" },
+        }),
+      );
     const clients: Record<string, string>[][] = [
       [{ "x-forwarded-for": "10.0.2.1" }, { "x-forwarded-for": "10.0.2.2" }],
       // A proxy that only appends to x-forwarded-for: the caller's own earlier hops do not matter, the last one does.
@@ -245,17 +392,27 @@ describe("the staging access route (rule 675)", () => {
       expect((await from(b)).status, "a second client is not locked out by the first").toBe(303);
     }
     // Off Vercel, x-vercel-forwarded-for and x-real-ip come from the caller: a new value of either is not a new client.
-    for (const spoof of [{ "x-vercel-forwarded-for": "198.51.100.1" }, { "x-real-ip": "198.51.100.2" }] as Record<string, string>[]) {
-      expect((await from({ ...spoof, "x-forwarded-for": "9.9.9.9, 10.0.2.3" })).status, JSON.stringify(spoof)).toBe(429);
+    for (const spoof of [{ "x-vercel-forwarded-for": "198.51.100.1" }, { "x-real-ip": "198.51.100.2" }] as Record<
+      string,
+      string
+    >[]) {
+      expect((await from({ ...spoof, "x-forwarded-for": "9.9.9.9, 10.0.2.3" })).status, JSON.stringify(spoof)).toBe(
+        429,
+      );
     }
   });
   it("with no address header at all every caller shares one bucket: the case the staging check rules out", async () => {
     // Pins the known limit so a change is deliberate: if the host forwarded no client address, five tries from anyone
     // would lock everyone out for 15 minutes. flows.md section 51 (item 7) has the check that Hostinger does forward one.
     const { POST } = await import("@/app/api/staging-access/route");
-    const blind = () => POST(new Request("http://localhost:3000/api/staging-access", {
-      method: "POST", body: new URLSearchParams({ code: key, lang: "ar" }), headers: { "content-type": "application/x-www-form-urlencoded" },
-    }));
+    const blind = () =>
+      POST(
+        new Request("http://localhost:3000/api/staging-access", {
+          method: "POST",
+          body: new URLSearchParams({ code: key, lang: "ar" }),
+          headers: { "content-type": "application/x-www-form-urlencoded" },
+        }),
+      );
     for (let i = 0; i < 5; i++) expect((await blind()).status).toBe(303);
     expect((await blind()).status).toBe(429);
   });
@@ -263,7 +420,9 @@ describe("the staging access route (rule 675)", () => {
     vi.stubEnv("APP_ENV", "");
     expect((await post(key, "10.0.0.5")).status).toBe(404);
     const Page = (await import("@/app/[lang]/staging-access/page")).default;
-    await expect(Page({ params: Promise.resolve({ lang: "ar" }), searchParams: Promise.resolve({}) })).rejects.toThrow();
+    await expect(
+      Page({ params: Promise.resolve({ lang: "ar" }), searchParams: Promise.resolve({}) }),
+    ).rejects.toThrow();
   });
   it("every method but POST is a bare 404, off staging and on it: no 405, no OPTIONS that lists the route's methods", async () => {
     const route: Record<string, unknown> = await import("@/app/api/staging-access/route");
@@ -296,6 +455,8 @@ describe("staging is never indexed (rule 677)", () => {
   });
   it("off staging robots is unchanged", async () => {
     vi.stubEnv("APP_ENV", "");
-    expect((await import("@/app/robots")).default().rules).toEqual([{ userAgent: "*", allow: "/", disallow: ["/api/", "/ar/app/", "/en/app/"] }]);
+    expect((await import("@/app/robots")).default().rules).toEqual([
+      { userAgent: "*", allow: "/", disallow: ["/api/", "/ar/app/", "/en/app/"] },
+    ]);
   });
 });
